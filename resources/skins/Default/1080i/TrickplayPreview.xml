@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window>
+    <allowoverlay>true</allowoverlay>
+    <coordinates>
+        <system>1</system>
+        <posx>0</posx>
+        <posy>0</posy>
+    </coordinates>
+
+    <zorder>20</zorder>
+
+    <controls>
+        <control type="group" id="399">
+            <left>0</left>
+            <top>0</top>
+            <width>320</width>
+            <height>220</height>
+            <animation effect="fade" start="100" end="100" time="0">Visible</animation>
+            <animation effect="fade" start="100" end="100" time="0">Hidden</animation>
+
+            <control type="image" id="401">
+                <left>0</left>
+                <top>0</top>
+                <width>320</width>
+                <height>180</height>
+                <aspectratio scalediffuse="false">keep</aspectratio>
+                <texture background="true" />
+            </control>
+
+            <control type="label" id="402">
+                <left>0</left>
+                <top>184</top>
+                <width>320</width>
+                <height>36</height>
+                <font>font13</font>
+                <align>center</align>
+                <aligny>center</aligny>
+                <textcolor>FFFFFFFF</textcolor>
+                <shadowcolor>FF000000</shadowcolor>
+                <shadowoffsetx>2</shadowoffsetx>
+                <shadowoffsety>2</shadowoffsety>
+            </control>
+        </control>
+    </controls>
+</window>

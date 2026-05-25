@@ -1,0 +1,62 @@
+# Kodi language file
+# Addon: service.trickplay
+msgid ""
+msgstr ""
+"Language: en\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "General"
+
+msgctxt "#32001"
+msgid "Trickplay"
+msgstr "Trickplay"
+
+msgctxt "#32002"
+msgid "Preferred tile width (px)"
+msgstr "Preferred tile width (px)"
+
+msgctxt "#32003"
+msgid "Resolution subfolder to prefer inside the .trickplay directory (e.g. 320 for '320 - 10x10'). Falls back to the first resolution found."
+msgstr "Resolution subfolder to prefer inside the .trickplay directory (e.g. 320 for '320 - 10x10'). Falls back to the first resolution found."
+
+msgctxt "#32004"
+msgid "Thumbnail interval (ms)"
+msgstr "Thumbnail interval (ms)"
+
+msgctxt "#32005"
+msgid "Time between trickplay images. Jellyfin default is 10000 (one frame every 10 seconds)."
+msgstr "Time between trickplay images. Jellyfin default is 10000 (one frame every 10 seconds)."
+
+msgctxt "#32006"
+msgid "Seek poll interval (ms)"
+msgstr "Seek poll interval (ms)"
+
+msgctxt "#32007"
+msgid "How often to refresh the preview while the seek bar is active. Lower values feel smoother but use more CPU."
+msgstr "How often to refresh the preview while the seek bar is active. Lower values feel smoother but use more CPU."
+
+msgctxt "#32008"
+msgid "Enable debug logging"
+msgstr "Enable debug logging"
+
+msgctxt "#32009"
+msgid "Write detailed trickplay resolution messages to the Kodi log."
+msgstr "Write detailed trickplay resolution messages to the Kodi log."
+
+msgctxt "#32010"
+msgid "Automatic tile calculation"
+msgstr "Automatic tile calculation"
+
+msgctxt "#32011"
+msgid "Use the grid size from the .trickplay folder name (e.g. 10x10 in '320 - 10x10') and divide each sprite JPG evenly. Recommended for Jellyfin trickplay."
+msgstr "Use the grid size from the .trickplay folder name (e.g. 10x10 in '320 - 10x10') and divide each sprite JPG evenly. Recommended for Jellyfin trickplay."
+
+msgctxt "#32012"
+msgid "Number of tiles"
+msgstr "Number of tiles"
+
+msgctxt "#32013"
+msgid "Manual grid layout per sprite JPG, e.g. 10x10 or 20x20. Each cell size is still calculated from the JPG width and height divided by these counts."
+msgstr "Manual grid layout per sprite JPG, e.g. 10x10 or 20x20. Each cell size is still calculated from the JPG width and height divided by these counts."
