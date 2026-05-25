@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2026-05-22
+
+### Fixed
+
+- Estuary Mod v2 (and AF3): preview overlay no longer shows a white box when scrubbing content without trickplay sidecars — border control no longer fills the frame, and visibility requires a preview image.
+- Service no longer sets `Trickplay.PreviewVisible` when trickplay data is unavailable or lookup fails during scrub.
+
 ## [1.5.3] - 2026-05-22
 
 ### Added

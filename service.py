@@ -375,23 +375,23 @@ class TrickplayService:
         sync_trickplay_property(PROP_THUMB_W, str(lookup.thumb_width))
         sync_trickplay_property(PROP_THUMB_H, str(lookup.thumb_height))
 
-    def update_preview(self, target_second: int, seeking: bool) -> None:
+    def update_preview(self, target_second: int, seeking: bool) -> bool:
         if self.resolution is None:
-            return
+            return False
 
         self._refresh_resolution_if_needed()
         if not self.resolution.is_usable:
-            return
+            return False
 
         target_second = max(target_second, 0)
         if not seeking and target_second == self.last_preview_second:
-            return
+            return self.preview_visible
 
         interval_ms = _setting_int("interval_ms", 10000)
         lookup = lookup_thumbnail(self.resolution, target_second, interval_ms)
         if lookup is None:
             _debug(f"No trickplay lookup for {target_second}s")
-            return
+            return False
 
         self.last_preview_second = target_second
         sync_trickplay_property(PROP_SEEKING, "true" if seeking else "false")
@@ -420,6 +420,7 @@ class TrickplayService:
             settings=prefetch_settings,
             debug=ADDON.getSettingBool("debug_logging"),
         )
+        return True
 
     def _maybe_idle_prefetch(self, play_seconds: int) -> None:
         prefetch_settings = read_prefetch_settings()
@@ -470,7 +471,8 @@ class TrickplayService:
 
         self._touch_seek_hold()
         sync_display_settings()
-        self.update_preview(target_second, seeking=True)
+        if not self.update_preview(target_second, seeking=True):
+            return
         self.preview_active = True
         self.was_seeking = True
         self._set_preview_visible(True)
@@ -636,15 +638,17 @@ class TrickplayService:
             return
 
         if scrubbing:
-            self.preview_active = True
             self._touch_seek_hold()
             sync_display_settings()
             if self.last_preview_second >= 0:
                 resync_preview_to_seekbar()
-            self.update_preview(target_second, seeking=True)
-            self.was_seeking = True
-            self.last_play_time = play_seconds
-            self._set_preview_visible(True)
+            if self.update_preview(target_second, seeking=True):
+                self.preview_active = True
+                self.was_seeking = True
+                self.last_play_time = play_seconds
+                self._set_preview_visible(True)
+            elif self.preview_visible:
+                self._set_preview_visible(False)
             return
 
         if not self.preview_active:
@@ -657,14 +661,15 @@ class TrickplayService:
             if self._preview_follows_playhead() and not xbmc.getCondVisibility(
                 "Player.Paused"
             ):
-                self.update_preview(play_seconds, seeking=False)
+                if self.update_preview(play_seconds, seeking=False):
+                    self._set_preview_visible(True)
             else:
                 self._maybe_idle_prefetch(
                     self.last_preview_second
                     if self.last_preview_second >= 0
                     else play_seconds
                 )
-            self._set_preview_visible(True)
+                self._set_preview_visible(True)
             return
 
         self._clear_preview_session()

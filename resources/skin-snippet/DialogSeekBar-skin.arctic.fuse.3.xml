@@ -65,7 +65,7 @@
         <!-- Matched automatically when skin.arctic.fuse.3 is active (see skin_profiles.py). -->
         <control type="group" id="94090">
             <control type="group" id="94100">
-                <visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true)</visible>
+                <visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
                 <left>270</left>
                 <top>670</top>
                 <width>320</width>
@@ -132,7 +132,6 @@
                     <width>320</width>
                     <height>180</height>
                     <aspectratio scalediffuse="false">keep</aspectratio>
-                    <texture>common/white.png</texture>
                     <bordertexture border="2" infill="false">common/white.png</bordertexture>
                     <bordersize>2</bordersize>
                     <colordiffuse>panel_fg_70</colordiffuse>

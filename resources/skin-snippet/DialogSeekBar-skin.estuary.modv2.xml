@@ -61,7 +61,7 @@
 			<animation effect="slide" end="0,-21" time="0" condition="Window.IsVisible(fullscreenvideo) + Skin.HasSetting(ScopeMode) + String.IsEqual(Skin.String(scope_mode),$LOCALIZE[31478])">Conditional</animation>
 			<!-- Normal seek bar (slot 0 anchor + slide, +30px right vs seek bar left). -->
 			<control type="group" id="94100">
-				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !Skin.HasSetting(SmallOSDVideo)</visible>
+				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage)) + !Skin.HasSetting(SmallOSDVideo)</visible>
 				<left>490</left>
 				<top>624</top>
 				<width>320</width>
@@ -128,7 +128,6 @@
 					<width>320</width>
 					<height>180</height>
 					<aspectratio scalediffuse="false">keep</aspectratio>
-					<texture>colors/white.png</texture>
 					<bordertexture border="2" infill="false">colors/white.png</bordertexture>
 					<bordersize>2</bordersize>
 					<colordiffuse>B3FFFFFF</colordiffuse>
@@ -159,7 +158,7 @@
 			</control>
 			<!-- Small/wide seek bar (+30px right vs seek bar left). -->
 			<control type="group" id="94103">
-				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + Skin.HasSetting(SmallOSDVideo)</visible>
+				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage)) + Skin.HasSetting(SmallOSDVideo)</visible>
 				<left>60</left>
 				<top>624</top>
 				<width>320</width>
@@ -226,7 +225,6 @@
 					<width>320</width>
 					<height>180</height>
 					<aspectratio scalediffuse="false">keep</aspectratio>
-					<texture>colors/white.png</texture>
 					<bordertexture border="2" infill="false">colors/white.png</bordertexture>
 					<bordersize>2</bordersize>
 					<colordiffuse>B3FFFFFF</colordiffuse>
