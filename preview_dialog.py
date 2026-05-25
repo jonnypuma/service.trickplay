@@ -32,6 +32,13 @@ PROP_PREVIEW_TOTAL_H = "Trickplay.PreviewTotalHeight"
 PROP_DURATION = "Trickplay.Duration"
 PROP_THUMB_W = "Trickplay.ThumbWidth"
 PROP_THUMB_H = "Trickplay.ThumbHeight"
+PROP_SHOW_TIMESTAMP = "Trickplay.ShowTimestamp"
+PROP_PREVIEW_COLOR_DIFFUSE = "Trickplay.PreviewColorDiffuse"
+
+DISPLAY_PROPERTIES = (
+    PROP_SHOW_TIMESTAMP,
+    PROP_PREVIEW_COLOR_DIFFUSE,
+)
 
 PREVIEW_PROPERTIES = (
     PROP_PREVIEW_IMAGE,
@@ -113,26 +120,82 @@ def _seekbar_window() -> xbmcgui.Window | None:
         "Window.IsVisible(DialogSeekBar.xml)"
     ):
         return None
+    return _seekbar_window_unconditional()
+
+
+def _seekbar_window_unconditional() -> xbmcgui.Window | None:
     try:
         return xbmcgui.Window(SEEKBAR_WINDOW_ID)
     except RuntimeError:
         return None
 
 
+def _for_each_seekbar_window() -> list[xbmcgui.Window]:
+    windows: list[xbmcgui.Window] = []
+    for getter in (_seekbar_window, _seekbar_window_unconditional):
+        window = getter()
+        if window is not None and window not in windows:
+            windows.append(window)
+    return windows
+
+
 def _set_property(name: str, value: str) -> None:
     HOME_WINDOW.setProperty(name, value)
-    seekbar = _seekbar_window()
-    if seekbar is not None:
+    for seekbar in _for_each_seekbar_window():
         try:
             seekbar.setProperty(name, value)
         except RuntimeError:
             pass
 
 
+def _show_timestamp_setting() -> bool:
+    try:
+        return ADDON.getSettingBool("show_timestamp")
+    except (RuntimeError, TypeError, ValueError):
+        raw = ADDON.getSettingString("show_timestamp")
+        if not raw:
+            return True
+        return raw.strip().lower() in ("true", "1", "yes", "on")
+
+
+def _setting_int(setting_id: str, default: int) -> int:
+    try:
+        return int(ADDON.getSettingInt(setting_id))
+    except (TypeError, ValueError):
+        raw = ADDON.getSettingString(setting_id)
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return default
+
+
+def preview_opacity_percent() -> int:
+    return max(0, min(_setting_int("preview_opacity", 100), 100))
+
+
+def preview_color_diffuse(opacity_percent: int | None = None) -> str:
+    opacity = preview_opacity_percent() if opacity_percent is None else opacity_percent
+    opacity = max(0, min(int(opacity), 100))
+    alpha = int(round(opacity * 255 / 100))
+    return f"{alpha:02X}FFFFFF"
+
+
+def show_timestamp_enabled() -> bool:
+    return _show_timestamp_setting()
+
+
+def sync_display_settings() -> None:
+    sync_trickplay_property(
+        PROP_SHOW_TIMESTAMP, "true" if _show_timestamp_setting() else "false"
+    )
+    sync_trickplay_property(
+        PROP_PREVIEW_COLOR_DIFFUSE, preview_color_diffuse()
+    )
+
+
 def _clear_property(name: str) -> None:
     HOME_WINDOW.clearProperty(name)
-    seekbar = _seekbar_window()
-    if seekbar is not None:
+    for seekbar in _for_each_seekbar_window():
         try:
             seekbar.clearProperty(name)
         except RuntimeError:
@@ -141,6 +204,8 @@ def _clear_property(name: str) -> None:
 
 def _clear_preview_properties() -> None:
     for prop in PREVIEW_PROPERTIES:
+        _clear_property(prop)
+    for prop in DISPLAY_PROPERTIES:
         _clear_property(prop)
 
 
@@ -154,16 +219,27 @@ def clear_trickplay_property(name: str) -> None:
 
 def resync_preview_to_seekbar() -> None:
     """Copy preview properties to DialogSeekBar when it opens after publish."""
-    seekbar = _seekbar_window()
+    seekbar = _seekbar_window_unconditional()
     if seekbar is None:
         return
     for prop in PREVIEW_PROPERTIES:
         value = HOME_WINDOW.getProperty(prop)
-        if value:
-            try:
+        try:
+            if value:
                 seekbar.setProperty(prop, value)
-            except RuntimeError:
-                pass
+            else:
+                seekbar.clearProperty(prop)
+        except RuntimeError:
+            pass
+    for prop in DISPLAY_PROPERTIES:
+        value = HOME_WINDOW.getProperty(prop)
+        try:
+            if value:
+                seekbar.setProperty(prop, value)
+            else:
+                seekbar.clearProperty(prop)
+        except RuntimeError:
+            pass
 
 
 class PreviewDialogController:
@@ -204,6 +280,7 @@ class PreviewDialogController:
             lookup.target_second,
             duration_seconds,
             aspect_ratio,
+            show_timestamp=_show_timestamp_setting(),
         )
         total_h = placement.preview_h + placement.label_h + 4
         _set_property(PROP_PREVIEW_SLOT, str(placement.slot))
@@ -230,7 +307,11 @@ class PreviewDialogController:
         image_path: str | None,
         player: xbmc.Player | None = None,
     ) -> None:
-        _set_property(PROP_PREVIEW_TIME, format_preview_time(lookup.target_second))
+        sync_display_settings()
+        if _show_timestamp_setting():
+            _set_property(PROP_PREVIEW_TIME, format_preview_time(lookup.target_second))
+        else:
+            _clear_property(PROP_PREVIEW_TIME)
         _set_property(PROP_DURATION, str(max(duration_seconds, 0)))
         _set_property(PROP_THUMB_W, str(lookup.thumb_width))
         _set_property(PROP_THUMB_H, str(lookup.thumb_height))
@@ -327,7 +408,7 @@ class PreviewDialogController:
         ):
             xbmc.log(
                 "[service.trickplay] Could not crop preview thumb; "
-                "install script.module.pillow or tools.ffmpeg-tools",
+                "install tools.ffmpeg-tools",
                 xbmc.LOGWARNING,
             )
             self._crop_failed = False

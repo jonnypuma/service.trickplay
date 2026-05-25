@@ -60,3 +60,107 @@ msgstr "Number of tiles"
 msgctxt "#32013"
 msgid "Manual grid layout per sprite JPG, e.g. 10x10 or 20x20. Each cell size is still calculated from the JPG width and height divided by these counts."
 msgstr "Manual grid layout per sprite JPG, e.g. 10x10 or 20x20. Each cell size is still calculated from the JPG width and height divided by these counts."
+
+msgctxt "#32014"
+msgid "Skin profile"
+msgstr "Skin profile"
+
+msgctxt "#32015"
+msgid "Seek bar geometry and focus IDs for preview placement. Auto detects your active Kodi skin; override if detection fails."
+msgstr "Seek bar geometry and focus IDs for preview placement. Auto detects your active Kodi skin; override if detection fails."
+
+msgctxt "#32016"
+msgid "Auto (detect active skin)"
+msgstr "Auto (detect active skin)"
+
+msgctxt "#32017"
+msgid "Estuary Mod v2"
+msgstr "Estuary Mod v2"
+
+msgctxt "#32018"
+msgid "Arctic Fuse 3"
+msgstr "Arctic Fuse 3"
+
+msgctxt "#32019"
+msgid "Preview hold time (seconds)"
+msgstr "Preview hold time (seconds)"
+
+msgctxt "#32020"
+msgid "How long to keep the preview visible after seeking stops. 0 = until the OSD closes; the thumbnail follows playback while playing."
+msgstr "How long to keep the preview visible after seeking stops. 0 = until the OSD closes; the thumbnail follows playback while playing."
+
+msgctxt "#32021"
+msgid "Show timestamp"
+msgstr "Show timestamp"
+
+msgctxt "#32022"
+msgid "Show the seek position timestamp below the preview thumbnail."
+msgstr "Show the seek position timestamp below the preview thumbnail."
+
+msgctxt "#32023"
+msgid "Enable prefetch"
+msgstr "Enable prefetch"
+
+msgctxt "#32024"
+msgid "Pre-crop neighbouring trickplay cells in the background so scrubbing feels faster."
+msgstr "Pre-crop neighbouring trickplay cells in the background so scrubbing feels faster."
+
+msgctxt "#32025"
+msgid "Prefetch on playback start"
+msgstr "Prefetch on playback start"
+
+msgctxt "#32026"
+msgid "Warm the cache around the current playhead when a video loads."
+msgstr "Warm the cache around the current playhead when a video loads."
+
+msgctxt "#32027"
+msgid "Prefetch whole sprite tile"
+msgstr "Prefetch whole sprite tile"
+
+msgctxt "#32028"
+msgid "Also queue uncached cells from the current sprite JPG (up to 20 per preview update)."
+msgstr "Also queue uncached cells from the current sprite JPG (up to 20 per preview update)."
+
+msgctxt "#32029"
+msgid "Prefetch idle sprite tile"
+msgstr "Prefetch idle sprite tile"
+
+msgctxt "#32030"
+msgid "While the seek OSD is open and idle, pre-crop remaining cells in the current sprite tile."
+msgstr "While the seek OSD is open and idle, pre-crop remaining cells in the current sprite tile."
+
+msgctxt "#32031"
+msgid "Prefetch radius (indices)"
+msgstr "Prefetch radius (indices)"
+
+msgctxt "#32032"
+msgid "How many trickplay indices to pre-crop ahead/behind the current preview. Higher uses more CPU and disk."
+msgstr "How many trickplay indices to pre-crop ahead/behind the current preview. Higher uses more CPU and disk."
+
+msgctxt "#32033"
+msgid "Prefetch queue size"
+msgstr "Prefetch queue size"
+
+msgctxt "#32034"
+msgid "Maximum pending background crops. Neighbour previews can bump lower-priority jobs when full."
+msgstr "Maximum pending background crops. Neighbour previews can bump lower-priority jobs when full."
+
+msgctxt "#32035"
+msgid "Crop cache limit (MB)"
+msgstr "Crop cache limit (MB)"
+
+msgctxt "#32036"
+msgid "Maximum disk space for cropped preview JPEGs. Oldest files are removed first. 0 = unlimited."
+msgstr "Maximum disk space for cropped preview JPEGs. Oldest files are removed first. 0 = unlimited."
+
+msgctxt "#32037"
+msgid "Prefetch"
+msgstr "Prefetch"
+
+msgctxt "#32038"
+msgid "Preview opacity (%)"
+msgstr "Preview opacity (%)"
+
+msgctxt "#32039"
+msgid "Overall preview transparency (0 = invisible, 100 = fully opaque). Default 100."
+msgstr "Overall preview transparency (0 = invisible, 100 = fully opaque). Default 100."

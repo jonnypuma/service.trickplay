@@ -8,11 +8,27 @@ Kodi background service that shows **Jellyfin trickplay** seek thumbnails while 
 
 For each skin you use, you must merge trickplay preview controls from this repo into that skin’s own **`DialogSeekBar.xml`**.
 
-The reference snippet in this addon is:
+The reference snippets in this addon are:
 
-`resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml`
+| Skin | Snippet file |
+|---|---|
+| Estuary Mod v2 | `resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml` |
+| Arctic Fuse 3 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.3.xml` |
 
-That filename is deliberate: it is **not** dropped into Kodi as-is. It was built for **Estuary Mod v2** (EstuaryMod-style layouts). Copy the preview block from that file into your skin’s real **`DialogSeekBar.xml`**. Other skins need the same approach, but coordinates, control IDs, and visibility conditions will differ.
+Those filenames are deliberate: they are **not** dropped into Kodi as-is. Copy the preview block from the matching file into your skin’s real **`DialogSeekBar.xml`**. Other skins need the same approach, but coordinates, control IDs, and visibility conditions will differ.
+
+### Skin profiles (auto-detect)
+
+The service detects your active Kodi skin (`xbmc.gui` addon id) and selects seek bar geometry and focus behavior from **`skin_profiles.py`**:
+
+| Profile | Skin IDs | Seek bar (left, top, width) |
+|---|---|---|
+| Estuary Mod v2 | `skin.estuary.modv2`, `skin.estuary.mod`, … | 460, 990, 1430 (+ wide 30, 990, 1860) |
+| Arctic Fuse 3 | `skin.arctic.fuse.3`, … | 240, 772, 1440 |
+
+Unknown skins fall back to Estuary Mod v2 geometry and log a warning. Override manually under **Add-on settings → Skin profile** if auto-detect is wrong.
+
+You still must merge the matching XML snippet so slide animations align with the profile geometry.
 
 ### What to read in your skin
 
@@ -29,13 +45,9 @@ The service positions previews using geometry derived from those values. If they
 
 ### Geometry in this addon
 
-Seek bar layout constants live in **`osd_layout.py`** (1920×1080 coordinates):
+Seek bar layout is defined per skin in **`skin_profiles.py`** and applied automatically. Each profile supplies 1080p coordinates `(left, top, width)` used to compute **`Trickplay.PreviewSlot`** (51 slots). The matching skin snippet must use the same geometry in its anchor and slide animations.
 
-- Normal OSD: seek bar left **460**, right margin **30** → width **1430**
-- Small/wide OSD: left **30**, right **30** → width **1860**
-- Preview uses **51** horizontal slots (`PREVIEW_SLOTS`) with matching slide animations in the skin snippet
-
-If your skin’s `SeekBar` include uses different `left` / `right` values, update **`osd_layout.py`** and regenerate the slide tables in **`DialogSeekBar-skin.estuary.modv2.xml`** so they stay in sync.
+To add a new skin, define a profile in `skin_profiles.py`, add a `DialogSeekBar-skin.*.xml` snippet, and map the skin addon id in `PROFILES_BY_SKIN_ID`.
 
 ### Merge checklist
 
@@ -61,7 +73,7 @@ Jellyfin stores trickplay sprites next to your media:
     └── ...
 ```
 
-When playback starts, the service locates the matching `.trickplay` folder, maps the seek position to a tile file and grid cell, crops the frame, and sets **DialogSeekBar window properties** for the skin to render.
+When playback starts, the service locates the matching `.trickplay` folder, maps the seek position to a tile file and grid cell, crops the frame, and sets **DialogSeekBar window properties** for the skin to render. A background prefetch worker pre-crops neighbouring cells (direction-biased ±3–5 indices, plus cells in the current sprite tile) so stepping/scrubbing nearby positions is usually instant after the first frame.
 
 ### Main window properties
 
@@ -71,6 +83,8 @@ When playback starts, the service locates the matching `.trickplay` folder, maps
 | `Trickplay.PreviewImage` | Path to the cropped preview JPEG |
 | `Trickplay.PreviewTime` | Target position (formatted timestamp) |
 | `Trickplay.PreviewSlot` | Horizontal slot index (0–50) for slide animations |
+| `Trickplay.ShowTimestamp` | `true` when the skin should show the time label |
+| `Trickplay.PreviewColorDiffuse` | Kodi `colordiffuse` ARGB (e.g. `FFFFFFFF` = opaque); driven by **Preview opacity** setting |
 | `Trickplay.Available` | `true` when trickplay data was found for the current file |
 
 Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.PreviewTop`, etc.) are also published.
@@ -79,22 +93,37 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 
 - Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin)
 - **Skin edit** to `DialogSeekBar.xml` (see above)
-- **`script.module.pillow`** or **`tools.ffmpeg-tools`** (crops one frame from each sprite tile)
+- **tools.ffmpeg-tools** — crops one frame from each sprite tile (required dependency; install from your Kodi repository before this addon)
 
 ## Settings
 
 - **Preferred tile width** — resolution folder to use (default `320` for `320 - 10x10`)
 - **Thumbnail interval (ms)** — Jellyfin default is `10000` (one thumb every 10 s)
 - **Seek poll interval (ms)** — refresh rate while scrubbing (default `100`)
-- **Enable debug logging** — logs seek targets, preview slots, and visibility toggles
+- **Skin profile** — auto-detect active skin, or force Estuary Mod v2 / Arctic Fuse 3
+- **Preview hold time (seconds)** — how long the preview stays after seeking stops (0 = until OSD closes, thumbnail follows playback; default 4)
+- **Show timestamp** — show or hide the seek position label under the thumbnail
+- **Preview opacity (%)** — overall preview transparency (0–100, default 100 = fully opaque)
+- **Enable debug logging** — logs seek targets, preview slots, visibility toggles, and active skin profile
+
+### Prefetch (Settings → Prefetch)
+
+- **Enable prefetch** — master toggle for background pre-cropping
+- **Prefetch on playback start** — warm cache around the current playhead when a video loads
+- **Prefetch whole sprite tile** — queue extra cells from the current sprite JPG during scrubbing
+- **Prefetch idle sprite tile** — fill in the rest of the tile while the OSD is open and idle
+- **Prefetch radius** — indices ahead/behind to pre-crop (default 5)
+- **Prefetch queue size** — max pending background crops (default 48)
+- **Crop cache limit (MB)** — LRU cap for cropped JPEGs (default 500; 0 = unlimited)
 
 ## Installation
 
-1. Zip the `service.trickplay` folder so `addon.xml` is at the root of the archive.
-2. In Kodi: **Settings → Add-ons → Install from zip file**.
-3. **Merge the skin snippet** into your active skin’s `DialogSeekBar.xml` (required).
-4. Enable the service if needed (**Settings → Add-ons → My add-ons → Services**).
-5. Tail `kodi.log` for `[service.trickplay]` messages when debugging.
+1. Install **tools.ffmpeg-tools** from your Kodi repository (required).
+2. Zip the `service.trickplay` folder so `addon.xml` is at the root of the archive.
+3. In Kodi: **Settings → Add-ons → Install from zip file**.
+4. **Merge the skin snippet** into your active skin’s `DialogSeekBar.xml` (required).
+5. Enable the service if needed (**Settings → Add-ons → My add-ons → Services**).
+6. Tail `kodi.log` for `[service.trickplay]` messages when debugging.
 
 ## Supported paths
 

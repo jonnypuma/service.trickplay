@@ -63,10 +63,12 @@
 			<control type="group" id="94100">
 				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !Skin.HasSetting(SmallOSDVideo)</visible>
 				<left>490</left>
-				<top>756</top>
+				<top>624</top>
 				<width>320</width>
-				<height>224</height>
+				<height condition="String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">224</height>
+				<height condition="!String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">180</height>
 				<zorder>10</zorder>
+				<colordiffuse>$INFO[Window.Property(Trickplay.PreviewColorDiffuse)]</colordiffuse>
 				<animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),0)">Conditional</animation>
 				<animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),1)">Conditional</animation>
 				<animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),2)">Conditional</animation>
@@ -120,6 +122,17 @@
 				<animation effect="slide" end="1080,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),50)">Conditional</animation>
 				<animation effect="fade" start="0" end="100" time="100">Visible</animation>
 				<animation effect="fade" start="100" end="0" time="100">Hidden</animation>
+				<control type="image" id="94106">
+					<left>0</left>
+					<top>0</top>
+					<width>320</width>
+					<height>180</height>
+					<aspectratio scalediffuse="false">keep</aspectratio>
+					<texture>colors/white.png</texture>
+					<bordertexture border="2" infill="false">colors/white.png</bordertexture>
+					<bordersize>2</bordersize>
+					<colordiffuse>B3FFFFFF</colordiffuse>
+				</control>
 				<control type="image" id="94101">
 					<left>0</left>
 					<top>0</top>
@@ -129,6 +142,7 @@
 					<texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
 				</control>
 				<control type="label" id="94102">
+					<visible>String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)</visible>
 					<left>0</left>
 					<top>180</top>
 					<width>320</width>
@@ -147,10 +161,12 @@
 			<control type="group" id="94103">
 				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + Skin.HasSetting(SmallOSDVideo)</visible>
 				<left>60</left>
-				<top>756</top>
+				<top>624</top>
 				<width>320</width>
-				<height>224</height>
+				<height condition="String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">224</height>
+				<height condition="!String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">180</height>
 				<zorder>10</zorder>
+				<colordiffuse>$INFO[Window.Property(Trickplay.PreviewColorDiffuse)]</colordiffuse>
 				<animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),0)">Conditional</animation>
 				<animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),1)">Conditional</animation>
 				<animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),2)">Conditional</animation>
@@ -204,6 +220,17 @@
 				<animation effect="slide" end="1540,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),50)">Conditional</animation>
 				<animation effect="fade" start="0" end="100" time="100">Visible</animation>
 				<animation effect="fade" start="100" end="0" time="100">Hidden</animation>
+				<control type="image" id="94107">
+					<left>0</left>
+					<top>0</top>
+					<width>320</width>
+					<height>180</height>
+					<aspectratio scalediffuse="false">keep</aspectratio>
+					<texture>colors/white.png</texture>
+					<bordertexture border="2" infill="false">colors/white.png</bordertexture>
+					<bordersize>2</bordersize>
+					<colordiffuse>B3FFFFFF</colordiffuse>
+				</control>
 				<control type="image" id="94104">
 					<left>0</left>
 					<top>0</top>
@@ -213,6 +240,7 @@
 					<texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
 				</control>
 				<control type="label" id="94105">
+					<visible>String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)</visible>
 					<left>0</left>
 					<top>180</top>
 					<width>320</width>

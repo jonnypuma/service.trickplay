@@ -400,6 +400,20 @@ def lookup_thumbnail(
     )
 
 
+def lookup_by_index(
+    resolution: TrickplayResolution,
+    thumb_index: int,
+    interval_ms: int,
+) -> TrickplayLookup | None:
+    if not resolution.is_usable or thumb_index < 0:
+        return None
+    if resolution.thumbnail_count > 0:
+        thumb_index = min(thumb_index, resolution.thumbnail_count - 1)
+    interval_sec = max(interval_ms / 1000.0, 0.001)
+    target_second = int(thumb_index * interval_sec)
+    return lookup_thumbnail(resolution, target_second, interval_ms)
+
+
 def load_trickplay_for_file(
     playing_file: str,
     preferred_width: int,

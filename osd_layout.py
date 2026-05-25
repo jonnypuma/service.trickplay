@@ -4,19 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from skin_profiles import DEFAULT_PROFILE, active_profile
+
 PREVIEW_GAP = 10
 PREVIEW_WIDTH = 320
 LABEL_HEIGHT = 40
 PREVIEW_SLOTS = 51
-
-# DialogSeekBar SeekBar include: left=460, right=30 on 1920x1080 -> width 1430.
-SEEKBAR_DEFAULT = (460, 990, 1430)
-SEEKBAR_SMALL = (30, 990, 1860)
-
-# Static skin anchor for slot 0 (see DialogSeekBar-skin.estuary.modv2.xml slide animations).
 PREVIEW_X_OFFSET = 30
-SKIN_ANCHOR_NORMAL = (SEEKBAR_DEFAULT[0] + PREVIEW_X_OFFSET, 756)
-SKIN_ANCHOR_WIDE = (SEEKBAR_SMALL[0] + PREVIEW_X_OFFSET, 756)
+
+# Back-compat aliases (Estuary Mod v2 defaults).
+SEEKBAR_DEFAULT = DEFAULT_PROFILE.seekbar
+SEEKBAR_SMALL = DEFAULT_PROFILE.seekbar_wide or DEFAULT_PROFILE.seekbar
+SKIN_ANCHOR_NORMAL = (
+    DEFAULT_PROFILE.seekbar[0] + PREVIEW_X_OFFSET,
+    DEFAULT_PROFILE.seekbar[1] - 224 - PREVIEW_GAP,
+)
+SKIN_ANCHOR_WIDE = (
+    (DEFAULT_PROFILE.seekbar_wide or DEFAULT_PROFILE.seekbar)[0] + PREVIEW_X_OFFSET,
+    SKIN_ANCHOR_NORMAL[1],
+)
 
 
 @dataclass(frozen=True)
@@ -45,13 +51,17 @@ def preview_dimensions(
     screen_w: int,
     screen_h: int,
     aspect_ratio: float,
+    show_timestamp: bool = True,
 ) -> tuple[int, int, int]:
     aspect_ratio = max(min(aspect_ratio, 3.0), 0.5)
     scale = min(screen_w / 1920.0, screen_h / 1080.0, 1.0)
     scale = max(scale, 0.55)
     preview_w = max(int(PREVIEW_WIDTH * scale), 160)
     preview_h = max(int(preview_w / aspect_ratio), 60)
-    label_h = max(int(LABEL_HEIGHT * scale), 28)
+    if show_timestamp:
+        label_h = max(int(LABEL_HEIGHT * scale), 28)
+    else:
+        label_h = 0
     return preview_w, preview_h, label_h
 
 
@@ -80,15 +90,25 @@ def preview_placement(
     seek_second: int,
     duration_second: int,
     aspect_ratio: float,
+    show_timestamp: bool | None = None,
 ) -> PreviewPlacement:
+    profile = active_profile()
     screen_w, screen_h = gui_size()
+    if show_timestamp is None:
+        try:
+            from preview_dialog import show_timestamp_enabled
+
+            show_timestamp = show_timestamp_enabled()
+        except ImportError:  # pragma: no cover
+            show_timestamp = True
     preview_w, preview_h, label_h = preview_dimensions(
-        screen_w, screen_h, aspect_ratio
+        screen_w, screen_h, aspect_ratio, show_timestamp=show_timestamp
     )
     slot = preview_slot(seek_second, duration_second)
 
-    bar = SeekBarLayout(*SEEKBAR_DEFAULT)
-    bar_wide = SeekBarLayout(*SEEKBAR_SMALL)
+    bar = SeekBarLayout(*profile.seekbar)
+    wide = profile.seekbar_wide or profile.seekbar
+    bar_wide = SeekBarLayout(*wide)
     ratio = _slot_ratio(slot)
     total_h = preview_h + label_h + PREVIEW_GAP
     top = max(8, bar.top - total_h - PREVIEW_GAP)

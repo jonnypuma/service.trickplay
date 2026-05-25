@@ -14,12 +14,15 @@ _ADDON_PATH = ADDON.getAddonInfo("path")
 if _ADDON_PATH and _ADDON_PATH not in sys.path:
     sys.path.insert(0, _ADDON_PATH)
 
+from prefetch import ThumbPrefetch
+from prefetch_settings import read_prefetch_settings
 from preview_dialog import (
     PREVIEW_PROPERTIES,
     PROP_PREVIEW_VISIBLE,
     PreviewDialogController,
     clear_trickplay_property,
     resync_preview_to_seekbar,
+    sync_display_settings,
     sync_trickplay_property,
 )
 from trickplay_resolver import (
@@ -30,11 +33,19 @@ from trickplay_resolver import (
     TrickplayResolution,
 )
 
+from skin_profiles import (
+    DEFAULT_PROFILE,
+    active_profile,
+    current_skin_id,
+    is_known_skin,
+    profile_summary,
+    setting_skin_profile_override,
+)
+
 HOME_WINDOW = xbmcgui.Window(10000)
 
 SEEKBAR_WINDOW_ID = 10115
-SEEKBAR_FOCUS_ID = 87
-OSD_BUTTON_GROUP_ID = 200
+SEEK_HOLD_INDEFINITE = float("inf")
 
 PROP_TILE = "Trickplay.TileImage"
 PROP_COL = "Trickplay.TileCol"
@@ -134,10 +145,13 @@ class TrickplayService:
         self.player = KodiPlayer(service=self)
         self.monitor = xbmc.Monitor()
         self.preview = PreviewDialogController(ADDON.getAddonInfo("path"))
+        self.prefetch = ThumbPrefetch()
         self.resolution: TrickplayResolution | None = None
         self.playing_file = ""
         self.last_preview_second = -1
+        self._last_preview_thumb_index = -1
         self.was_seeking = False
+        self.preview_active = False
         self.preview_visible = False
         self.committed_seek_second = -1
         self.committed_seek_at = 0.0
@@ -146,6 +160,62 @@ class TrickplayService:
         self.playback_ready = False
         self.cached_duration = 0
         self.poll_ms = max(_setting_int("poll_ms", 100), 50)
+        self._active_skin_id = ""
+        self._active_skin_override = ""
+        self.seek_hold_until = 0.0
+        self._had_compact_seekbar = False
+        self._last_idle_prefetch_at = 0.0
+        self._log_skin_profile(force=True)
+
+    def _preview_hold_seconds(self) -> int:
+        return max(_setting_int("preview_hold_seconds", 4), 0)
+
+    def _preview_follows_playhead(self) -> bool:
+        """Hold time 0: keep preview visible and advance with playback."""
+        return _setting_int("preview_hold_seconds", 4) <= 0
+
+    def _touch_seek_hold(self) -> None:
+        seconds = self._preview_hold_seconds()
+        if seconds <= 0:
+            self.seek_hold_until = SEEK_HOLD_INDEFINITE
+        else:
+            self.seek_hold_until = time.monotonic() + float(seconds)
+
+    def _seek_hold_active(self) -> bool:
+        if self.seek_hold_until <= 0.0:
+            return False
+        if self.seek_hold_until >= SEEK_HOLD_INDEFINITE:
+            return True
+        return time.monotonic() < self.seek_hold_until
+
+    def _explicit_seek_active(self) -> bool:
+        if xbmc.getCondVisibility("!String.IsEmpty(Player.SeekNumeric)"):
+            return True
+        if not xbmc.getCondVisibility("Player.Seeking"):
+            return False
+        if self.committed_seek_at <= 0.0:
+            return True
+        return time.monotonic() - self.committed_seek_at < 2.0
+
+    def _log_skin_profile(self, force: bool = False) -> None:
+        skin_id = current_skin_id()
+        override = setting_skin_profile_override()
+        if (
+            not force
+            and skin_id == self._active_skin_id
+            and override == self._active_skin_override
+        ):
+            return
+        self._active_skin_id = skin_id
+        self._active_skin_override = override
+        profile = active_profile(force_refresh=True)
+        _log(f"Skin profile: {profile_summary(profile, skin_id, override)}")
+        if override == "auto" and skin_id and not is_known_skin(skin_id):
+            _log(
+                f"Unknown skin '{skin_id}'; using {DEFAULT_PROFILE.label} geometry. "
+                "Merge the matching skin snippet or set Skin profile in addon settings.",
+                xbmc.LOGWARNING,
+            )
 
     def _effective_duration_seconds(self) -> int:
         duration = _player_duration_seconds(self.player)
@@ -158,6 +228,16 @@ class TrickplayService:
             interval_ms = _setting_int("interval_ms", 10000)
             return int(self.resolution.thumbnail_count * interval_ms / 1000)
         return 0
+
+    def _clear_preview_session(self, reason: str = "") -> None:
+        if reason:
+            _debug(f"Preview session cleared: {reason}")
+        self.last_preview_second = -1
+        self._last_preview_thumb_index = -1
+        self.was_seeking = False
+        self.preview_active = False
+        self.seek_hold_until = 0.0
+        self.clear_preview_properties()
 
     def clear_preview_properties(self) -> None:
         self.preview.hide_preview()
@@ -180,7 +260,9 @@ class TrickplayService:
         self.resolution = None
         self.playing_file = ""
         self.last_preview_second = -1
+        self._last_preview_thumb_index = -1
         self.was_seeking = False
+        self.preview_active = False
         self.preview_visible = False
         self.committed_seek_second = -1
         self.committed_seek_at = 0.0
@@ -188,6 +270,10 @@ class TrickplayService:
         self.playback_started_at = 0.0
         self.playback_ready = False
         self.cached_duration = 0
+        self.seek_hold_until = 0.0
+        self._had_compact_seekbar = False
+        self._last_idle_prefetch_at = 0.0
+        self.prefetch.cancel()
         self.clear_preview_properties()
 
     def _refresh_resolution_if_needed(self) -> None:
@@ -214,6 +300,7 @@ class TrickplayService:
             )
 
     def on_video_started(self, playing_file: str) -> None:
+        self._log_skin_profile(force=True)
         self.preview.detach_overlay()
         self.reset_playback_state()
         self.playing_file = playing_file
@@ -259,12 +346,27 @@ class TrickplayService:
 
         HOME_WINDOW.setProperty(PROP_AVAILABLE, "true")
         sync_trickplay_property(PROP_AVAILABLE, "true")
+        sync_display_settings()
         _log(
             f"Loaded trickplay for {media_path} "
             f"({self.resolution.thumbnail_count} thumbs, "
             f"{self.resolution.thumb_width}x{self.resolution.thumb_height}, "
             f"{len(self.resolution.tile_paths)} tile file(s))"
         )
+
+        play_seconds = _player_time_seconds(self.player)
+        warm_lookup = lookup_thumbnail(
+            self.resolution, play_seconds, interval_ms
+        )
+        prefetch_settings = read_prefetch_settings()
+        if warm_lookup is not None:
+            self.prefetch.schedule_playhead_warm(
+                self.resolution,
+                warm_lookup,
+                interval_ms,
+                settings=prefetch_settings,
+                debug=debug,
+            )
 
     def _publish_sprite_properties(self, lookup) -> None:
         sync_trickplay_property(PROP_TILE, lookup.tile_path)
@@ -298,8 +400,53 @@ class TrickplayService:
             f"Preview {target_second}s -> tile {lookup.tile_path} "
             f"cell ({lookup.col},{lookup.row}) index {lookup.thumb_index}"
         )
+
+        scrub_direction = 0
+        if self._last_preview_thumb_index >= 0:
+            if lookup.thumb_index > self._last_preview_thumb_index:
+                scrub_direction = 1
+            elif lookup.thumb_index < self._last_preview_thumb_index:
+                scrub_direction = -1
+        self._last_preview_thumb_index = lookup.thumb_index
+
         duration_seconds = self._effective_duration_seconds()
         self.preview.show_preview(lookup, duration_seconds, self.player)
+        prefetch_settings = read_prefetch_settings()
+        self.prefetch.schedule_neighbors(
+            self.resolution,
+            lookup,
+            interval_ms,
+            scrub_direction=scrub_direction,
+            settings=prefetch_settings,
+            debug=ADDON.getSettingBool("debug_logging"),
+        )
+
+    def _maybe_idle_prefetch(self, play_seconds: int) -> None:
+        prefetch_settings = read_prefetch_settings()
+        if (
+            not prefetch_settings.enabled
+            or not prefetch_settings.idle_tile
+            or self.resolution is None
+        ):
+            return
+
+        now = time.monotonic()
+        if now - self._last_idle_prefetch_at < 3.0:
+            return
+        self._last_idle_prefetch_at = now
+
+        interval_ms = _setting_int("interval_ms", 10000)
+        lookup = lookup_thumbnail(self.resolution, play_seconds, interval_ms)
+        if lookup is None:
+            return
+
+        self.prefetch.schedule_idle_tile(
+            self.resolution,
+            lookup,
+            interval_ms,
+            settings=prefetch_settings,
+            debug=ADDON.getSettingBool("debug_logging"),
+        )
 
     def on_playback_seek(self, time_ms: int) -> None:
         """Authoritative seek target from Kodi; survives SeekTime label flicker."""
@@ -309,12 +456,24 @@ class TrickplayService:
         self.committed_seek_second = target_second
         self.committed_seek_at = time.monotonic()
         _debug(f"Seek event -> {target_second}s")
-        if self._seek_ui_visible() or xbmc.getCondVisibility(
-            "Player.Seeking | !String.IsEmpty(Player.SeekNumeric)"
-        ):
-            self.update_preview(target_second, seeking=True)
-            self.was_seeking = True
-            self._set_preview_visible(True)
+
+        play_seconds = _player_time_seconds(self.player)
+        user_seek = (
+            xbmc.getCondVisibility(
+                "Player.Seeking | !String.IsEmpty(Player.SeekNumeric)"
+            )
+            or self._seek_ui_visible()
+            or abs(target_second - play_seconds) > 2
+        )
+        if not user_seek:
+            return
+
+        self._touch_seek_hold()
+        sync_display_settings()
+        self.update_preview(target_second, seeking=True)
+        self.preview_active = True
+        self.was_seeking = True
+        self._set_preview_visible(True)
 
     def _seek_target_seconds(self, play_seconds: int) -> int:
         seek_seconds = _parse_time_label(xbmc.getInfoLabel("Player.SeekTime"))
@@ -345,13 +504,17 @@ class TrickplayService:
 
         return play_seconds
 
-    def _seek_ui_visible(self) -> bool:
+    def _dialog_seekbar_visible(self) -> bool:
         return xbmc.getCondVisibility(
             "Window.IsVisible(seekbar) | Window.IsActive(seekbar) | "
-            "Window.IsVisible(videoosd) | Window.IsActive(videoosd) | "
-            "Window.IsVisible(VideoOSD) | Window.IsVisible(VideoOSD.xml) | "
-            "Window.IsVisible(CustomVideoOSD.xml)"
+            "Window.IsVisible(DialogSeekBar.xml)"
         )
+
+    def _video_osd_visible(self) -> bool:
+        return active_profile().full_osd_visible()
+
+    def _seek_ui_visible(self) -> bool:
+        return self._dialog_seekbar_visible() or self._video_osd_visible()
 
     def _window_focus_id(self, window_id: int) -> int:
         try:
@@ -359,37 +522,42 @@ class TrickplayService:
         except RuntimeError:
             return 0
 
-    def _osd_play_controls_focused(self) -> bool:
-        return xbmc.getCondVisibility(
-            f"ControlGroup({OSD_BUTTON_GROUP_ID}).HasFocus"
-        )
-
     def _seekbar_focused(self) -> bool:
-        if xbmc.getCondVisibility(f"Control.HasFocus({SEEKBAR_FOCUS_ID})"):
+        focus_id = active_profile().seekbar_focus_id
+        if xbmc.getCondVisibility(f"Control.HasFocus({focus_id})"):
             return True
-        if xbmc.getCondVisibility(
-            "Window.IsVisible(seekbar) | Window.IsActive(seekbar) | "
-            "Window.IsVisible(DialogSeekBar.xml)"
-        ):
-            if self._window_focus_id(SEEKBAR_WINDOW_ID) == SEEKBAR_FOCUS_ID:
-                return True
+        if self._dialog_seekbar_visible():
+            return self._window_focus_id(SEEKBAR_WINDOW_ID) == focus_id
         return False
+
+    def _osd_play_controls_focused(self) -> bool:
+        return active_profile().osd_play_controls_focused()
 
     def _set_preview_visible(self, visible: bool) -> None:
         if visible == self.preview_visible:
             return
         self.preview_visible = visible
+        sync_display_settings()
         sync_trickplay_property(PROP_PREVIEW_VISIBLE, "true" if visible else "false")
         _debug(f"Preview visible -> {visible}")
 
     def _preview_should_show(self, scrubbing: bool) -> bool:
-        if self.last_preview_second < 0 or not self._seek_ui_visible():
+        if not self.preview_active or self.last_preview_second < 0:
             return False
-        if scrubbing:
-            return True
+        if not self._seek_ui_visible():
+            return False
         if self._osd_play_controls_focused():
             return False
-        return self._seekbar_focused()
+        if scrubbing or self._seek_hold_active():
+            return True
+        if self._preview_follows_playhead() and not xbmc.getCondVisibility(
+            "Player.Paused"
+        ):
+            return True
+        if self._seekbar_focused():
+            return True
+        # Full video OSD without seekbar focus: hide stale preview.
+        return not self._video_osd_visible()
 
     def _is_scrubbing(self) -> tuple[bool, int]:
         if not self.playback_ready:
@@ -397,47 +565,38 @@ class TrickplayService:
 
         play_seconds = _player_time_seconds(self.player)
 
-        if xbmc.getCondVisibility("Player.Seeking"):
+        if xbmc.getCondVisibility("!String.IsEmpty(Player.SeekNumeric)"):
+            return True, self._seek_target_seconds(play_seconds)
+
+        if xbmc.getCondVisibility("Player.Seeking") and self._explicit_seek_active():
             return True, self._seek_target_seconds(play_seconds)
 
         if not xbmc.getCondVisibility("Player.Paused"):
-            if xbmc.getCondVisibility("!String.IsEmpty(Player.SeekNumeric)"):
-                return True, self._seek_target_seconds(play_seconds)
-            seek_seconds = _parse_time_label(xbmc.getInfoLabel("Player.SeekTime"))
-            if seek_seconds > 0 and abs(seek_seconds - play_seconds) >= 1:
-                return True, seek_seconds
             return False, play_seconds
 
         if not self._seek_ui_visible():
-            if play_seconds != self.last_play_time:
-                return True, play_seconds
             return False, play_seconds
 
         seek_label = xbmc.getInfoLabel("Player.SeekTime")
         seek_seconds = _parse_time_label(seek_label) if seek_label else play_seconds
 
-        # Large skip while paused (SeekTime label ahead of playhead).
+        # Paused skip while seek UI is open (SeekTime label ahead of playhead).
         if seek_label and abs(seek_seconds - play_seconds) >= 1:
             return True, seek_seconds
 
-        # Frame-by-frame or small steps: SeekNumeric / Seeking, or playhead moved.
-        if xbmc.getCondVisibility(
-            "!String.IsEmpty(Player.SeekNumeric) | Player.Seeking"
-        ):
-            return True, seek_seconds if seek_label else play_seconds
-
+        # Paused frame-step / chapter step.
         if play_seconds != self.last_play_time:
             return True, play_seconds
 
         return False, play_seconds
 
     def poll_seek_state(self) -> None:
+        self._log_skin_profile()
         self.preview.poll()
 
         if not self.player.isPlayingVideo():
-            if self.was_seeking:
-                self.clear_preview_properties()
-                self.was_seeking = False
+            if self.preview_active or self.preview_visible or self.was_seeking:
+                self._clear_preview_session()
             self.last_play_time = -1
             self.playback_ready = False
             return
@@ -453,16 +612,33 @@ class TrickplayService:
         if not xbmc.getCondVisibility("Player.Paused"):
             self.last_play_time = play_seconds
 
-        if not self._seek_ui_visible():
-            if not xbmc.getCondVisibility("Player.Paused"):
-                if self.was_seeking:
-                    self.clear_preview_properties()
-                    self.was_seeking = False
-                    self.last_preview_second = -1
-                return
+        dialog_seekbar = self._dialog_seekbar_visible()
+        video_osd = self._video_osd_visible()
+        seek_ui = dialog_seekbar or video_osd
+        compact_seekbar = dialog_seekbar and not video_osd
 
         scrubbing, target_second = self._is_scrubbing()
+
+        if (
+            video_osd
+            and self._had_compact_seekbar
+            and not compact_seekbar
+            and not scrubbing
+            and self.preview_active
+        ):
+            self._clear_preview_session("compact seekbar -> full OSD")
+
+        self._had_compact_seekbar = compact_seekbar
+
+        if not seek_ui:
+            if self.preview_active or self.last_preview_second >= 0 or self.preview_visible:
+                self._clear_preview_session()
+            return
+
         if scrubbing:
+            self.preview_active = True
+            self._touch_seek_hold()
+            sync_display_settings()
             if self.last_preview_second >= 0:
                 resync_preview_to_seekbar()
             self.update_preview(target_second, seeking=True)
@@ -471,17 +647,27 @@ class TrickplayService:
             self._set_preview_visible(True)
             return
 
-        seek_ui = self._seek_ui_visible()
-        if self.last_preview_second >= 0 and seek_ui:
-            resync_preview_to_seekbar()
-            self._set_preview_visible(self._preview_should_show(False))
+        if not self.preview_active:
+            if self.last_preview_second >= 0 or self.preview_visible:
+                self._clear_preview_session()
             return
 
-        if self.was_seeking or self.last_preview_second >= 0:
-            self.clear_preview_properties()
-            self.was_seeking = False
-            self.last_preview_second = -1
-            self.preview_visible = False
+        if self._preview_should_show(False):
+            resync_preview_to_seekbar()
+            if self._preview_follows_playhead() and not xbmc.getCondVisibility(
+                "Player.Paused"
+            ):
+                self.update_preview(play_seconds, seeking=False)
+            else:
+                self._maybe_idle_prefetch(
+                    self.last_preview_second
+                    if self.last_preview_second >= 0
+                    else play_seconds
+                )
+            self._set_preview_visible(True)
+            return
+
+        self._clear_preview_session()
 
     def run(self) -> None:
         _log(

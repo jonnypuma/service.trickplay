@@ -130,6 +130,258 @@
 
                 </setting>
 
+                <setting id="skin_profile" type="string" label="32014" help="32015">
+
+                    <level>0</level>
+
+                    <default>auto</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32016">auto</option>
+
+                            <option label="32017">estuary_modv2</option>
+
+                            <option label="32018">arctic_fuse_3</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32014</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="preview_hold_seconds" type="integer" label="32019" help="32020">
+
+                    <level>0</level>
+
+                    <default>4</default>
+
+                    <constraints>
+
+                        <minimum>0</minimum>
+
+                        <maximum>10</maximum>
+
+                        <step>1</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32019</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="show_timestamp" type="boolean" label="32021" help="32022">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="preview_opacity" type="integer" label="32038" help="32039">
+
+                    <level>0</level>
+
+                    <default>100</default>
+
+                    <constraints>
+
+                        <minimum>0</minimum>
+
+                        <maximum>100</maximum>
+
+                        <step>5</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32038</heading>
+
+                    </control>
+
+                </setting>
+
+            </group>
+
+            <group id="g2" label="32037">
+
+                <setting id="prefetch_enabled" type="boolean" label="32023" help="32024">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="prefetch_on_start" type="boolean" label="32025" help="32026">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_whole_tile" type="boolean" label="32027" help="32028">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_idle_tile" type="boolean" label="32029" help="32030">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_radius" type="integer" label="32031" help="32032">
+
+                    <level>0</level>
+
+                    <default>5</default>
+
+                    <constraints>
+
+                        <minimum>1</minimum>
+
+                        <maximum>15</maximum>
+
+                        <step>1</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32031</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_max_queue" type="integer" label="32033" help="32034">
+
+                    <level>1</level>
+
+                    <default>48</default>
+
+                    <constraints>
+
+                        <minimum>8</minimum>
+
+                        <maximum>200</maximum>
+
+                        <step>8</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32033</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="cache_max_mb" type="integer" label="32035" help="32036">
+
+                    <level>1</level>
+
+                    <default>500</default>
+
+                    <constraints>
+
+                        <minimum>0</minimum>
+
+                        <maximum>5000</maximum>
+
+                        <step>50</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32035</heading>
+
+                    </control>
+
+                </setting>
+
             </group>
 
         </category>

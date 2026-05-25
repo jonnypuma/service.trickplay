@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window>
+    <zorder>0</zorder>
+    <visible>Window.IsActive(VideoFullScreen.xml) | Window.IsActive(MusicVisualisation.xml)</visible>
+
+    <visible>[Player.Paused + [!$EXP[Exp_OSD_DelayInfo_Timing] | !Skin.String(OSD.AutoOnPause,Hide)]] | Player.Caching | Player.Seeking | Player.HasPerformedSeek(2) | Player.Forwarding | Player.Rewinding | !String.IsEmpty(Player.SeekNumeric) | !String.IsEmpty(PVR.ChannelNumberInput) | Window.IsActive(script-upnext-stillwatching.xml) | Window.IsActive(script-upnext-upnext.xml) | Window.IsActive(videoosd) | Window.IsActive(musicosd) | Window.IsActive(1140) | Window.IsActive(1141) | Window.IsActive(1142) | Window.IsActive(1143) | Window.IsActive(1144) | Window.IsActive(1145) | Window.IsActive(1146) | Window.IsActive(1147) | Window.IsActive(1148) | Window.IsActive(1149) | Window.IsActive(1152) | Window.IsVisible(videobookmarks) | Window.IsVisible(pvrosdguide) | Window.IsVisible(pvrosdchannels) | [Window.IsVisible(script-cu-lrclyrics-main.xml) + Player.ShowInfo]</visible>
+
+    <visible>!Window.IsActive(DialogSlider.xml)</visible>
+    <visible>!Player.HasGame</visible>
+    <visible>!Window.IsVisible(DialogPlayerProcessInfo.xml)</visible>
+
+    <animation effect="fade" start="0" end="100" time="300">WindowOpen</animation>
+    <animation effect="fade" start="100" end="0" time="300">WindowClose</animation>
+    <controls>
+
+        <control type="group">
+            <visible>Window.IsActive(VideoFullScreen.xml) | Window.IsActive(MusicVisualisation.xml)</visible>
+
+            <include>OSD_BackgroundFade_Seekbar</include>
+
+            <control type="group">
+                <visible>!Window.IsVisible(1152)</visible>
+                <include>Animation_OSD_Fullscreen_Change</include>
+
+                <control type="group">
+                    <include>Animation_OSD_HideForInfoDialog</include>
+                    <control type="group">
+                        <include>Animation_OSD_Seekbar_Slide</include>
+                        <include>OSD_Progress_Labels</include>
+                        <include>OSD_Progress_Bar</include>
+
+                        <control type="group">
+                            <include>OSD_HideControls</include>
+                            <include content="Furniture_Header">
+                                <param name="label">$VAR[Label_OSD_Header]</param>
+                                <param name="include_right">false</param>
+                                <param name="textcolor">panel_fg_90</param>
+                                <param name="top">780</param>
+                            </include>
+                        </control>
+                    </control>
+
+                    <include content="OSD_CastInfo_HintText">
+                        <param name="label">$VAR[Label_OSD_HintText]</param>
+                        <param name="visible">[Window.IsActive(videoosd) | Window.IsVisible(1140) | Window.IsVisible(1141) | Window.IsVisible(videobookmarks)] + [!Window.IsVisible(1141) | Skin.String(VideoOSD.PersonCredits.CastCrew,cast)]</param>
+                    </include>
+
+                    <include content="OSD_CastInfo_HintText">
+                        <param name="label">$LOCALIZE[31346]</param>
+                        <param name="visible">Window.IsActive(musicosd) + !Window.IsVisible(1142) + !Window.IsVisible(script-cu-lrclyrics-main.xml)</param>
+                    </include>
+                </control>
+
+                <include content="Furniture_Header">
+                    <param name="include_left">false</param>
+                    <param name="textcolor">panel_fg_90</param>
+                </include>
+
+
+            </control>
+        </control>
+
+        <!-- Trickplay preview overlay (service.trickplay). Copy group 94090 into skin DialogSeekBar.xml. -->
+        <!-- Geometry: view_osd_l=240, bar width 1440, anchor (270,670). -->
+        <!-- Matched automatically when skin.arctic.fuse.3 is active (see skin_profiles.py). -->
+        <control type="group" id="94090">
+            <control type="group" id="94100">
+                <visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true)</visible>
+                <left>270</left>
+                <top>670</top>
+                <width>320</width>
+                <height condition="String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">224</height>
+                <height condition="!String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">180</height>
+                <zorder>10</zorder>
+                <colordiffuse>$INFO[Window.Property(Trickplay.PreviewColorDiffuse)]</colordiffuse>
+                    <animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),0)">Conditional</animation>
+                    <animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),1)">Conditional</animation>
+                    <animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),2)">Conditional</animation>
+                    <animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),3)">Conditional</animation>
+                    <animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),4)">Conditional</animation>
+                    <animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),5)">Conditional</animation>
+                    <animation effect="slide" end="0,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),6)">Conditional</animation>
+                    <animation effect="slide" end="11,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),7)">Conditional</animation>
+                    <animation effect="slide" end="40,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),8)">Conditional</animation>
+                    <animation effect="slide" end="69,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),9)">Conditional</animation>
+                    <animation effect="slide" end="98,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),10)">Conditional</animation>
+                    <animation effect="slide" end="126,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),11)">Conditional</animation>
+                    <animation effect="slide" end="155,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),12)">Conditional</animation>
+                    <animation effect="slide" end="184,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),13)">Conditional</animation>
+                    <animation effect="slide" end="213,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),14)">Conditional</animation>
+                    <animation effect="slide" end="242,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),15)">Conditional</animation>
+                    <animation effect="slide" end="270,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),16)">Conditional</animation>
+                    <animation effect="slide" end="299,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),17)">Conditional</animation>
+                    <animation effect="slide" end="328,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),18)">Conditional</animation>
+                    <animation effect="slide" end="357,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),19)">Conditional</animation>
+                    <animation effect="slide" end="386,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),20)">Conditional</animation>
+                    <animation effect="slide" end="414,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),21)">Conditional</animation>
+                    <animation effect="slide" end="443,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),22)">Conditional</animation>
+                    <animation effect="slide" end="472,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),23)">Conditional</animation>
+                    <animation effect="slide" end="501,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),24)">Conditional</animation>
+                    <animation effect="slide" end="530,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),25)">Conditional</animation>
+                    <animation effect="slide" end="558,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),26)">Conditional</animation>
+                    <animation effect="slide" end="587,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),27)">Conditional</animation>
+                    <animation effect="slide" end="616,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),28)">Conditional</animation>
+                    <animation effect="slide" end="645,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),29)">Conditional</animation>
+                    <animation effect="slide" end="674,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),30)">Conditional</animation>
+                    <animation effect="slide" end="702,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),31)">Conditional</animation>
+                    <animation effect="slide" end="731,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),32)">Conditional</animation>
+                    <animation effect="slide" end="760,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),33)">Conditional</animation>
+                    <animation effect="slide" end="789,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),34)">Conditional</animation>
+                    <animation effect="slide" end="817,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),35)">Conditional</animation>
+                    <animation effect="slide" end="846,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),36)">Conditional</animation>
+                    <animation effect="slide" end="875,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),37)">Conditional</animation>
+                    <animation effect="slide" end="904,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),38)">Conditional</animation>
+                    <animation effect="slide" end="933,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),39)">Conditional</animation>
+                    <animation effect="slide" end="962,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),40)">Conditional</animation>
+                    <animation effect="slide" end="990,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),41)">Conditional</animation>
+                    <animation effect="slide" end="1019,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),42)">Conditional</animation>
+                    <animation effect="slide" end="1048,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),43)">Conditional</animation>
+                    <animation effect="slide" end="1077,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),44)">Conditional</animation>
+                    <animation effect="slide" end="1090,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),45)">Conditional</animation>
+                    <animation effect="slide" end="1090,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),46)">Conditional</animation>
+                    <animation effect="slide" end="1090,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),47)">Conditional</animation>
+                    <animation effect="slide" end="1090,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),48)">Conditional</animation>
+                    <animation effect="slide" end="1090,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),49)">Conditional</animation>
+                <animation effect="slide" end="1090,0" time="0" condition="String.IsEqual(Window.Property(Trickplay.PreviewSlot),50)">Conditional</animation>
+                <animation effect="fade" start="0" end="100" time="100">Visible</animation>
+                <animation effect="fade" start="100" end="0" time="100">Hidden</animation>
+                <control type="image" id="94106">
+                    <left>0</left>
+                    <top>0</top>
+                    <width>320</width>
+                    <height>180</height>
+                    <aspectratio scalediffuse="false">keep</aspectratio>
+                    <texture>common/white.png</texture>
+                    <bordertexture border="2" infill="false">common/white.png</bordertexture>
+                    <bordersize>2</bordersize>
+                    <colordiffuse>panel_fg_70</colordiffuse>
+                </control>
+                <control type="image" id="94101">
+                    <left>0</left>
+                    <top>0</top>
+                    <width>320</width>
+                    <height>180</height>
+                    <aspectratio scalediffuse="false">keep</aspectratio>
+                    <texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
+                </control>
+                <control type="label" id="94102">
+                    <visible>String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)</visible>
+                    <left>0</left>
+                    <top>180</top>
+                    <width>320</width>
+                    <height>40</height>
+                    <font>font_main</font>
+                    <align>center</align>
+                    <aligny>center</aligny>
+                    <label>$INFO[Window.Property(Trickplay.PreviewTime)]</label>
+                    <textcolor>panel_fg_100</textcolor>
+                </control>
+            </control>
+        </control>
+    </controls>
+</window>

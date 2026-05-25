@@ -7,7 +7,6 @@ import os
 import re
 import shutil
 import subprocess
-from io import BytesIO
 
 import xbmc
 import xbmcaddon
@@ -104,6 +103,59 @@ def _has_file_content(path: str) -> bool:
     return xbmcvfs.exists(path) and _file_size(path) > 0
 
 
+def _touch_cached_file(path: str) -> None:
+    local = _local_path(path)
+    if not local or not os.path.exists(local):
+        return
+    try:
+        os.utime(local, None)
+    except OSError:
+        pass
+
+
+def prune_thumb_cache(max_mb: int) -> int:
+    """Drop oldest cached thumbs until total size is under max_mb. 0 = unlimited."""
+    if max_mb <= 0:
+        return 0
+
+    local_dir = _local_path(CACHE_DIR)
+    if not local_dir or not os.path.isdir(local_dir):
+        return 0
+
+    entries: list[tuple[float, int, str]] = []
+    try:
+        names = os.listdir(local_dir)
+    except OSError:
+        return 0
+
+    for name in names:
+        if not name.endswith(".jpg"):
+            continue
+        path = os.path.join(local_dir, name)
+        try:
+            stat = os.stat(path)
+            entries.append((stat.st_mtime, stat.st_size, path))
+        except OSError:
+            continue
+
+    if not entries:
+        return 0
+
+    entries.sort(key=lambda item: item[0])
+    total = sum(size for _, size, _ in entries)
+    limit = max_mb * 1024 * 1024
+    removed = 0
+    while entries and total > limit:
+        _, size, path = entries.pop(0)
+        try:
+            os.remove(path)
+            total -= size
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def cell_crop_rect(
     col: int,
     row: int,
@@ -140,6 +192,7 @@ def get_cached_thumb_path(
         return None
     cached = cache_path_for_thumb(tile_path, col, row, thumb_w, thumb_h)
     if _has_file_content(cached):
+        _touch_cached_file(cached)
         return cached
     return None
 
@@ -339,21 +392,6 @@ def probe_image_dimensions(tile_path: str, debug: bool = False) -> tuple[int, in
             _log(f"Sprite dimensions {size[0]}x{size[1]} from JPEG header ({local})")
         return size
 
-    try:
-        from PIL import Image
-    except ImportError:
-        Image = None  # type: ignore[misc, assignment]
-
-    if Image is not None:
-        try:
-            with Image.open(local) as image:
-                if debug:
-                    _log(f"Sprite dimensions {image.width}x{image.height} via Pillow ({local})")
-                return image.size
-        except OSError as exc:
-            if debug:
-                _log(f"Pillow dimension probe failed for {local}: {exc}")
-
     _, _, env = _resolve_ffmpeg_tools()
     size = _probe_dimensions_with_ffprobe(local, env)
     if size != (0, 0):
@@ -369,34 +407,6 @@ def probe_image_dimensions(tile_path: str, debug: bool = False) -> tuple[int, in
 
     _log(f"Could not probe sprite dimensions for {tile_path}", xbmc.LOGWARNING)
     return 0, 0
-
-
-def _crop_with_pillow(
-    tile_bytes: bytes,
-    col: int,
-    row: int,
-    thumb_w: int,
-    thumb_h: int,
-) -> bytes | None:
-    try:
-        from PIL import Image
-    except ImportError:
-        return None
-
-    left, top, crop_w, crop_h = cell_crop_rect(col, row, thumb_w, thumb_h)
-    try:
-        with Image.open(BytesIO(tile_bytes)) as image:
-            right = min(left + crop_w, image.width)
-            bottom = min(top + crop_h, image.height)
-            if left >= image.width or top >= image.height:
-                return None
-            cropped = image.crop((left, top, right, bottom))
-            out = BytesIO()
-            cropped.save(out, format="JPEG", quality=88)
-            return out.getvalue()
-    except OSError as exc:
-        _log(f"Pillow crop failed: {exc}", xbmc.LOGWARNING)
-        return None
 
 
 def _crop_with_ffmpeg(
@@ -485,18 +495,13 @@ def get_cropped_thumb_path(
             f"cell ({col},{row})"
         )
 
-    local = temp_tile_copy(tile_path)
-    if local:
-        tile_bytes = _read_file_bytes(local)
-    else:
-        tile_bytes = _read_file_bytes(tile_path)
-
-    if tile_bytes:
-        cropped_bytes = _crop_with_pillow(tile_bytes, col, row, thumb_w, thumb_h)
-        if cropped_bytes and _write_file_bytes(cached, cropped_bytes):
-            return cached
-
     if _crop_with_ffmpeg(tile_path, col, row, thumb_w, thumb_h, cached, debug=debug):
+        try:
+            from prefetch_settings import read_prefetch_settings
+
+            prune_thumb_cache(read_prefetch_settings().cache_max_mb)
+        except ImportError:  # pragma: no cover
+            pass
         return cached
 
     ffmpeg, _, _ = _resolve_ffmpeg_tools()
@@ -507,7 +512,7 @@ def get_cropped_thumb_path(
         )
     else:
         _log(
-            "No ffmpeg binary found; install tools.ffmpeg-tools or script.module.pillow",
+            "No ffmpeg binary found; install tools.ffmpeg-tools",
             xbmc.LOGWARNING,
         )
     return None
