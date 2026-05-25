@@ -2,7 +2,7 @@
 
 <addon id="service.trickplay"
        name="Trickplay Preview"
-       version="3.0.9"
+       version="1.0.0"
        provider-name="homelab">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
