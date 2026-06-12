@@ -63,7 +63,7 @@
 			<control type="group" id="94100">
 				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage)) + !Skin.HasSetting(SmallOSDVideo)</visible>
 				<left>490</left>
-				<top>624</top>
+				<top>599</top>
 				<width>320</width>
 				<height condition="String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">224</height>
 				<height condition="!String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">180</height>
@@ -160,7 +160,7 @@
 			<control type="group" id="94103">
 				<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage)) + Skin.HasSetting(SmallOSDVideo)</visible>
 				<left>60</left>
-				<top>624</top>
+				<top>599</top>
 				<width>320</width>
 				<height condition="String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">224</height>
 				<height condition="!String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">180</height>

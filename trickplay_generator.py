@@ -1,0 +1,1062 @@
+"""Generate Jellyfin-compatible trickplay sprite sidecars with ffmpeg."""
+
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import subprocess
+import time
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+
+import xbmc
+import xbmcvfs
+
+from generator_extract_modes import (
+    EXTRACT_MODE_ACCURATE,
+    EXTRACT_MODE_EXPERIMENTAL,
+    EXTRACT_MODE_FAST,
+    extract_mode_log_label,
+    normalize_extract_mode,
+)
+from generator_settings import GeneratorSettings
+from experimental_extract import extract_tile_experimental
+from ffmpeg_media import (
+    extract_frames_via_pipe,
+    probe_duration_via_pipe,
+    resolve_ffmpeg_media_path,
+)
+from grid_settings import grid_tuple
+from thumb_cropper import resolve_ffmpeg_tools
+from trickplay_resolver import (
+    format_resolution_dir_name,
+    resolve_media_path,
+    trickplay_root_for_media,
+)
+
+GENERATE_TEMP_ROOT = xbmcvfs.translatePath("special://temp/service.trickplay/generate/")
+
+_VIDEO_EXTENSIONS = frozenset(
+    {
+        ".mkv",
+        ".mp4",
+        ".avi",
+        ".m4v",
+        ".wmv",
+        ".mpg",
+        ".mpeg",
+        ".ts",
+        ".m2ts",
+        ".webm",
+        ".mov",
+        ".flv",
+    }
+)
+
+_ACCURATE_FRAME_TIMEOUT_BASE_SEC = 600.0
+_ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC = 0.2
+_FAST_FRAME_TIMEOUT_SEC = 120.0
+_FAST_BATCH_FPS_MAX_INTERVAL_SEC = 5.0
+
+
+def _accurate_frame_timeout_sec(thumb_index: int) -> float:
+    return _ACCURATE_FRAME_TIMEOUT_BASE_SEC + max(thumb_index, 0) * _ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC
+
+
+def _log(message: str, level=xbmc.LOGINFO) -> None:
+    xbmc.log(f"[service.trickplay.generator] {message}", level)
+
+
+def _debug(settings: GeneratorSettings, message: str) -> None:
+    if settings.debug:
+        _log(message, xbmc.LOGINFO)
+
+
+def _local_path(path: str) -> str:
+    if path.startswith(("special://", "vfs://", "zip://")):
+        return xbmcvfs.translatePath(path)
+    return path
+
+
+def _ensure_dir(path: str) -> None:
+    if not xbmcvfs.exists(path):
+        xbmcvfs.mkdirs(path)
+
+
+def _ensure_local_dir(path: str) -> None:
+    """Ensure a directory exists for local subprocess I/O (ffmpeg image sequences)."""
+    local = _local_path(path)
+    os.makedirs(local, exist_ok=True)
+
+
+def _jpg_sort_key(path: str) -> int:
+    base = os.path.splitext(os.path.basename(path))[0]
+    try:
+        return int(base)
+    except ValueError:
+        return 0
+
+
+def _list_jpg_files(directory: str) -> list[str]:
+    """List JPEGs in directory; prefer os.listdir for ffmpeg temp output."""
+    if not directory:
+        return []
+    local = _local_path(directory)
+    paths: list[str] = []
+    if local and os.path.isdir(local):
+        try:
+            for name in os.listdir(local):
+                if str(name).lower().endswith(".jpg"):
+                    paths.append(os.path.join(local, name))
+        except OSError:
+            pass
+    if not paths:
+        if not xbmcvfs.exists(directory):
+            return []
+        try:
+            entries = xbmcvfs.listdir(directory)
+        except OSError:
+            return []
+        files = entries[1] if isinstance(entries, (list, tuple)) and len(entries) == 2 else entries
+        for name in files:
+            if str(name).lower().endswith(".jpg"):
+                paths.append(os.path.join(directory, name))
+    return sorted(paths, key=_jpg_sort_key)
+
+
+def _list_jpg_tiles(directory: str) -> list[str]:
+    return _list_jpg_files(directory)
+
+
+def _clear_sidecar_tiles(directory: str) -> None:
+    for path in _list_jpg_tiles(directory):
+        try:
+            if xbmcvfs.exists(path):
+                xbmcvfs.delete(path)
+        except OSError:
+            pass
+
+
+def _cleanup_incomplete_sidecar(directory: str) -> None:
+    """Remove partial tile JPEGs and empty sidecar folders after cancel or abort."""
+    _clear_sidecar_tiles(directory)
+    _remove_empty_sidecar_dir(directory)
+
+
+def _remove_empty_sidecar_dir(directory: str) -> None:
+    """Remove a sidecar resolution folder when it contains no tile JPEGs."""
+    if not directory or not xbmcvfs.exists(directory):
+        return
+    if _has_jpg_tiles(directory):
+        return
+    try:
+        entries = xbmcvfs.listdir(directory)
+    except OSError:
+        return
+    files = entries[1] if isinstance(entries, (list, tuple)) and len(entries) == 2 else entries
+    dirs = entries[0] if isinstance(entries, (list, tuple)) and len(entries) == 2 else []
+    if files or dirs:
+        return
+    try:
+        xbmcvfs.rmdir(directory)
+        _log(f"Removed empty sidecar folder: {directory}")
+    except OSError:
+        pass
+    parent = os.path.dirname(directory.rstrip("/\\"))
+    if parent.endswith(".trickplay") and xbmcvfs.exists(parent):
+        try:
+            parent_entries = xbmcvfs.listdir(parent)
+        except OSError:
+            return
+        parent_dirs = (
+            parent_entries[0]
+            if isinstance(parent_entries, (list, tuple)) and len(parent_entries) == 2
+            else []
+        )
+        parent_files = (
+            parent_entries[1]
+            if isinstance(parent_entries, (list, tuple)) and len(parent_entries) == 2
+            else parent_entries if isinstance(parent_entries, list) else []
+        )
+        if not parent_dirs and not parent_files:
+            try:
+                xbmcvfs.rmdir(parent)
+                _log(f"Removed empty trickplay root: {parent}")
+            except OSError:
+                pass
+
+
+def _has_jpg_tiles(directory: str) -> bool:
+    return bool(_list_jpg_files(directory))
+
+
+def sidecar_dir_for_grid(
+    media_path: str,
+    tile_width: int,
+    grid: str,
+    interval_ms: int,
+) -> str:
+    cols, rows = grid_tuple(grid)
+    root = trickplay_root_for_media(media_path)
+    folder = format_resolution_dir_name(tile_width, cols, rows, interval_ms)
+    return os.path.join(root, folder)
+
+
+def has_generated_sidecar(
+    media_path: str,
+    tile_width: int,
+    grid: str,
+    interval_ms: int,
+) -> bool:
+    output_dir = sidecar_dir_for_grid(media_path, tile_width, grid, interval_ms)
+    local_dir = _local_path(output_dir)
+    if not xbmcvfs.exists(output_dir) and not (local_dir and os.path.isdir(local_dir)):
+        return False
+    return _has_jpg_tiles(output_dir)
+
+
+@dataclass(frozen=True)
+class GenerationBatchPlan:
+    candidates: list[str]
+    skipped_existing: int
+    total_videos: int
+
+
+def probe_video_duration_seconds(media_path: str, debug: bool = False) -> int:
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    _, ffprobe, env = resolve_ffmpeg_tools()
+
+    if use_vfs_stream:
+        if not ffprobe:
+            _log(f"ffprobe unavailable for VFS duration probe: {media_path}", xbmc.LOGWARNING)
+            return 0
+        return probe_duration_via_pipe(media_path, ffprobe, env, debug=debug)
+
+    local = ffmpeg_input
+    if not ffprobe or not xbmcvfs.exists(media_path):
+        _log(
+            f"Duration probe skipped (ffprobe={bool(ffprobe)} exists={xbmcvfs.exists(media_path)}): {media_path}",
+            xbmc.LOGWARNING,
+        )
+        return 0
+
+    cmd = [
+        ffprobe,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        local,
+    ]
+    try:
+        completed = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        _log(f"ffprobe duration failed for {media_path} (path={local!r}): {exc}", xbmc.LOGWARNING)
+        return 0
+
+    if completed.returncode == 0:
+        try:
+            duration = float((completed.stdout or "").strip())
+            if duration > 0:
+                if debug:
+                    _log(f"Duration {int(duration)}s for {media_path} via ffprobe")
+                return max(int(duration), 1)
+        except ValueError:
+            pass
+
+    ffmpeg, _, _ = resolve_ffmpeg_tools()
+    if not ffmpeg:
+        return 0
+    try:
+        completed = subprocess.run(
+            [ffmpeg, "-hide_banner", "-i", local],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        _log(f"ffmpeg duration fallback failed for {media_path} (path={local!r}): {exc}", xbmc.LOGWARNING)
+        return 0
+
+    match = _DURATION_RE.search(completed.stderr or "")
+    if not match:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        _log(
+            f"Could not parse duration for {media_path} (path={local!r}): {detail[:300]}",
+            xbmc.LOGWARNING,
+        )
+        return 0
+    hours, minutes, seconds = match.groups()
+    duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    if debug:
+        _log(f"Duration {int(duration)}s for {media_path} via ffmpeg stderr")
+    return max(int(duration), 1)
+
+
+def _is_cancelled(should_cancel: Callable[[], bool] | None) -> bool:
+    return bool(should_cancel and should_cancel())
+
+
+def _run_subprocess_cancellable(
+    cmd: list[str],
+    env: dict[str, str],
+    timeout: float,
+    should_cancel: Callable[[], bool] | None = None,
+) -> tuple[int | None, str]:
+    """Run a subprocess; return (returncode, detail). returncode None if cancelled."""
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+    except OSError as exc:
+        return (-1, str(exc))
+
+    deadline = time.monotonic() + timeout
+    while proc.poll() is None:
+        if _is_cancelled(should_cancel):
+            proc.kill()
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            return (None, "cancelled")
+        if time.monotonic() >= deadline:
+            proc.kill()
+            try:
+                _, detail = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                detail = "timeout"
+            return (-1, detail or "timeout")
+        time.sleep(0.15)
+
+    _, detail = proc.communicate()
+    return (proc.returncode, (detail or "").strip())
+
+
+def _thumb_scale_filter(tile_width: int) -> str:
+    thumb_height = max(int(round(tile_width * 9 / 16)), 2)
+    return (
+        f"yadif=0:-1:0,"
+        f"scale={tile_width}:{thumb_height}:force_original_aspect_ratio=decrease,"
+        f"pad={tile_width}:{thumb_height}:(ow-iw)/2:(oh-ih)/2"
+    )
+
+
+def _batch_extract_filter(tile_width: int, interval_sec: float) -> str:
+    if interval_sec == int(interval_sec):
+        fps_expr = f"1/{int(interval_sec)}"
+    else:
+        fps_expr = f"{1.0 / interval_sec:.8g}"
+    return f"fps={fps_expr},{_thumb_scale_filter(tile_width)}"
+
+
+def _extract_frame_accurate(
+    ffmpeg: str,
+    env: dict[str, str],
+    ffmpeg_input: str,
+    timestamp: float,
+    tile_width: int,
+    output_path: str,
+    thumb_index: int = 0,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> bool:
+    """Extract one thumbnail with seek after input (frame-accurate, slower)."""
+    if _is_cancelled(should_cancel):
+        return False
+
+    local_out = _local_path(output_path)
+    _ensure_local_dir(os.path.dirname(local_out))
+    timeout = _accurate_frame_timeout_sec(thumb_index)
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        ffmpeg_input,
+        "-ss",
+        f"{max(timestamp, 0.0):.3f}",
+        "-an",
+        "-sn",
+        "-dn",
+        "-frames:v",
+        "1",
+        "-vf",
+        _thumb_scale_filter(tile_width),
+        "-q:v",
+        "2",
+        local_out,
+    ]
+    returncode, detail = _run_subprocess_cancellable(cmd, env, timeout, should_cancel)
+    if returncode is None:
+        return False
+    if returncode != 0:
+        _log(f"Frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
+        return False
+
+    if debug:
+        _log(f"Extracted frame at {timestamp:.1f}s -> {output_path}")
+    return os.path.isfile(local_out) or xbmcvfs.exists(output_path)
+
+
+def _extract_frame_fast(
+    ffmpeg: str,
+    env: dict[str, str],
+    ffmpeg_input: str,
+    timestamp: float,
+    tile_width: int,
+    output_path: str,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> bool:
+    """Extract one thumbnail with fast seek before input (keyframe-aligned)."""
+    if _is_cancelled(should_cancel):
+        return False
+
+    local_out = _local_path(output_path)
+    _ensure_local_dir(os.path.dirname(local_out))
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{max(timestamp, 0.0):.3f}",
+        "-i",
+        ffmpeg_input,
+        "-an",
+        "-sn",
+        "-dn",
+        "-frames:v",
+        "1",
+        "-vf",
+        _thumb_scale_filter(tile_width),
+        "-q:v",
+        "2",
+        local_out,
+    ]
+    returncode, detail = _run_subprocess_cancellable(
+        cmd, env, _FAST_FRAME_TIMEOUT_SEC, should_cancel
+    )
+    if returncode is None:
+        return False
+    if returncode != 0:
+        _log(f"Fast frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
+        return False
+
+    if debug:
+        _log(f"Fast extracted frame at {timestamp:.1f}s -> {output_path}")
+    return os.path.isfile(local_out) or xbmcvfs.exists(output_path)
+
+
+def _extract_tile_batch_fps(
+    ffmpeg: str,
+    env: dict[str, str],
+    ffmpeg_input: str,
+    tile_start: float,
+    frame_count: int,
+    interval_sec: float,
+    tile_width: int,
+    output_dir: str,
+    tile_index: int = 0,
+    tile_count: int = 1,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> list[str]:
+    """Extract thumbnails in one decode pass with fps (best for short intervals)."""
+    if _is_cancelled(should_cancel) or frame_count <= 0:
+        return []
+
+    _ensure_local_dir(output_dir)
+    local_dir = _local_path(output_dir)
+    duration = max(frame_count * interval_sec, interval_sec)
+    timeout = max(120.0, duration * 3.0 + 60.0)
+    pattern = os.path.join(local_dir, "%05d.jpg")
+
+    _log(
+        f"Tile {tile_index + 1}/{tile_count}: fps batch "
+        f"{frame_count} frame(s) from {tile_start:.1f}s "
+        f"(~{duration:.0f}s decode)"
+    )
+
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{max(tile_start, 0.0):.3f}",
+        "-i",
+        ffmpeg_input,
+        "-t",
+        f"{duration:.3f}",
+        "-an",
+        "-sn",
+        "-dn",
+        "-vf",
+        _batch_extract_filter(tile_width, interval_sec),
+        "-frames:v",
+        str(frame_count),
+        "-q:v",
+        "2",
+        pattern,
+    ]
+    returncode, detail = _run_subprocess_cancellable(cmd, env, timeout, should_cancel)
+    if returncode is None:
+        return []
+    if returncode != 0:
+        _log(
+            f"Tile fps batch failed at {tile_start:.1f}s "
+            f"({frame_count} frame(s)): {detail[:500]}",
+            xbmc.LOGWARNING,
+        )
+        return []
+
+    frame_paths = _list_jpg_files(output_dir)[:frame_count]
+    if not frame_paths:
+        _log(
+            f"Tile fps batch produced no JPEGs at {tile_start:.1f}s "
+            f"(dir={local_dir!r})",
+            xbmc.LOGWARNING,
+        )
+        return []
+
+    _log(
+        f"Tile {tile_index + 1}/{tile_count}: fps batch extracted "
+        f"{len(frame_paths)} frame(s)"
+    )
+    if debug:
+        _log(f"Batch frames -> {output_dir}")
+    return frame_paths
+
+
+def _extract_tile_fast_seek(
+    ffmpeg: str,
+    env: dict[str, str],
+    ffmpeg_input: str,
+    start_index: int,
+    frame_count: int,
+    interval_sec: float,
+    tile_width: int,
+    output_dir: str,
+    tile_index: int = 0,
+    tile_count: int = 1,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> list[str]:
+    """Extract one frame per interval via fast seek (-ss before -i)."""
+    if _is_cancelled(should_cancel) or frame_count <= 0:
+        return []
+
+    _ensure_local_dir(output_dir)
+    tile_start = start_index * interval_sec
+    _log(
+        f"Tile {tile_index + 1}/{tile_count}: fast seek "
+        f"{frame_count} frame(s) every {interval_sec:.1f}s from {tile_start:.1f}s"
+    )
+
+    frame_paths: list[str] = []
+    for offset in range(frame_count):
+        if _is_cancelled(should_cancel):
+            return []
+        thumb_index = start_index + offset
+        timestamp = thumb_index * interval_sec
+        frame_path = os.path.join(output_dir, f"{offset:05d}.jpg")
+        if not _extract_frame_fast(
+            ffmpeg,
+            env,
+            ffmpeg_input,
+            timestamp,
+            tile_width,
+            frame_path,
+            debug=debug,
+            should_cancel=should_cancel,
+        ):
+            return frame_paths
+        frame_paths.append(frame_path)
+
+    _log(
+        f"Tile {tile_index + 1}/{tile_count}: fast seek extracted "
+        f"{len(frame_paths)} frame(s)"
+    )
+    return frame_paths
+
+
+def _extract_tile_fast(
+    ffmpeg: str,
+    env: dict[str, str],
+    ffmpeg_input: str,
+    start_index: int,
+    frame_count: int,
+    interval_sec: float,
+    tile_width: int,
+    output_dir: str,
+    tile_index: int = 0,
+    tile_count: int = 1,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> list[str]:
+    tile_start = start_index * interval_sec
+    if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
+        return _extract_tile_batch_fps(
+            ffmpeg,
+            env,
+            ffmpeg_input,
+            tile_start,
+            frame_count,
+            interval_sec,
+            tile_width,
+            output_dir,
+            tile_index=tile_index,
+            tile_count=tile_count,
+            debug=debug,
+            should_cancel=should_cancel,
+        )
+    return _extract_tile_fast_seek(
+        ffmpeg,
+        env,
+        ffmpeg_input,
+        start_index,
+        frame_count,
+        interval_sec,
+        tile_width,
+        output_dir,
+        tile_index=tile_index,
+        tile_count=tile_count,
+        debug=debug,
+        should_cancel=should_cancel,
+    )
+
+
+def _tile_frames(
+    ffmpeg: str,
+    env: dict[str, str],
+    frame_paths: list[str],
+    cols: int,
+    rows: int,
+    output_path: str,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> bool:
+    if _is_cancelled(should_cancel):
+        return False
+
+    if not frame_paths:
+        return False
+
+    local_out = _local_path(output_path)
+    _ensure_dir(os.path.dirname(local_out))
+
+    if len(frame_paths) == 1:
+        try:
+            xbmcvfs.copy(frame_paths[0], output_path)
+            return xbmcvfs.exists(output_path)
+        except (OSError, RuntimeError, ValueError):
+            return False
+
+    count = len(frame_paths)
+    layout_cols = min(cols, count)
+    layout_rows = (count + layout_cols - 1) // layout_cols
+
+    parent = os.path.dirname(_local_path(frame_paths[0]))
+    seq_dir = os.path.join(parent, f"seq_{uuid.uuid4().hex[:12]}")
+    _ensure_local_dir(seq_dir)
+    try:
+        for index, path in enumerate(frame_paths):
+            if _is_cancelled(should_cancel):
+                return False
+            shutil.copy2(_local_path(path), os.path.join(seq_dir, f"{index:05d}.jpg"))
+
+        cmd = [
+            ffmpeg,
+            "-y",
+            "-loglevel",
+            "error",
+            "-start_number",
+            "0",
+            "-i",
+            os.path.join(seq_dir, "%05d.jpg"),
+            "-frames:v",
+            "1",
+            "-filter_complex",
+            f"tile={layout_cols}x{layout_rows}",
+            "-q:v",
+            "2",
+            local_out,
+        ]
+        returncode, detail = _run_subprocess_cancellable(cmd, env, 180, should_cancel)
+        if returncode is None:
+            return False
+        if returncode != 0:
+            _log(f"Tile assembly failed: {detail}", xbmc.LOGWARNING)
+            return False
+    finally:
+        _remove_tree(seq_dir)
+
+    if debug:
+        _log(
+            f"Tiled {count} frame(s) as {layout_cols}x{layout_rows} -> {output_path}"
+        )
+    return xbmcvfs.exists(output_path)
+
+
+def _remove_tree(path: str) -> None:
+    local = _local_path(path)
+    if os.path.isdir(local):
+        shutil.rmtree(local, ignore_errors=True)
+
+
+def generate_trickplay_for_media(
+    media_path: str,
+    settings: GeneratorSettings,
+    should_cancel: Callable[[], bool] | None = None,
+) -> bool:
+    """Write Jellyfin-format trickplay sprites next to media_path."""
+    if _is_cancelled(should_cancel):
+        return False
+
+    media_path = resolve_media_path(media_path) or media_path
+    if not media_path or not xbmcvfs.exists(media_path):
+        _log(f"Media not found: {media_path!r}", xbmc.LOGWARNING)
+        return False
+
+    cols, rows = grid_tuple(settings.grid)
+    output_dir = sidecar_dir_for_grid(
+        media_path,
+        settings.tile_width,
+        settings.grid,
+        settings.interval_ms,
+    )
+
+    if _has_jpg_tiles(output_dir):
+        if not settings.overwrite_existing:
+            _debug(settings, f"Skipping existing sidecar: {output_dir}")
+            return True
+        _clear_sidecar_tiles(output_dir)
+        _log(f"Overwriting existing sidecar: {output_dir}")
+
+    ffmpeg, _, env = resolve_ffmpeg_tools()
+    if not ffmpeg:
+        _log("ffmpeg not found; install tools.ffmpeg-tools", xbmc.LOGERROR)
+        return False
+
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    if use_vfs_stream:
+        _log(f"Using VFS stream generation for {media_path}")
+
+    duration = probe_video_duration_seconds(media_path, debug=settings.debug)
+    if duration <= 0:
+        _log(f"Could not determine duration for {media_path}", xbmc.LOGWARNING)
+        return False
+
+    interval_sec = max(settings.interval_ms / 1000.0, 0.001)
+    thumb_count = int(duration / interval_sec) + 1
+    thumbs_per_tile = cols * rows
+    tile_count = (thumb_count + thumbs_per_tile - 1) // thumbs_per_tile
+
+    _ensure_dir(output_dir)
+    work_dir = os.path.join(GENERATE_TEMP_ROOT, uuid.uuid4().hex)
+    _ensure_dir(work_dir)
+    _ensure_local_dir(work_dir)
+
+    extract_mode = "VFS stream" if use_vfs_stream else extract_mode_log_label(
+        settings.extract_mode
+    )
+    _log(
+        f"Generating trickplay for {os.path.basename(media_path)} "
+        f"({thumb_count} thumbs, {tile_count} tile(s), {settings.grid}, "
+        f"{settings.tile_width}px, {settings.interval_ms}ms, {extract_mode}) "
+        f"-> {output_dir}"
+    )
+
+    success = True
+    cancelled = False
+    try:
+        if use_vfs_stream:
+            frame_pattern = os.path.join(work_dir, "thumb_%06d.jpg")
+            if not extract_frames_via_pipe(
+                media_path,
+                ffmpeg,
+                env,
+                _local_path(frame_pattern),
+                interval_sec,
+                settings.tile_width,
+                debug=settings.debug,
+                should_cancel=should_cancel,
+            ):
+                if _is_cancelled(should_cancel):
+                    cancelled = True
+                else:
+                    success = False
+            else:
+                frame_paths = _list_jpg_files(work_dir)[:thumb_count]
+                if not frame_paths:
+                    success = False
+                else:
+                    for tile_index in range(tile_count):
+                        if _is_cancelled(should_cancel):
+                            cancelled = True
+                            break
+                        start_index = tile_index * thumbs_per_tile
+                        chunk = frame_paths[start_index : start_index + thumbs_per_tile]
+                        if not chunk:
+                            break
+                        tile_path = os.path.join(output_dir, f"{tile_index}.jpg")
+                        if not _tile_frames(
+                            ffmpeg,
+                            env,
+                            chunk,
+                            cols,
+                            rows,
+                            tile_path,
+                            debug=settings.debug,
+                            should_cancel=should_cancel,
+                        ):
+                            if _is_cancelled(should_cancel):
+                                cancelled = True
+                            else:
+                                success = False
+                            break
+        else:
+            for tile_index in range(tile_count):
+                if _is_cancelled(should_cancel):
+                    cancelled = True
+                    break
+                start_index = tile_index * thumbs_per_tile
+                end_index = min(start_index + thumbs_per_tile, thumb_count)
+                chunk_count = end_index - start_index
+                if chunk_count <= 0:
+                    break
+
+                tile_work_dir = os.path.join(work_dir, f"t{tile_index:04d}")
+                _ensure_local_dir(tile_work_dir)
+
+                if settings.extract_mode == EXTRACT_MODE_EXPERIMENTAL:
+                    frame_paths = extract_tile_experimental(
+                        ffmpeg,
+                        env,
+                        ffmpeg_input,
+                        start_index,
+                        chunk_count,
+                        interval_sec,
+                        settings.tile_width,
+                        _thumb_scale_filter(settings.tile_width),
+                        tile_work_dir,
+                        tile_index=tile_index,
+                        tile_count=tile_count,
+                        debug=settings.debug,
+                        should_cancel=should_cancel,
+                        run_subprocess=_run_subprocess_cancellable,
+                    )
+                elif settings.extract_mode == EXTRACT_MODE_FAST:
+                    frame_paths = _extract_tile_fast(
+                        ffmpeg,
+                        env,
+                        ffmpeg_input,
+                        start_index,
+                        chunk_count,
+                        interval_sec,
+                        settings.tile_width,
+                        tile_work_dir,
+                        tile_index=tile_index,
+                        tile_count=tile_count,
+                        debug=settings.debug,
+                        should_cancel=should_cancel,
+                    )
+                elif settings.extract_mode == EXTRACT_MODE_ACCURATE:
+                    frame_paths = []
+                    for thumb_index in range(start_index, end_index):
+                        if _is_cancelled(should_cancel):
+                            cancelled = True
+                            break
+                        timestamp = thumb_index * interval_sec
+                        frame_path = os.path.join(
+                            tile_work_dir, f"f{thumb_index:05d}.jpg"
+                        )
+                        if not _extract_frame_accurate(
+                            ffmpeg,
+                            env,
+                            ffmpeg_input,
+                            timestamp,
+                            settings.tile_width,
+                            frame_path,
+                            thumb_index=thumb_index,
+                            debug=settings.debug,
+                            should_cancel=should_cancel,
+                        ):
+                            if _is_cancelled(should_cancel):
+                                cancelled = True
+                            else:
+                                success = False
+                            break
+                        frame_paths.append(frame_path)
+                else:
+                    _log(
+                        f"Unknown extract mode {settings.extract_mode!r}; "
+                        f"using fast",
+                        xbmc.LOGWARNING,
+                    )
+                    frame_paths = _extract_tile_fast(
+                        ffmpeg,
+                        env,
+                        ffmpeg_input,
+                        start_index,
+                        chunk_count,
+                        interval_sec,
+                        settings.tile_width,
+                        tile_work_dir,
+                        tile_index=tile_index,
+                        tile_count=tile_count,
+                        debug=settings.debug,
+                        should_cancel=should_cancel,
+                    )
+
+                if cancelled or _is_cancelled(should_cancel):
+                    cancelled = True
+                    break
+                if not success or not frame_paths:
+                    if not cancelled and not frame_paths:
+                        _log(
+                            f"Tile {tile_index + 1}/{tile_count}: no frames extracted",
+                            xbmc.LOGWARNING,
+                        )
+                        success = False
+                    break
+                if len(frame_paths) < chunk_count:
+                    _log(
+                        f"Tile {tile_index + 1}: expected {chunk_count} frame(s), "
+                        f"got {len(frame_paths)} (using partial tile)",
+                        xbmc.LOGWARNING,
+                    )
+
+                tile_path = os.path.join(output_dir, f"{tile_index}.jpg")
+                if not _tile_frames(
+                    ffmpeg,
+                    env,
+                    frame_paths,
+                    cols,
+                    rows,
+                    tile_path,
+                    debug=settings.debug,
+                    should_cancel=should_cancel,
+                ):
+                    if _is_cancelled(should_cancel):
+                        cancelled = True
+                    else:
+                        success = False
+                    break
+
+                _log(f"Tile {tile_index + 1}/{tile_count}: wrote {tile_path}")
+                _remove_tree(tile_work_dir)
+
+        if cancelled or _is_cancelled(should_cancel):
+            _cleanup_incomplete_sidecar(output_dir)
+            _log(
+                f"Generation cancelled for {os.path.basename(media_path)}",
+                xbmc.LOGINFO,
+            )
+            return False
+
+        if success:
+            _log(
+                f"Generated {tile_count} tile(s) for {os.path.basename(media_path)}"
+            )
+        else:
+            _log(
+                f"Generation failed for {os.path.basename(media_path)}",
+                xbmc.LOGWARNING,
+            )
+            _remove_empty_sidecar_dir(output_dir)
+    finally:
+        _remove_tree(work_dir)
+
+    return success
+
+
+def iter_library_videos(root: str) -> list[str]:
+    """Recursively list local video files under root."""
+    root = (root or "").strip()
+    if not root or not xbmcvfs.exists(root):
+        return []
+
+    results: list[str] = []
+    stack = [_local_path(root) if root.startswith("special://") else root]
+
+    while stack:
+        current = stack.pop()
+        try:
+            entries = xbmcvfs.listdir(current)
+        except OSError:
+            continue
+
+        if isinstance(entries, (list, tuple)) and len(entries) == 2:
+            dirs, files = entries
+        else:
+            dirs, files = [], entries if isinstance(entries, list) else []
+
+        for name in files:
+            ext = os.path.splitext(str(name))[1].lower()
+            if ext not in _VIDEO_EXTENSIONS:
+                continue
+            results.append(os.path.join(current, name))
+
+        for name in dirs:
+            if str(name) in (".", ".."):
+                continue
+            stack.append(os.path.join(current, name))
+
+    return sorted(results)
+
+
+def collect_generation_candidates(
+    root: str,
+    settings: GeneratorSettings,
+) -> GenerationBatchPlan:
+    """Return media paths under root that still need trickplay sidecars."""
+    videos = iter_library_videos(root)
+    _log(f"Scanned {len(videos)} video(s) under {root!r}")
+    candidates: list[str] = []
+    skipped = 0
+    for media_path in videos:
+        resolved = resolve_media_path(media_path) or media_path
+        if (
+            not settings.overwrite_existing
+            and has_generated_sidecar(
+                resolved,
+                settings.tile_width,
+                settings.grid,
+                settings.interval_ms,
+            )
+        ):
+            skipped += 1
+            if settings.debug:
+                _log(f"Skipping existing sidecar: {os.path.basename(resolved)}")
+            continue
+        candidates.append(resolved)
+    _log(
+        f"Candidates: {len(candidates)} need generation, {skipped} skipped "
+        f"(existing sidecar, overwrite={settings.overwrite_existing})"
+    )
+    return GenerationBatchPlan(
+        candidates=candidates,
+        skipped_existing=skipped,
+        total_videos=len(videos),
+    )

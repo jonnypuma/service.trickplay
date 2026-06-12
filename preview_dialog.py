@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import threading
 
+from dataclasses import dataclass
+
 import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
 from osd_layout import preview_placement
+from settings_cache import get_cached
 from thumb_cropper import get_cached_thumb_path, get_cropped_thumb_path
 from trickplay_resolver import TrickplayLookup
 
@@ -57,13 +60,25 @@ PREVIEW_PROPERTIES = (
     PROP_THUMB_H,
 )
 
+_RESYNC_PROPERTIES = PREVIEW_PROPERTIES + DISPLAY_PROPERTIES
+_seekbar_visible_last = False
+_last_resync_snapshot: tuple[tuple[str, str], ...] | None = None
+
 DEFAULT_ASPECT_RATIO = 16 / 9
+
+
+@dataclass(frozen=True)
+class DisplaySyncSettings:
+    show_timestamp: bool
+    color_diffuse: str
 
 
 def _debug_logging() -> bool:
     try:
-        return ADDON.getSettingBool("debug_logging")
-    except (RuntimeError, TypeError, ValueError):
+        from generator_settings import read_runtime_settings
+
+        return read_runtime_settings().debug_logging
+    except ImportError:  # pragma: no cover
         return False
 
 
@@ -180,17 +195,26 @@ def preview_color_diffuse(opacity_percent: int | None = None) -> str:
     return f"{alpha:02X}FFFFFF"
 
 
+def _load_display_sync_settings() -> DisplaySyncSettings:
+    show_timestamp = _show_timestamp_setting()
+    return DisplaySyncSettings(
+        show_timestamp=show_timestamp,
+        color_diffuse=preview_color_diffuse(
+            opacity_percent=_setting_int("preview_opacity", 100)
+        ),
+    )
+
+
 def show_timestamp_enabled() -> bool:
-    return _show_timestamp_setting()
+    return get_cached("display_sync", _load_display_sync_settings).show_timestamp
 
 
 def sync_display_settings() -> None:
+    display = get_cached("display_sync", _load_display_sync_settings)
     sync_trickplay_property(
-        PROP_SHOW_TIMESTAMP, "true" if _show_timestamp_setting() else "false"
+        PROP_SHOW_TIMESTAMP, "true" if display.show_timestamp else "false"
     )
-    sync_trickplay_property(
-        PROP_PREVIEW_COLOR_DIFFUSE, preview_color_diffuse()
-    )
+    sync_trickplay_property(PROP_PREVIEW_COLOR_DIFFUSE, display.color_diffuse)
 
 
 def _clear_property(name: str) -> None:
@@ -203,6 +227,7 @@ def _clear_property(name: str) -> None:
 
 
 def _clear_preview_properties() -> None:
+    _reset_resync_state()
     for prop in PREVIEW_PROPERTIES:
         _clear_property(prop)
     for prop in DISPLAY_PROPERTIES:
@@ -217,13 +242,60 @@ def clear_trickplay_property(name: str) -> None:
     _clear_property(name)
 
 
-def resync_preview_to_seekbar() -> None:
+def _dialog_seekbar_visible() -> bool:
+    return xbmc.getCondVisibility(
+        "Window.IsVisible(seekbar) | Window.IsActive(seekbar) | "
+        "Window.IsVisible(DialogSeekBar.xml)"
+    )
+
+
+def _collect_resync_snapshot() -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (prop, HOME_WINDOW.getProperty(prop) or "") for prop in _RESYNC_PROPERTIES
+    )
+
+
+def _seekbar_properties_match(
+    seekbar: xbmcgui.Window, snapshot: tuple[tuple[str, str], ...]
+) -> bool:
+    for prop, value in snapshot:
+        try:
+            if (seekbar.getProperty(prop) or "") != value:
+                return False
+        except RuntimeError:
+            return False
+    return True
+
+
+def _reset_resync_state() -> None:
+    global _seekbar_visible_last, _last_resync_snapshot
+    _seekbar_visible_last = False
+    _last_resync_snapshot = None
+
+
+def resync_preview_to_seekbar(*, force: bool = False) -> None:
     """Copy preview properties to DialogSeekBar when it opens after publish."""
+    global _seekbar_visible_last, _last_resync_snapshot
+
+    if not _dialog_seekbar_visible():
+        _seekbar_visible_last = False
+        return
+
     seekbar = _seekbar_window_unconditional()
     if seekbar is None:
+        _seekbar_visible_last = False
+        _last_resync_snapshot = None
         return
-    for prop in PREVIEW_PROPERTIES:
-        value = HOME_WINDOW.getProperty(prop)
+
+    snapshot = _collect_resync_snapshot()
+    visibility_transition = not _seekbar_visible_last
+
+    if not force and not visibility_transition:
+        if _seekbar_properties_match(seekbar, snapshot):
+            _last_resync_snapshot = snapshot
+            return
+
+    for prop, value in snapshot:
         try:
             if value:
                 seekbar.setProperty(prop, value)
@@ -231,15 +303,9 @@ def resync_preview_to_seekbar() -> None:
                 seekbar.clearProperty(prop)
         except RuntimeError:
             pass
-    for prop in DISPLAY_PROPERTIES:
-        value = HOME_WINDOW.getProperty(prop)
-        try:
-            if value:
-                seekbar.setProperty(prop, value)
-            else:
-                seekbar.clearProperty(prop)
-        except RuntimeError:
-            pass
+
+    _last_resync_snapshot = snapshot
+    _seekbar_visible_last = True
 
 
 class PreviewDialogController:
@@ -255,6 +321,7 @@ class PreviewDialogController:
         self._crop_failed = False
         self._shown_thumb_index = -1
         self._last_thumb_path: str | None = None
+        self._last_placement_key: tuple[int, int, float, bool] | None = None
 
     def detach_overlay(self) -> None:
         self.hide_preview()
@@ -267,7 +334,21 @@ class PreviewDialogController:
         self._crop_failed = False
         self._shown_thumb_index = -1
         self._last_thumb_path = None
+        self._last_placement_key = None
         _clear_preview_properties()
+
+    def _placement_key(
+        self,
+        lookup: TrickplayLookup,
+        duration_seconds: int,
+        player: xbmc.Player | None,
+    ) -> tuple[int, int, float, bool]:
+        return (
+            lookup.target_second,
+            max(duration_seconds, 0),
+            display_aspect_ratio(lookup, player),
+            show_timestamp_enabled(),
+        )
 
     def _publish_placement(
         self,
@@ -280,7 +361,7 @@ class PreviewDialogController:
             lookup.target_second,
             duration_seconds,
             aspect_ratio,
-            show_timestamp=_show_timestamp_setting(),
+            show_timestamp=show_timestamp_enabled(),
         )
         total_h = placement.preview_h + placement.label_h + 4
         _set_property(PROP_PREVIEW_SLOT, str(placement.slot))
@@ -308,25 +389,31 @@ class PreviewDialogController:
         player: xbmc.Player | None = None,
     ) -> None:
         sync_display_settings()
-        if _show_timestamp_setting():
+        if show_timestamp_enabled():
             _set_property(PROP_PREVIEW_TIME, format_preview_time(lookup.target_second))
         else:
             _clear_property(PROP_PREVIEW_TIME)
         _set_property(PROP_DURATION, str(max(duration_seconds, 0)))
         _set_property(PROP_THUMB_W, str(lookup.thumb_width))
         _set_property(PROP_THUMB_H, str(lookup.thumb_height))
-        self._publish_placement(lookup, duration_seconds, player)
+        placement_key = self._placement_key(lookup, duration_seconds, player)
+        if placement_key != self._last_placement_key:
+            self._publish_placement(lookup, duration_seconds, player)
+            self._last_placement_key = placement_key
         if image_path:
             _set_property(PROP_PREVIEW_IMAGE, _thumb_texture_path(image_path))
         else:
             _clear_property(PROP_PREVIEW_IMAGE)
-        resync_preview_to_seekbar()
+        if _dialog_seekbar_visible():
+            resync_preview_to_seekbar(force=True)
 
     def show_preview(
         self,
         lookup: TrickplayLookup,
         duration_seconds: int,
         player: xbmc.Player | None = None,
+        *,
+        eager: bool = False,
     ) -> None:
         cache_key = lookup_cache_key(lookup)
         cached = get_cached_thumb_path(
@@ -342,6 +429,24 @@ class PreviewDialogController:
             self._last_thumb_path = cached
             self._publish_preview_state(lookup, duration_seconds, cached, player)
             return
+
+        if eager:
+            debug = _debug_logging()
+            thumb_path = get_cropped_thumb_path(
+                lookup.tile_path,
+                lookup.col,
+                lookup.row,
+                lookup.thumb_width,
+                lookup.thumb_height,
+                debug=debug,
+            )
+            if thumb_path:
+                self._shown_thumb_index = lookup.thumb_index
+                self._last_thumb_path = thumb_path
+                self._publish_preview_state(
+                    lookup, duration_seconds, thumb_path, player
+                )
+                return
 
         same_bucket = lookup.thumb_index == self._shown_thumb_index
         stale_image = self._last_thumb_path if same_bucket else None

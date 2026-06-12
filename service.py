@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 
 import xbmc
@@ -16,6 +17,10 @@ if _ADDON_PATH and _ADDON_PATH not in sys.path:
 
 from prefetch import ThumbPrefetch
 from prefetch_settings import read_prefetch_settings
+from generator_settings import read_runtime_settings, read_generator_settings
+from generator_worker import GeneratorWorker
+from library_update_batch import LibraryUpdateBatch
+from thumb_cropper import get_cropped_thumb_path
 from preview_dialog import (
     PREVIEW_PROPERTIES,
     PROP_PREVIEW_VISIBLE,
@@ -47,6 +52,10 @@ HOME_WINDOW = xbmcgui.Window(10000)
 SEEKBAR_WINDOW_ID = 10115
 SEEK_HOLD_INDEFINITE = float("inf")
 
+POLL_MS_IDLE = 1000
+POLL_MS_IDLE_GENERATOR = 500
+PLAYBACK_SCRUB_GUARD_SEC = 3.0
+
 PROP_TILE = "Trickplay.TileImage"
 PROP_COL = "Trickplay.TileCol"
 PROP_ROW = "Trickplay.TileRow"
@@ -61,7 +70,7 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 
 
 def _debug(message: str) -> None:
-    if ADDON.getSettingBool("debug_logging"):
+    if read_runtime_settings().debug_logging:
         _log(message, xbmc.LOGINFO)
 
 
@@ -74,31 +83,6 @@ def _setting_int(setting_id: str, default: int) -> int:
             return int(raw)
         except (TypeError, ValueError):
             return default
-
-
-def _setting_bool(setting_id: str, default: bool) -> bool:
-    try:
-        return ADDON.getSettingBool(setting_id)
-    except (TypeError, ValueError, RuntimeError):
-        raw = ADDON.getSettingString(setting_id)
-        if not raw:
-            return default
-        return raw.strip().lower() in ("true", "1", "yes", "on")
-
-
-def _setting_string(setting_id: str, default: str) -> str:
-    try:
-        value = ADDON.getSettingString(setting_id)
-    except (TypeError, ValueError, RuntimeError):
-        return default
-    return value if value else default
-
-
-def _tile_grid_settings() -> tuple[bool, str]:
-    return (
-        _setting_bool("auto_tile_calculation", True),
-        _setting_string("manual_tile_grid", "10x10"),
-    )
 
 
 def _parse_time_label(label: str) -> int:
@@ -140,10 +124,24 @@ def _player_duration_seconds(player: xbmc.Player) -> int:
         return 0
 
 
+class TrickplayMonitor(xbmc.Monitor):
+    def __init__(self, library_batch: LibraryUpdateBatch) -> None:
+        super().__init__()
+        self._library_batch = library_batch
+
+    def onNotification(self, sender: str, method: str, data: str) -> None:
+        try:
+            self._library_batch.on_notification(sender, method, data)
+        except Exception as exc:
+            _log(f"Library notification error: {exc}", xbmc.LOGERROR)
+
+
 class TrickplayService:
     def __init__(self) -> None:
         self.player = KodiPlayer(service=self)
-        self.monitor = xbmc.Monitor()
+        self.generator = GeneratorWorker()
+        self.library_batch = LibraryUpdateBatch(self.generator)
+        self.monitor = TrickplayMonitor(self.library_batch)
         self.preview = PreviewDialogController(ADDON.getAddonInfo("path"))
         self.prefetch = ThumbPrefetch()
         self.resolution: TrickplayResolution | None = None
@@ -157,22 +155,30 @@ class TrickplayService:
         self.committed_seek_at = 0.0
         self.last_play_time = -1
         self.playback_started_at = 0.0
-        self.playback_ready = False
         self.cached_duration = 0
         self.poll_ms = max(_setting_int("poll_ms", 100), 50)
+        self._next_poll_ms = self.poll_ms
+        self._last_poll_scrubbing = False
+        self._last_poll_seek_ui = False
         self._active_skin_id = ""
         self._active_skin_override = ""
         self.seek_hold_until = 0.0
         self._had_compact_seekbar = False
+        self._had_dialog_seekbar = False
+        self._had_seek_ui = False
+        self._pending_seek_ui_warm = False
         self._last_idle_prefetch_at = 0.0
+        self._load_target = ""
+        self._load_settled_for = ""
+        self._load_thread: threading.Thread | None = None
         self._log_skin_profile(force=True)
 
     def _preview_hold_seconds(self) -> int:
-        return max(_setting_int("preview_hold_seconds", 4), 0)
+        return read_runtime_settings().preview_hold_seconds
 
     def _preview_follows_playhead(self) -> bool:
         """Hold time 0: keep preview visible and advance with playback."""
-        return _setting_int("preview_hold_seconds", 4) <= 0
+        return read_runtime_settings().preview_hold_seconds <= 0
 
     def _touch_seek_hold(self) -> None:
         seconds = self._preview_hold_seconds()
@@ -217,6 +223,11 @@ class TrickplayService:
                 xbmc.LOGWARNING,
             )
 
+    def _interval_ms(self) -> int:
+        if self.resolution is not None:
+            return self.resolution.interval_ms
+        return read_runtime_settings().interval_ms
+
     def _effective_duration_seconds(self) -> int:
         duration = _player_duration_seconds(self.player)
         if duration > 0:
@@ -225,8 +236,7 @@ class TrickplayService:
         if self.cached_duration > 0:
             return self.cached_duration
         if self.resolution is not None and self.resolution.thumbnail_count > 0:
-            interval_ms = _setting_int("interval_ms", 10000)
-            return int(self.resolution.thumbnail_count * interval_ms / 1000)
+            return int(self.resolution.thumbnail_count * self._interval_ms() / 1000)
         return 0
 
     def _clear_preview_session(self, reason: str = "") -> None:
@@ -268,11 +278,15 @@ class TrickplayService:
         self.committed_seek_at = 0.0
         self.last_play_time = -1
         self.playback_started_at = 0.0
-        self.playback_ready = False
         self.cached_duration = 0
         self.seek_hold_until = 0.0
         self._had_compact_seekbar = False
+        self._had_dialog_seekbar = False
+        self._had_seek_ui = False
+        self._pending_seek_ui_warm = False
         self._last_idle_prefetch_at = 0.0
+        self._load_target = ""
+        self._load_settled_for = ""
         self.prefetch.cancel()
         self.clear_preview_properties()
 
@@ -283,15 +297,15 @@ class TrickplayService:
         duration_seconds = _player_duration_seconds(self.player)
         if duration_seconds > 0:
             self.cached_duration = duration_seconds
-        interval_ms = _setting_int("interval_ms", 10000)
-        auto_tile_grid, manual_tile_grid = _tile_grid_settings()
+        runtime = read_runtime_settings()
+        auto_tile_grid, manual_tile_grid = runtime.auto_tile_grid, runtime.manual_tile_grid
         self.resolution = enrich_resolution(
             self.resolution,
             duration_seconds,
-            interval_ms,
+            self._interval_ms(),
             auto_tile_grid=auto_tile_grid,
             manual_tile_grid=manual_tile_grid,
-            debug=ADDON.getSettingBool("debug_logging"),
+            debug=runtime.debug_logging,
         )
         if self.resolution.is_usable:
             _log(
@@ -299,74 +313,152 @@ class TrickplayService:
                 f"thumb size {self.resolution.thumb_width}x{self.resolution.thumb_height}"
             )
 
+    def _scrub_guard_active(self) -> bool:
+        return time.monotonic() - self.playback_started_at < PLAYBACK_SCRUB_GUARD_SEC
+
+    def _preview_allowed(self) -> bool:
+        return self.resolution is not None and self.resolution.is_usable
+
+    def _current_playing_file(self) -> str:
+        try:
+            if not self.player.isPlayingVideo():
+                return ""
+            return self.player.getPlayingFile() or ""
+        except RuntimeError:
+            return ""
+
+    def _load_in_progress(self) -> bool:
+        return self._load_thread is not None and self._load_thread.is_alive()
+
+    def _ensure_playback_loaded(self) -> None:
+        playing_file = self._current_playing_file()
+        if not playing_file:
+            return
+        if playing_file == self._load_settled_for:
+            return
+        if playing_file == self.playing_file and self.resolution is not None:
+            return
+        if self._load_in_progress() and playing_file == self._load_target:
+            return
+        self.on_video_started(playing_file)
+
+    def _mark_load_settled(self, playing_file: str) -> None:
+        if playing_file == self.playing_file:
+            self._load_settled_for = playing_file
+
+    def _load_trickplay_worker(self, playing_file: str) -> None:
+        try:
+            media_path = resolve_media_path(playing_file)
+            if not media_path:
+                _debug(f"No local trickplay path for {playing_file!r}")
+                return
+
+            duration_seconds = _player_duration_seconds(self.player)
+            if duration_seconds > 0:
+                self.cached_duration = duration_seconds
+            runtime = read_runtime_settings()
+            auto_tile_grid, manual_tile_grid = (
+                runtime.auto_tile_grid,
+                runtime.manual_tile_grid,
+            )
+
+            resolution = load_trickplay_for_file(
+                playing_file,
+                preferred_width=runtime.preferred_width,
+                interval_ms=runtime.interval_ms,
+                duration_seconds=duration_seconds,
+                auto_tile_grid=auto_tile_grid,
+                manual_tile_grid=manual_tile_grid,
+                debug=runtime.debug_logging,
+            )
+            if resolution is None:
+                _log(f"No trickplay data for {media_path}")
+                return
+
+            if playing_file != self.playing_file:
+                return
+
+            self.resolution = resolution
+            if not self.resolution.is_usable:
+                self._refresh_resolution_if_needed()
+
+            if self.resolution is None or not self.resolution.is_usable:
+                tile_count = len(self.resolution.tile_paths) if self.resolution else 0
+                _log(
+                    f"Trickplay folder found but metadata unusable for {media_path} "
+                    f"(tiles={tile_count})",
+                    xbmc.LOGWARNING,
+                )
+                return
+
+            if playing_file != self.playing_file:
+                return
+
+            HOME_WINDOW.setProperty(PROP_AVAILABLE, "true")
+            sync_trickplay_property(PROP_AVAILABLE, "true")
+            sync_display_settings()
+            _log(
+                f"Loaded trickplay for {media_path} "
+                f"({self.resolution.thumbnail_count} thumbs, "
+                f"{self.resolution.thumb_width}x{self.resolution.thumb_height}, "
+                f"{len(self.resolution.tile_paths)} tile file(s))"
+            )
+
+            play_seconds = _player_time_seconds(self.player)
+            runtime = read_runtime_settings()
+            warm_lookup = lookup_thumbnail(
+                self.resolution, play_seconds, self._interval_ms()
+            )
+            prefetch_settings = read_prefetch_settings()
+            if warm_lookup is not None:
+                get_cropped_thumb_path(
+                    warm_lookup.tile_path,
+                    warm_lookup.col,
+                    warm_lookup.row,
+                    warm_lookup.thumb_width,
+                    warm_lookup.thumb_height,
+                    debug=runtime.debug_logging,
+                )
+                self.prefetch.schedule_playhead_warm(
+                    self.resolution,
+                    warm_lookup,
+                    self._interval_ms(),
+                    settings=prefetch_settings,
+                    debug=runtime.debug_logging,
+                )
+            if playing_file == self.playing_file:
+                self._pending_seek_ui_warm = True
+        except Exception as exc:
+            _log(f"Trickplay load failed for {playing_file!r}: {exc}", xbmc.LOGERROR)
+        finally:
+            self._mark_load_settled(playing_file)
+
     def on_video_started(self, playing_file: str) -> None:
-        self._log_skin_profile(force=True)
+        if not playing_file:
+            return
+        if playing_file == self._load_settled_for:
+            return
+        if playing_file == self.playing_file and self.resolution is not None:
+            return
+        if self._load_in_progress() and playing_file == self._load_target:
+            return
+
+        _log(f"Playback started: {playing_file}")
+        self._log_skin_profile()
         self.preview.detach_overlay()
+        self.generator.pause_for_playback()
         self.reset_playback_state()
         self.playing_file = playing_file
+        self._load_target = playing_file
         self.playback_started_at = time.monotonic()
-        self.playback_ready = False
 
-        media_path = resolve_media_path(playing_file)
-        if not media_path:
-            _log(f"No local trickplay path for {playing_file!r}", xbmc.LOGWARNING)
-            return
-
-        duration_seconds = _player_duration_seconds(self.player)
-        if duration_seconds > 0:
-            self.cached_duration = duration_seconds
-        preferred_width = _setting_int("preferred_width", 320)
-        interval_ms = _setting_int("interval_ms", 10000)
-        auto_tile_grid, manual_tile_grid = _tile_grid_settings()
-        debug = ADDON.getSettingBool("debug_logging")
-
-        self.resolution = load_trickplay_for_file(
-            playing_file,
-            preferred_width=preferred_width,
-            interval_ms=interval_ms,
-            duration_seconds=duration_seconds,
-            auto_tile_grid=auto_tile_grid,
-            manual_tile_grid=manual_tile_grid,
-            debug=debug,
+        self._load_thread = threading.Thread(
+            target=self._load_trickplay_worker,
+            args=(playing_file,),
+            daemon=True,
+            name="trickplay-load",
         )
-        if self.resolution is None:
-            _log(f"No trickplay data found for {media_path}", xbmc.LOGWARNING)
-            return
-
-        if not self.resolution.is_usable:
-            self._refresh_resolution_if_needed()
-
-        if not self.resolution.is_usable:
-            _log(
-                f"Trickplay folder found but metadata unusable for {media_path} "
-                f"(tiles={len(self.resolution.tile_paths)})",
-                xbmc.LOGWARNING,
-            )
-            return
-
-        HOME_WINDOW.setProperty(PROP_AVAILABLE, "true")
-        sync_trickplay_property(PROP_AVAILABLE, "true")
-        sync_display_settings()
-        _log(
-            f"Loaded trickplay for {media_path} "
-            f"({self.resolution.thumbnail_count} thumbs, "
-            f"{self.resolution.thumb_width}x{self.resolution.thumb_height}, "
-            f"{len(self.resolution.tile_paths)} tile file(s))"
-        )
-
-        play_seconds = _player_time_seconds(self.player)
-        warm_lookup = lookup_thumbnail(
-            self.resolution, play_seconds, interval_ms
-        )
-        prefetch_settings = read_prefetch_settings()
-        if warm_lookup is not None:
-            self.prefetch.schedule_playhead_warm(
-                self.resolution,
-                warm_lookup,
-                interval_ms,
-                settings=prefetch_settings,
-                debug=debug,
-            )
+        self._load_thread.start()
 
     def _publish_sprite_properties(self, lookup) -> None:
         sync_trickplay_property(PROP_TILE, lookup.tile_path)
@@ -387,7 +479,7 @@ class TrickplayService:
         if not seeking and target_second == self.last_preview_second:
             return self.preview_visible
 
-        interval_ms = _setting_int("interval_ms", 10000)
+        interval_ms = self._interval_ms()
         lookup = lookup_thumbnail(self.resolution, target_second, interval_ms)
         if lookup is None:
             _debug(f"No trickplay lookup for {target_second}s")
@@ -410,15 +502,18 @@ class TrickplayService:
         self._last_preview_thumb_index = lookup.thumb_index
 
         duration_seconds = self._effective_duration_seconds()
-        self.preview.show_preview(lookup, duration_seconds, self.player)
+        self.preview.show_preview(
+            lookup, duration_seconds, self.player, eager=seeking
+        )
         prefetch_settings = read_prefetch_settings()
+        runtime = read_runtime_settings()
         self.prefetch.schedule_neighbors(
             self.resolution,
             lookup,
             interval_ms,
             scrub_direction=scrub_direction,
             settings=prefetch_settings,
-            debug=ADDON.getSettingBool("debug_logging"),
+            debug=runtime.debug_logging,
         )
         return True
 
@@ -436,22 +531,62 @@ class TrickplayService:
             return
         self._last_idle_prefetch_at = now
 
-        interval_ms = _setting_int("interval_ms", 10000)
-        lookup = lookup_thumbnail(self.resolution, play_seconds, interval_ms)
+        runtime = read_runtime_settings()
+        lookup = lookup_thumbnail(self.resolution, play_seconds, self._interval_ms())
         if lookup is None:
             return
 
         self.prefetch.schedule_idle_tile(
             self.resolution,
             lookup,
-            interval_ms,
+            self._interval_ms(),
             settings=prefetch_settings,
-            debug=ADDON.getSettingBool("debug_logging"),
+            debug=runtime.debug_logging,
+        )
+
+    def _prepare_seek_ui_preview(self, play_seconds: int) -> None:
+        """Sync-crop playhead and prefetch neighbors when seek OSD opens."""
+        if not self._preview_allowed():
+            return
+
+        runtime = read_runtime_settings()
+        prefetch_settings = read_prefetch_settings()
+        interval_ms = self._interval_ms()
+        lookup = lookup_thumbnail(self.resolution, play_seconds, interval_ms)
+        if lookup is None:
+            return
+
+        get_cropped_thumb_path(
+            lookup.tile_path,
+            lookup.col,
+            lookup.row,
+            lookup.thumb_width,
+            lookup.thumb_height,
+            debug=runtime.debug_logging,
+        )
+        if prefetch_settings.enabled:
+            self.prefetch.schedule_playhead_warm(
+                self.resolution,
+                lookup,
+                interval_ms,
+                settings=prefetch_settings,
+                debug=runtime.debug_logging,
+            )
+            self.prefetch.schedule_neighbors(
+                self.resolution,
+                lookup,
+                interval_ms,
+                scrub_direction=0,
+                settings=prefetch_settings,
+                debug=runtime.debug_logging,
+            )
+        _debug(
+            f"Seek UI warm at {play_seconds}s -> index {lookup.thumb_index}"
         )
 
     def on_playback_seek(self, time_ms: int) -> None:
         """Authoritative seek target from Kodi; survives SeekTime label flicker."""
-        if not self.playback_ready or self.resolution is None:
+        if not self._preview_allowed():
             return
         target_second = max(int(time_ms / 1000), 0)
         self.committed_seek_second = target_second
@@ -562,21 +697,22 @@ class TrickplayService:
         return not self._video_osd_visible()
 
     def _is_scrubbing(self) -> tuple[bool, int]:
-        if not self.playback_ready:
-            return False, _player_time_seconds(self.player)
-
         play_seconds = _player_time_seconds(self.player)
 
         if xbmc.getCondVisibility("!String.IsEmpty(Player.SeekNumeric)"):
             return True, self._seek_target_seconds(play_seconds)
 
         if xbmc.getCondVisibility("Player.Seeking") and self._explicit_seek_active():
-            return True, self._seek_target_seconds(play_seconds)
+            if not self._scrub_guard_active() or self._seek_ui_visible():
+                return True, self._seek_target_seconds(play_seconds)
 
         if not xbmc.getCondVisibility("Player.Paused"):
             return False, play_seconds
 
         if not self._seek_ui_visible():
+            return False, play_seconds
+
+        if self._scrub_guard_active():
             return False, play_seconds
 
         seek_label = xbmc.getInfoLabel("Player.SeekTime")
@@ -592,22 +728,40 @@ class TrickplayService:
 
         return False, play_seconds
 
+    def _adaptive_poll_ms(self) -> int:
+        if not self.player.isPlayingVideo():
+            generator = read_generator_settings()
+            if generator.enabled and generator.while_idle:
+                return POLL_MS_IDLE_GENERATOR
+            return POLL_MS_IDLE
+        return self.poll_ms
+
     def poll_seek_state(self) -> None:
+        try:
+            self._poll_seek_state()
+        except Exception as exc:
+            _log(f"Poll error: {exc}", xbmc.LOGERROR)
+            self._next_poll_ms = self.poll_ms
+
+    def _poll_seek_state(self) -> None:
         self._log_skin_profile()
         self.preview.poll()
+        self._ensure_playback_loaded()
 
         if not self.player.isPlayingVideo():
             if self.preview_active or self.preview_visible or self.was_seeking:
                 self._clear_preview_session()
             self.last_play_time = -1
-            self.playback_ready = False
+            self.generator.resume_after_playback()
+            self.library_batch.maybe_flush(True)
+            self.generator.maybe_idle_tick(True)
+            self._next_poll_ms = self._adaptive_poll_ms()
             return
 
-        now = time.monotonic()
-        if not self.playback_ready:
-            if now - self.playback_started_at >= 3.0:
-                self.playback_ready = True
-                self.last_play_time = _player_time_seconds(self.player)
+        self.generator.pause_for_playback()
+
+        if not self._preview_allowed():
+            self._next_poll_ms = self.poll_ms
             return
 
         play_seconds = _player_time_seconds(self.player)
@@ -620,6 +774,13 @@ class TrickplayService:
         compact_seekbar = dialog_seekbar and not video_osd
 
         scrubbing, target_second = self._is_scrubbing()
+        self._last_poll_scrubbing = scrubbing
+        seek_ui_rising = seek_ui and not self._had_seek_ui
+        self._last_poll_seek_ui = seek_ui
+
+        if seek_ui_rising or self._pending_seek_ui_warm:
+            self._prepare_seek_ui_preview(play_seconds)
+            self._pending_seek_ui_warm = False
 
         if (
             video_osd
@@ -632,10 +793,22 @@ class TrickplayService:
 
         self._had_compact_seekbar = compact_seekbar
 
+        if dialog_seekbar and not self._had_dialog_seekbar:
+            if self.last_preview_second >= 0 or self.preview_visible:
+                resync_preview_to_seekbar(force=True)
+        if not dialog_seekbar:
+            self._had_dialog_seekbar = False
+        else:
+            self._had_dialog_seekbar = True
+
         if not seek_ui:
+            self._had_seek_ui = False
             if self.preview_active or self.last_preview_second >= 0 or self.preview_visible:
                 self._clear_preview_session()
+            self._next_poll_ms = self._adaptive_poll_ms()
             return
+
+        self._had_seek_ui = True
 
         if scrubbing:
             self._touch_seek_hold()
@@ -649,11 +822,13 @@ class TrickplayService:
                 self._set_preview_visible(True)
             elif self.preview_visible:
                 self._set_preview_visible(False)
+            self._next_poll_ms = self._adaptive_poll_ms()
             return
 
         if not self.preview_active:
             if self.last_preview_second >= 0 or self.preview_visible:
                 self._clear_preview_session()
+            self._next_poll_ms = self._adaptive_poll_ms()
             return
 
         if self._preview_should_show(False):
@@ -670,9 +845,11 @@ class TrickplayService:
                     else play_seconds
                 )
                 self._set_preview_visible(True)
+            self._next_poll_ms = self._adaptive_poll_ms()
             return
 
         self._clear_preview_session()
+        self._next_poll_ms = self._adaptive_poll_ms()
 
     def run(self) -> None:
         _log(
@@ -680,9 +857,10 @@ class TrickplayService:
         )
         while not self.monitor.abortRequested():
             self.poll_seek_state()
-            if self.monitor.waitForAbort(self.poll_ms / 1000.0):
+            if self.monitor.waitForAbort(self._next_poll_ms / 1000.0):
                 break
         self.reset_playback_state()
+        self.generator.cancel()
         _log("Service stopped")
 
 
@@ -692,10 +870,22 @@ class KodiPlayer(xbmc.Player):
         self.service: TrickplayService = kwargs["service"]
         self._is_playing_video = False
 
-    def onAVStarted(self) -> None:
-        if self.isPlayingVideo():
+    def _start_trickplay_for_current_file(self) -> None:
+        if not self.isPlayingVideo():
+            return
+        try:
+            playing_file = self.getPlayingFile()
+        except RuntimeError:
+            return
+        if playing_file:
             self._is_playing_video = True
-            self.service.on_video_started(self.getPlayingFile())
+            self.service.on_video_started(playing_file)
+
+    def onAVStarted(self) -> None:
+        self._start_trickplay_for_current_file()
+
+    def onPlayBackStarted(self) -> None:
+        self._start_trickplay_for_current_file()
 
     def onPlayBackEnded(self) -> None:
         self._on_playback_stopped()

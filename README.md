@@ -1,6 +1,8 @@
 # service.trickplay
 
-Kodi background service that shows **Jellyfin trickplay** seek thumbnails while scrubbing video.
+<img width="424" height="395" alt="icon" src="https://github.com/user-attachments/assets/52bc6554-8d8f-4229-8801-80cecc7f0354" />
+
+Kodi background service that can generate/show **Jellyfin trickplay** or custom trickplay thumbnails.
 
 ## Skin integration required
 
@@ -67,11 +69,13 @@ Jellyfin stores trickplay sprites next to your media:
 ```text
 /path/to/Show.S01E01.mkv
 /path/to/Show.S01E01.trickplay/
-└── 320 - 10x10/
+└── 320 - 10x10 - 10000/
     ├── 0.jpg    # 10×10 grid of 320 px-wide thumbs (100 frames)
     ├── 1.jpg
     └── ...
 ```
+
+Legacy Jellyfin folders without an interval suffix (`320 - 10x10/`) are treated as **10000 ms** between thumbnails.
 
 When playback starts, the service locates the matching `.trickplay` folder, maps the seek position to a tile file and grid cell, crops the frame, and sets **DialogSeekBar window properties** for the skin to render. A background prefetch worker pre-crops neighbouring cells (direction-biased ±3–5 indices, plus cells in the current sprite tile) so stepping/scrubbing nearby positions is usually instant after the first frame.
 
@@ -91,14 +95,15 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 
 ## Requirements
 
-- Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin)
+- Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin), **or** use the built-in generator (see below)
 - **Skin edit** to `DialogSeekBar.xml` (see above)
 - **tools.ffmpeg-tools** — crops one frame from each sprite tile (required dependency; install from your Kodi repository before this addon)
 
 ## Settings
 
-- **Preferred tile width** — resolution folder to use (default `320` for `320 - 10x10`)
-- **Thumbnail interval (ms)** — Jellyfin default is `10000` (one thumb every 10 s)
+- **Preferred tile width** — resolution folder to use (default `320` for `320 - 10x10 - 10000`)
+- **Preview tile grid layout** — always visible: **From folder name** (default, reads `10x10` from `320 - 10x10 - 10000/`, etc.) or fixed **10×10**, **20×20**, **5×5**, **15×15**, **Custom** when sprites don't match the folder name
+- **Thumbnail interval (ms)** — used to select a matching sidecar folder and as fallback when the folder name has no interval (default `10000`)
 - **Seek poll interval (ms)** — refresh rate while scrubbing (default `100`)
 - **Skin profile** — auto-detect active skin, or force Estuary Mod v2 / Arctic Fuse 3
 - **Preview hold time (seconds)** — how long the preview stays after seeking stops (0 = until OSD closes, thumbnail follows playback; default 4)
@@ -116,6 +121,22 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 - **Prefetch queue size** — max pending background crops (default 48)
 - **Crop cache limit (MB)** — LRU cap for cropped JPEGs (default 500; 0 = unlimited)
 
+### Trickplay generator (Settings → Trickplay generator)
+
+Off by default. When disabled, all generator options are hidden.
+
+- **Enable trickplay generator** — master toggle
+- **Generate while idle** — when Kodi is not playing video, generate one missing sidecar at a time from the library folder (background service)
+- **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
+- **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
+- **Overwrite existing sidecars** — replace matching `{width} - {grid} - {intervalMs}/` under `.trickplay` when already present (default off; existing sidecars are skipped)
+- **Library folder** — root path for batch and idle scans (must be writable for sidecar output). **Configure** the generator here, press **OK** to save, then use **Run** on the add-on’s Information page to start batch generation (not from inside Configure). If the path is empty or missing, batch generation opens the full Kodi folder browser and saves your selection. Prefer your OS mount path (e.g. `/storage/remote-shares/…`) when available — it is faster than `nfs://` URLs for generation.
+- **Generator thumbnail interval (ms)** — time between generated frames; included in the sidecar folder name (default `10000`, e.g. `320 - 10x10 - 1000`)
+- **Tile grid layout** — grid written into the sidecar folder name (e.g. `320 - 20x20 - 10000`); uses **Preferred tile width** and **Generator thumbnail interval**
+- **Run** (add-on Information page) — scan the library folder and generate all missing sidecars with a progress dialog. Use **Configure** first and press **OK** so settings are saved before **Run**.
+
+Generation requires **write access** next to your media files. Pauses automatically during video playback.
+
 ## Installation
 
 1. Install **tools.ffmpeg-tools** from your Kodi repository (required).
@@ -128,7 +149,7 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 ## Supported paths
 
 - Direct local video files (`.mkv`, `.mp4`, …)
-- NFS/SMB paths (`nfs://`, `smb://`)
+- NFS/SMB paths (`nfs://`, `smb://`) — playback and sidecar lookup use Kodi VFS; **generation** prefers an OS-mounted path when the share is mounted on the device, otherwise streams the file through VFS into ffmpeg (slower, one full read per file)
 - `.strm` files that point to a local or network path
 
 Plugin / HTTP streams are skipped because Jellyfin trickplay sidecars are stored on disk next to the source file.

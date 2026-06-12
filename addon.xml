@@ -2,18 +2,21 @@
 
 <addon id="service.trickplay"
        name="Trickplay Preview"
-       version="1.5.4"
+       version="2.1.5"
        provider-name="Skippy-McSkipface">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
         <import addon="tools.ffmpeg-tools"/>
     </requires>
+    <extension point="xbmc.python.script" library="script_generator.py">
+        <provides>executable</provides>
+    </extension>
     <extension point="xbmc.service" library="service.py" start="login"/>
     <extension point="xbmc.addon.metadata">
         <platform>all</platform>
         <license>GPL-2.0-or-later</license>
         <summary lang="en">Shows Jellyfin trickplay seek thumbnails during video scrubbing.</summary>
-        <description lang="en">Reads pre-generated Jellyfin trickplay sprite tiles stored alongside your media files, crops the matching preview frame, and shows it via DialogSeekBar skin properties while you scrub. Copy resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml into your active skin and rename it DialogSeekBar.xml (take backup of old xml first!). Requires tools.ffmpeg-tools for thumbnail cropping.</description>
+        <description lang="en">Reads or generates Jellyfin trickplay sprite tiles alongside your media, crops preview frames while you scrub, and shows them via DialogSeekBar skin properties. Optional ffmpeg generator writes .trickplay sidecars; configure the generator, press OK, then use Run on the add-on Information page for batch generation. Copy resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml into your active skin and rename it DialogSeekBar.xml (take backup of old xml first!). Requires tools.ffmpeg-tools.</description>
         <assets>
             <icon>icon.png</icon>
             <fanart>fanart.jpg</fanart>

@@ -18,16 +18,16 @@ msgid "Preferred tile width (px)"
 msgstr "Preferred tile width (px)"
 
 msgctxt "#32003"
-msgid "Resolution subfolder to prefer inside the .trickplay directory (e.g. 320 for '320 - 10x10'). Falls back to the first resolution found."
-msgstr "Resolution subfolder to prefer inside the .trickplay directory (e.g. 320 for '320 - 10x10'). Falls back to the first resolution found."
+msgid "Resolution subfolder to prefer inside the .trickplay directory (e.g. 320 for '320 - 10x10 - 10000'). Falls back to the first resolution found."
+msgstr "Resolution subfolder to prefer inside the .trickplay directory (e.g. 320 for '320 - 10x10 - 10000'). Falls back to the first resolution found."
 
 msgctxt "#32004"
 msgid "Thumbnail interval (ms)"
 msgstr "Thumbnail interval (ms)"
 
 msgctxt "#32005"
-msgid "Time between trickplay images. Jellyfin default is 10000 (one frame every 10 seconds)."
-msgstr "Time between trickplay images. Jellyfin default is 10000 (one frame every 10 seconds)."
+msgid "Preferred interval when selecting a sidecar folder and fallback when the folder name has no interval suffix (legacy '320 - 10x10' uses 10000 ms)."
+msgstr "Preferred interval when selecting a sidecar folder and fallback when the folder name has no interval suffix (legacy '320 - 10x10' uses 10000 ms)."
 
 msgctxt "#32006"
 msgid "Seek poll interval (ms)"
@@ -46,12 +46,12 @@ msgid "Write detailed trickplay resolution messages to the Kodi log."
 msgstr "Write detailed trickplay resolution messages to the Kodi log."
 
 msgctxt "#32010"
-msgid "Automatic tile calculation"
-msgstr "Automatic tile calculation"
+msgid "Automatic tile calculation (legacy)"
+msgstr "Automatic tile calculation (legacy)"
 
 msgctxt "#32011"
-msgid "Use the grid size from the .trickplay folder name (e.g. 10x10 in '320 - 10x10') and divide each sprite JPG evenly. Recommended for Jellyfin trickplay."
-msgstr "Use the grid size from the .trickplay folder name (e.g. 10x10 in '320 - 10x10') and divide each sprite JPG evenly. Recommended for Jellyfin trickplay."
+msgid "Deprecated; use Preview tile grid layout instead."
+msgstr "Deprecated; use Preview tile grid layout instead."
 
 msgctxt "#32012"
 msgid "Number of tiles"
@@ -164,3 +164,191 @@ msgstr "Preview opacity (%)"
 msgctxt "#32039"
 msgid "Overall preview transparency (0 = invisible, 100 = fully opaque). Default 100."
 msgstr "Overall preview transparency (0 = invisible, 100 = fully opaque). Default 100."
+
+msgctxt "#32040"
+msgid "Trickplay generator"
+msgstr "Trickplay generator"
+
+msgctxt "#32041"
+msgid "Custom…"
+msgstr "Custom…"
+
+msgctxt "#32042"
+msgid "Preview tile grid layout"
+msgstr "Preview tile grid layout"
+
+msgctxt "#32043"
+msgid "How to divide each sprite JPG when cropping preview thumbnails. Use From folder name for Jellyfin or generator sidecars; pick 20×20 (etc.) if your tiles use a different grid than the folder name."
+msgstr "How to divide each sprite JPG when cropping preview thumbnails. Use From folder name for Jellyfin or generator sidecars; pick 20×20 (etc.) if your tiles use a different grid than the folder name."
+
+msgctxt "#32044"
+msgid "10×10"
+msgstr "10×10"
+
+msgctxt "#32045"
+msgid "20×20"
+msgstr "20×20"
+
+msgctxt "#32046"
+msgid "5×5"
+msgstr "5×5"
+
+msgctxt "#32047"
+msgid "15×15"
+msgstr "15×15"
+
+msgctxt "#32050"
+msgid "Enable trickplay generator"
+msgstr "Enable trickplay generator"
+
+msgctxt "#32051"
+msgid "Generate Jellyfin-compatible .trickplay sprite sidecars with ffmpeg. When disabled, all generator options are hidden."
+msgstr "Generate Jellyfin-compatible .trickplay sprite sidecars with ffmpeg. When disabled, all generator options are hidden."
+
+msgctxt "#32052"
+msgid "Generate while idle"
+msgstr "Generate while idle"
+
+msgctxt "#32053"
+msgid "When Kodi is not playing video, generate trickplay for one library file at a time from the library folder below."
+msgstr "When Kodi is not playing video, generate trickplay for one library file at a time from the library folder below."
+
+msgctxt "#32054"
+msgid "Overwrite existing sidecars"
+msgstr "Overwrite existing sidecars"
+
+msgctxt "#32055"
+msgid "Regenerate and replace trickplay when a matching .trickplay folder already exists for the preferred width and grid. Off by default."
+msgstr "Regenerate and replace trickplay when a matching .trickplay folder already exists for the preferred width and grid. Off by default."
+
+msgctxt "#32056"
+msgid "Library folder"
+msgstr "Library folder"
+
+msgctxt "#32057"
+msgid "Root folder scanned for batch generation and idle generation. Uses the preferred tile width, interval, and generator grid above. Press OK when leaving Configure to save changes. Start batch generation from the add-on Information page (Run), not from inside Configure."
+msgstr "Root folder scanned for batch generation and idle generation. Uses the preferred tile width, interval, and generator grid above. Press OK when leaving Configure to save changes. Start batch generation from the add-on Information page (Run), not from inside Configure."
+
+msgctxt "#32058"
+msgid "Grid used when writing new .trickplay sidecars (folder name e.g. '320 - 10x10 - 10000')."
+msgstr "Grid used when writing new .trickplay sidecars (folder name e.g. '320 - 10x10 - 10000')."
+
+msgctxt "#32059"
+msgid "Run library batch generation…"
+msgstr "Run library batch generation…"
+
+msgctxt "#32060"
+msgid "Scan the library folder and generate trickplay for all videos missing sidecars. Shows a progress dialog. Run from the add-on Information page after saving Configure with OK."
+msgstr "Scan the library folder and generate trickplay for all videos missing sidecars. Shows a progress dialog. Run from the add-on Information page after saving Configure with OK."
+
+msgctxt "#32061"
+msgid "Select library folder"
+msgstr "Select library folder"
+
+msgctxt "#32062"
+msgid "Enable the trickplay generator in settings first."
+msgstr "Enable the trickplay generator in settings first."
+
+msgctxt "#32063"
+msgid "Batch trickplay generation"
+msgstr "Batch trickplay generation"
+
+msgctxt "#32064"
+msgid "Generate trickplay for all videos under:\n%s"
+msgstr "Generate trickplay for all videos under:\n%s"
+
+msgctxt "#32065"
+msgid "Use this folder"
+msgstr "Use this folder"
+
+msgctxt "#32066"
+msgid "Choose another…"
+msgstr "Choose another…"
+
+msgctxt "#32067"
+msgid "No videos need trickplay generation in that folder."
+msgstr "No videos need trickplay generation in that folder."
+
+msgctxt "#32068"
+msgid "Generate trickplay for %d video(s)? This may take a long time."
+msgstr "Generate trickplay for %d video(s)? This may take a long time."
+
+msgctxt "#32083"
+msgid "Generate trickplay for %d of %d video(s)? %d already have matching sidecars and will be skipped."
+msgstr "Generate trickplay for %d of %d video(s)? %d already have matching sidecars and will be skipped."
+
+msgctxt "#32069"
+msgid "Generating trickplay…"
+msgstr "Generating trickplay…"
+
+msgctxt "#32070"
+msgid "File %d of %d"
+msgstr "File %d of %d"
+
+msgctxt "#32071"
+msgid "Done. Success: %d  Failed: %d"
+msgstr "Done. Success: %d  Failed: %d"
+
+msgctxt "#32072"
+msgid "From folder name"
+msgstr "From folder name"
+
+msgctxt "#32073"
+msgid "Generator tile grid layout"
+msgstr "Generator tile grid layout"
+
+msgctxt "#32074"
+msgid "Generator thumbnail interval (ms)"
+msgstr "Generator thumbnail interval (ms)"
+
+msgctxt "#32075"
+msgid "Time between generated preview frames. Written into the sidecar folder name (e.g. '320 - 10x10 - 1000'). Playback preview uses the interval from the folder when present; legacy folders without an interval use 10000 ms."
+msgstr "Time between generated preview frames. Written into the sidecar folder name (e.g. '320 - 10x10 - 1000'). Playback preview uses the interval from the folder when present; legacy folders without an interval use 10000 ms."
+
+msgctxt "#32076"
+msgid "Frame extraction mode"
+msgstr "Frame extraction mode"
+
+msgctxt "#32077"
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Experimental: one file open with seek between captures (PyAV when available, otherwise one ffmpeg process with many seeks per tile)."
+msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Experimental: one file open with seek between captures (PyAV when available, otherwise one ffmpeg process with many seeks per tile)."
+
+msgctxt "#32080"
+msgid "Accurate (slow)"
+msgstr "Accurate (slow)"
+
+msgctxt "#32081"
+msgid "Fast"
+msgstr "Fast"
+
+msgctxt "#32082"
+msgid "Experimental"
+msgstr "Experimental"
+
+msgctxt "#32078"
+msgid "Stop batch on first failure"
+msgstr "Stop batch on first failure"
+
+msgctxt "#32079"
+msgid "When running Generate trickplay for library, stop the batch after the first file that fails instead of continuing with the remaining videos."
+msgstr "When running Generate trickplay for library, stop the batch after the first file that fails instead of continuing with the remaining videos."
+
+msgctxt "#32084"
+msgid "Generate on library update"
+msgstr "Generate on library update"
+
+msgctxt "#32085"
+msgid "After a video library scan finishes, generate trickplay for videos added during that scan. Listens for VideoLibrary.OnAdd and OnUpdate (added) notifications."
+msgstr "After a video library scan finishes, generate trickplay for videos added during that scan. Listens for VideoLibrary.OnAdd and OnUpdate (added) notifications."
+
+msgctxt "#32086"
+msgid "Library update: only when not playing"
+msgstr "Library update: only when not playing"
+
+msgctxt "#32087"
+msgid "Wait until Kodi is not playing video before starting trickplay generation for newly added library items."
+msgstr "Wait until Kodi is not playing video before starting trickplay generation for newly added library items."
+
+msgctxt "#32088"
+msgid "That folder is not a valid library path. Choose a folder that contains your video files (for example an NFS share or /storage/remote-shares/…)."
+msgstr "That folder is not a valid library path. Choose a folder that contains your video files (for example an NFS share or /storage/remote-shares/…)."

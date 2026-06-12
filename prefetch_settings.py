@@ -9,6 +9,8 @@ try:
 except ImportError:  # pragma: no cover
     xbmcaddon = None  # type: ignore[assignment]
 
+from settings_cache import get_cached
+
 
 @dataclass(frozen=True)
 class PrefetchSettings:
@@ -53,10 +55,14 @@ def _setting_bool(setting_id: str, default: bool) -> bool:
     try:
         return addon.getSettingBool(setting_id)
     except (RuntimeError, TypeError, ValueError):
+        pass
+    try:
         raw = addon.getSettingString(setting_id)
         if not raw:
             return default
         return raw.strip().lower() in ("true", "1", "yes", "on")
+    except (RuntimeError, TypeError, ValueError):
+        return default
 
 
 def _setting_int(setting_id: str, default: int) -> int:
@@ -65,15 +71,16 @@ def _setting_int(setting_id: str, default: int) -> int:
         return default
     try:
         return int(addon.getSettingInt(setting_id))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RuntimeError):
+        pass
+    try:
         raw = addon.getSettingString(setting_id)
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            return default
+        return int(raw)
+    except (TypeError, ValueError, RuntimeError):
+        return default
 
 
-def read_prefetch_settings() -> PrefetchSettings:
+def _load_prefetch_settings() -> PrefetchSettings:
     return PrefetchSettings(
         enabled=_setting_bool("prefetch_enabled", True),
         on_start=_setting_bool("prefetch_on_start", True),
@@ -83,3 +90,7 @@ def read_prefetch_settings() -> PrefetchSettings:
         max_queue=max(_setting_int("prefetch_max_queue", 48), 8),
         cache_max_mb=max(_setting_int("cache_max_mb", 500), 0),
     )
+
+
+def read_prefetch_settings() -> PrefetchSettings:
+    return get_cached("prefetch", _load_prefetch_settings)

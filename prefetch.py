@@ -10,9 +10,11 @@ import xbmc
 
 from prefetch_settings import PrefetchSettings, read_prefetch_settings
 from thumb_cropper import (
+    ThumbCacheKey,
     get_cached_thumb_path,
     get_cropped_thumb_path,
     temp_tile_copy,
+    thumb_cache_key,
 )
 from trickplay_resolver import (
     TrickplayLookup,
@@ -24,8 +26,8 @@ MAX_TILE_ENQUEUE = 20
 IDLE_TILE_MAX_ENQUEUE = 100
 
 
-def _cache_key(lookup: TrickplayLookup) -> tuple[str, int, int, int, int]:
-    return (
+def _cache_key(lookup: TrickplayLookup) -> ThumbCacheKey:
+    return thumb_cache_key(
         lookup.tile_path,
         lookup.col,
         lookup.row,

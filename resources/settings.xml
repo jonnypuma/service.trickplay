@@ -32,17 +32,41 @@
 
                 </setting>
 
-                <setting id="auto_tile_calculation" type="boolean" label="32010" help="32011">
+                <setting id="display_tile_grid" type="string" label="32042" help="32043">
 
                     <level>0</level>
 
-                    <default>true</default>
+                    <default>auto</default>
 
-                    <control type="toggle"/>
+                    <constraints>
+
+                        <options>
+
+                            <option label="32072">auto</option>
+
+                            <option label="32044">10x10</option>
+
+                            <option label="32045">20x20</option>
+
+                            <option label="32046">5x5</option>
+
+                            <option label="32047">15x15</option>
+
+                            <option label="32041">custom</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32042</heading>
+
+                    </control>
 
                 </setting>
 
-                <setting id="manual_tile_grid" type="string" label="32012" help="32013">
+                <setting id="display_tile_grid_custom" type="string" label="32012" help="32013">
 
                     <level>0</level>
 
@@ -64,11 +88,53 @@
 
                         <dependency type="visible">
 
-                            <condition setting="auto_tile_calculation">false</condition>
+                            <condition setting="display_tile_grid">custom</condition>
 
                         </dependency>
 
                     </dependencies>
+
+                </setting>
+
+                <setting id="auto_tile_calculation" type="boolean" label="32010" help="32011">
+
+                    <level>4</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="display_tile_grid_preset" type="string" label="32042" help="32043">
+
+                    <level>4</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <allowempty>false</allowempty>
+
+                    </constraints>
+
+                    <control type="edit" format="string"/>
+
+                </setting>
+
+                <setting id="manual_tile_grid" type="string" label="32012" help="32013">
+
+                    <level>4</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <allowempty>false</allowempty>
+
+                    </constraints>
+
+                    <control type="edit" format="string"/>
 
                 </setting>
 
@@ -379,6 +445,304 @@
                         <heading>32035</heading>
 
                     </control>
+
+                </setting>
+
+            </group>
+
+            <group id="g3" label="32040">
+
+                <setting id="generator_enabled" type="boolean" label="32050" help="32051">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="generator_while_idle" type="boolean" label="32052" help="32053">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_on_library_update" type="boolean" label="32084" help="32085">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_on_library_update_while_idle" type="boolean" label="32086" help="32087">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                            <condition setting="generator_on_library_update">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_overwrite_existing" type="boolean" label="32054" help="32055">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_extract_mode" type="string" label="32076" help="32077">
+
+                    <level>0</level>
+
+                    <default>fast</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32080">accurate</option>
+
+                            <option label="32081">fast</option>
+
+                            <option label="32082">experimental</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32076</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_stop_on_failure" type="boolean" label="32078" help="32079">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_library_path" type="path" label="32056" help="32057">
+
+                    <level>0</level>
+
+                    <default/>
+
+                    <constraints>
+
+                        <allowempty>true</allowempty>
+
+                        <writable>false</writable>
+
+                    </constraints>
+
+                    <control type="button" format="path">
+
+                        <heading>32056</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_interval_ms" type="integer" label="32074" help="32075">
+
+                    <level>0</level>
+
+                    <default>10000</default>
+
+                    <constraints>
+
+                        <minimum>1000</minimum>
+
+                        <maximum>60000</maximum>
+
+                        <step>1000</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32074</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_tile_grid_preset" type="string" label="32073" help="32058">
+
+                    <level>0</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32044">10x10</option>
+
+                            <option label="32045">20x20</option>
+
+                            <option label="32046">5x5</option>
+
+                            <option label="32047">15x15</option>
+
+                            <option label="32041">custom</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32073</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_tile_grid_custom" type="string" label="32012" help="32013">
+
+                    <level>0</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <allowempty>false</allowempty>
+
+                    </constraints>
+
+                    <control type="edit" format="string">
+
+                        <heading>32012</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <and>
+
+                                <condition setting="generator_enabled">true</condition>
+
+                                <condition setting="generator_tile_grid_preset">custom</condition>
+
+                            </and>
+
+                        </dependency>
+
+                    </dependencies>
 
                 </setting>
 

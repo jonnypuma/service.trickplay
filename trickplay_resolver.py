@@ -11,9 +11,13 @@ import xbmcvfs
 
 from thumb_cropper import probe_image_dimensions
 
-# Jellyfin stores tiles under: {basename}.trickplay/{width} - {tileW}x{tileH}/{index}.jpg
+# Jellyfin stores tiles under:
+# {basename}.trickplay/{width} - {tileW}x{tileH}/{index}.jpg
+# {basename}.trickplay/{width} - {tileW}x{tileH} - {intervalMs}/{index}.jpg
+DEFAULT_FOLDER_INTERVAL_MS = 10000
 _RESOLUTION_DIR_RE = re.compile(
-    r"^(?P<width>\d+)\s*-\s*(?P<tile_w>\d+)x(?P<tile_h>\d+)$",
+    r"^(?P<width>\d+)\s*-\s*(?P<tile_w>\d+)x(?P<tile_h>\d+)"
+    r"(?:\s*-\s*(?P<interval_ms>\d+))?$",
     re.IGNORECASE,
 )
 _TILE_FILE_RE = re.compile(r"^\d+\.jpg$", re.IGNORECASE)
@@ -29,6 +33,7 @@ class TrickplayResolution:
     tile_height: int
     tiles_dir: str
     tile_paths: tuple[str, ...]
+    interval_ms: int = DEFAULT_FOLDER_INTERVAL_MS
     thumb_width: int = 0
     thumb_height: int = 0
     tile_image_width: int = 0
@@ -104,11 +109,34 @@ def trickplay_root_for_media(media_path: str) -> str:
     return f"{base}.trickplay"
 
 
-def _list_resolution_dirs(trickplay_root: str, debug: bool = False) -> list[tuple[int, TrickplayResolution]]:
+def format_resolution_dir_name(
+    width: int,
+    tile_width: int,
+    tile_height: int,
+    interval_ms: int = DEFAULT_FOLDER_INTERVAL_MS,
+) -> str:
+    return f"{width} - {tile_width}x{tile_height} - {interval_ms}"
+
+
+def parse_resolution_dir_name(name: str) -> tuple[int, int, int, int] | None:
+    match = _RESOLUTION_DIR_RE.match(name)
+    if not match:
+        return None
+    interval_raw = match.group("interval_ms")
+    interval_ms = int(interval_raw) if interval_raw else DEFAULT_FOLDER_INTERVAL_MS
+    return (
+        int(match.group("width")),
+        int(match.group("tile_w")),
+        int(match.group("tile_h")),
+        max(interval_ms, 1),
+    )
+
+
+def _list_resolution_dirs(trickplay_root: str, debug: bool = False) -> list[TrickplayResolution]:
     if not xbmcvfs.exists(trickplay_root):
         return []
 
-    resolutions: list[tuple[int, TrickplayResolution]] = []
+    resolutions: list[TrickplayResolution] = []
     try:
         entries = xbmcvfs.listdir(trickplay_root)
     except OSError:
@@ -119,27 +147,25 @@ def _list_resolution_dirs(trickplay_root: str, debug: bool = False) -> list[tupl
         subdirs = entries[0]
 
     for name in subdirs:
-        match = _RESOLUTION_DIR_RE.match(name)
-        if not match:
+        parsed = parse_resolution_dir_name(name)
+        if parsed is None:
             continue
 
+        width, tile_w, tile_h, interval_ms = parsed
         tiles_dir = _vfs_join(trickplay_root, name)
         tile_paths = _list_tile_paths(tiles_dir, debug=debug)
         if not tile_paths:
             _log_debug(debug, f"No tile JPGs found in {tiles_dir}")
             continue
 
-        width = int(match.group("width"))
         resolutions.append(
-            (
-                width,
-                TrickplayResolution(
-                    width=width,
-                    tile_width=int(match.group("tile_w")),
-                    tile_height=int(match.group("tile_h")),
-                    tiles_dir=tiles_dir,
-                    tile_paths=tile_paths,
-                ),
+            TrickplayResolution(
+                width=width,
+                tile_width=tile_w,
+                tile_height=tile_h,
+                tiles_dir=tiles_dir,
+                tile_paths=tile_paths,
+                interval_ms=interval_ms,
             )
         )
 
@@ -170,6 +196,7 @@ def _list_tile_paths(tiles_dir: str, debug: bool = False) -> tuple[str, ...]:
 def select_resolution(
     trickplay_root: str,
     preferred_width: int,
+    preferred_interval_ms: int = DEFAULT_FOLDER_INTERVAL_MS,
     debug: bool = False,
 ) -> TrickplayResolution | None:
     resolutions = _list_resolution_dirs(trickplay_root, debug=debug)
@@ -177,19 +204,37 @@ def select_resolution(
         _log_debug(debug, f"No trickplay resolutions under {trickplay_root}")
         return None
 
-    by_width = {width: data for width, data in resolutions}
-    if preferred_width in by_width:
-        chosen = by_width[preferred_width]
+    exact = [
+        res
+        for res in resolutions
+        if res.width == preferred_width and res.interval_ms == preferred_interval_ms
+    ]
+    if exact:
+        chosen = exact[0]
         _log(
-            f"Using preferred resolution {preferred_width}px at {chosen.tiles_dir} "
-            f"({len(chosen.tile_paths)} tile file(s))"
+            f"Using preferred resolution {preferred_width}px / {preferred_interval_ms}ms "
+            f"at {chosen.tiles_dir} ({len(chosen.tile_paths)} tile file(s))"
         )
         return chosen
 
-    chosen = sorted(resolutions, key=lambda item: item[0])[0][1]
+    same_width = [res for res in resolutions if res.width == preferred_width]
+    if same_width:
+        chosen = min(
+            same_width,
+            key=lambda res: abs(res.interval_ms - preferred_interval_ms),
+        )
+        _log(
+            f"Using resolution {chosen.width}px / {chosen.interval_ms}ms at "
+            f"{chosen.tiles_dir} ({len(chosen.tile_paths)} tile file(s)); "
+            f"preferred interval {preferred_interval_ms}ms not found"
+        )
+        return chosen
+
+    chosen = sorted(resolutions, key=lambda res: res.width)[0]
     _log(
-        f"Preferred width {preferred_width}px not found; using {chosen.width}px at "
-        f"{chosen.tiles_dir} ({len(chosen.tile_paths)} tile file(s))"
+        f"Preferred width {preferred_width}px not found; using {chosen.width}px / "
+        f"{chosen.interval_ms}ms at {chosen.tiles_dir} "
+        f"({len(chosen.tile_paths)} tile file(s))"
     )
     return chosen
 
@@ -324,6 +369,7 @@ def enrich_resolution(
         tile_height=grid_rows,
         tiles_dir=resolution.tiles_dir,
         tile_paths=resolution.tile_paths,
+        interval_ms=resolution.interval_ms,
         thumb_width=thumb_width,
         thumb_height=thumb_height,
         tile_image_width=tile_w if tile_w > 0 else thumb_width * grid_cols,
@@ -333,6 +379,7 @@ def enrich_resolution(
     _log_debug(
         debug,
         f"Enriched trickplay: grid={grid_cols}x{grid_rows}, "
+        f"interval={resolution.interval_ms}ms, "
         f"thumb={thumb_width}x{thumb_height}, "
         f"count={thumbnail_count}, tiles={len(resolution.tile_paths)}",
     )
@@ -429,14 +476,20 @@ def load_trickplay_for_file(
         return None
 
     trickplay_root = trickplay_root_for_media(media_path)
-    resolution = select_resolution(trickplay_root, preferred_width, debug=debug)
+    resolution = select_resolution(
+        trickplay_root,
+        preferred_width,
+        preferred_interval_ms=interval_ms,
+        debug=debug,
+    )
     if resolution is None:
         return None
 
+    folder_interval_ms = resolution.interval_ms
     return enrich_resolution(
         resolution,
         duration_seconds,
-        interval_ms,
+        folder_interval_ms,
         auto_tile_grid=auto_tile_grid,
         manual_tile_grid=manual_tile_grid,
         debug=debug,
