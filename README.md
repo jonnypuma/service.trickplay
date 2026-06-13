@@ -104,6 +104,7 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 - **Preferred tile width** — resolution folder to use (default `320` for `320 - 10x10 - 10000`)
 - **Preview tile grid layout** — always visible: **From folder name** (default, reads `10x10` from `320 - 10x10 - 10000/`, etc.) or fixed **10×10**, **20×20**, **5×5**, **15×15**, **Custom** when sprites don't match the folder name
 - **Thumbnail interval (ms)** — used to select a matching sidecar folder and as fallback when the folder name has no interval (default `10000`)
+- **Interval selection** — when several sidecar folders share the same tile width (e.g. `320 - 10x10 - 5000` and `320 - 10x10 - 10000`), **Preferred interval** uses the thumbnail interval setting; **Shortest interval** picks the finest-grained previews available
 - **Seek poll interval (ms)** — refresh rate while scrubbing (default `100`)
 - **Skin profile** — auto-detect active skin, or force Estuary Mod v2 / Arctic Fuse 3
 - **Preview hold time (seconds)** — how long the preview stays after seeking stops (0 = until OSD closes, thumbnail follows playback; default 4)
@@ -129,13 +130,86 @@ Off by default. When disabled, all generator options are hidden.
 - **Generate while idle** — when Kodi is not playing video, generate one missing sidecar at a time from the library folder (background service)
 - **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
 - **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
-- **Overwrite existing sidecars** — replace matching `{width} - {grid} - {intervalMs}/` under `.trickplay` when already present (default off; existing sidecars are skipped)
+- **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default), or **Experimental**
+- **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary for generation. Leave empty to auto-use that default folder when installed, otherwise **tools.ffmpeg-tools**. Playback cropping always uses **tools.ffmpeg-tools**. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
+- **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires a generator ffmpeg with **zscale** or **libplacebo** for good results; **tools.ffmpeg-tools** alone is tonemap-only and may look dull on HDR. With tone mapping on, **Run** can prompt to download a BtbN build if none is installed.
+- **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in the add-on folder or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the add-on folder.
+- **Overwrite existing sidecars** — replace matching sidecar folders when already present (default off). Skips Jellyfin legacy folders such as `320 - 10x10/` (treated as 10000 ms) when generator settings match width, grid, and interval
 - **Library folder** — root path for batch and idle scans (must be writable for sidecar output). **Configure** the generator here, press **OK** to save, then use **Run** on the add-on’s Information page to start batch generation (not from inside Configure). If the path is empty or missing, batch generation opens the full Kodi folder browser and saves your selection. Prefer your OS mount path (e.g. `/storage/remote-shares/…`) when available — it is faster than `nfs://` URLs for generation.
 - **Generator thumbnail interval (ms)** — time between generated frames; included in the sidecar folder name (default `10000`, e.g. `320 - 10x10 - 1000`)
 - **Tile grid layout** — grid written into the sidecar folder name (e.g. `320 - 20x20 - 10000`); uses **Preferred tile width** and **Generator thumbnail interval**
 - **Run** (add-on Information page) — scan the library folder and generate all missing sidecars with a progress dialog. Use **Configure** first and press **OK** so settings are saved before **Run**.
 
 Generation requires **write access** next to your media files. Pauses automatically during video playback.
+
+### Custom ffmpeg for HDR generation
+
+**tools.ffmpeg-tools** (required for playback preview cropping) includes `tonemap` but not **zscale** or **libplacebo**, so HDR trickplay generation can look washed out unless you install a fuller ffmpeg for the **generator** only.
+
+Pre-built releases: **[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)**.
+
+#### Which download?
+
+| Device / OS | BtbN asset | Notes |
+|---|---|---|
+| CoreELEC / LibreELEC on **Ugoos AM9 Pro** and similar | `ffmpeg-…-linuxarm64-gpl-8.1.tar.xz` | Static **`-gpl-8.1`** |
+| **x86_64** Linux (Ryzen headless Kodi, PC, etc.) | `ffmpeg-…-linux64-gpl-8.1.tar.xz` | Static **`-gpl-8.1`** |
+| Windows Kodi | `ffmpeg-…-win64-gpl-8.1.zip` | **`-gpl-8.1`** zip |
+
+On **Linux / CoreELEC**, prefer **`-gpl`** (not `-gpl-shared`). The shared tarball often exposes only `tonemap` on embedded Kodi even with `LD_LIBRARY_PATH` set. The static `-gpl` binary is larger but works without a separate `lib/` tree.
+
+#### Automatic install (batch Run)
+
+When **HDR tone mapping** is enabled and no HDR-capable generator ffmpeg is found, **Run** on the add-on Information page offers to download and install a pinned BtbN **`-gpl-8.1`** build:
+
+| Platform | Install location |
+|---|---|
+| CoreELEC / LibreELEC / Linux Kodi | `/storage/.kodi/system/ffmpeg/` |
+| Windows Kodi | `special://profile/addon_data/service.trickplay/system/ffmpeg/` |
+
+You can decline and continue with **tools.ffmpeg-tools** (HDR previews may look washed out), or install manually using the steps below.
+
+When **HDR dovi_tool fallback** is enabled and `dovi_tool` is not in the add-on folder or on PATH, **Run** also offers to download **dovi_tool 2.3.2** into the add-on root (beside `addon.xml`).
+
+Pinned release (autobuild-2026-06-13-13-31): [linuxarm64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linuxarm64-gpl-8.1.tar.xz), [linux64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linux64-gpl-8.1.tar.xz), [win64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-win64-gpl-8.1.zip), [winarm64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-winarm64-gpl-8.1.zip).
+
+Pinned **dovi_tool** (2.3.2): [linuxarm64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-aarch64-unknown-linux-musl.tar.gz), [linux64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-x86_64-unknown-linux-musl.tar.gz), [win64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-x86_64-pc-windows-msvc.zip), [winarm64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-aarch64-pc-windows-msvc.zip).
+
+After download, verify on the device:
+
+```bash
+/storage/.kodi/system/ffmpeg/bin/ffmpeg -hide_banner -filters 2>&1 | grep -E 'zscale|libplacebo|tonemap'
+```
+
+On Windows, add the install `bin/` folder to `PATH` if needed before running the same check.
+
+You want **zscale** and/or **libplacebo**, not just `tonemap`. If you only see `tonemap`, replace a broken **`-gpl-shared`** Linux install with **`-gpl`** (or re-run **Run** on add-on **3.0.10+**).
+
+#### Where to extract (CoreELEC / LibreELEC)
+
+Default layout (auto-detected when **Generator ffmpeg path** is empty):
+
+```text
+/storage/.kodi/system/ffmpeg/
+└── bin/
+    ├── ffmpeg
+    └── ffprobe
+```
+
+(`lib/` is only needed for Windows gpl-shared or manual Linux shared installs.)
+
+Steps:
+
+1. Extract the **`-gpl`** tarball on a PC or on the box (Linux) or **`-gpl-shared`** zip (Windows).
+2. Copy the **`bin`** folder into `/storage/.kodi/system/ffmpeg/` (and **`lib`** on Windows).
+3. Make binaries executable: `chmod +x /storage/.kodi/system/ffmpeg/bin/ffmpeg /storage/.kodi/system/ffmpeg/bin/ffprobe`
+4. Leave **Generator ffmpeg path** empty (uses the folder above) or set it explicitly to `/storage/.kodi/system/ffmpeg/` or `/storage/.kodi/system/ffmpeg/bin/ffmpeg`.
+
+On **x86_64** Linux Kodi, use the same folder layout under `/storage/.kodi/system/ffmpeg/` (or set **Generator ffmpeg path** to your install location).
+
+The add-on logs the chosen binary at generation start, e.g. `Generator ffmpeg: … (default (/storage/.kodi/system/ffmpeg))`. With HDR tone mapping enabled you should see `using zscale + tonemap` or `using libplacebo` in `kodi.log`.
+
+**Note:** Preview cropping during playback still uses **tools.ffmpeg-tools**; only batch/idle **generation** uses the custom ffmpeg.
 
 ## Installation
 

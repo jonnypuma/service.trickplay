@@ -16,6 +16,7 @@ if _ADDON_PATH and _ADDON_PATH not in sys.path:
     sys.path.insert(0, _ADDON_PATH)
 
 from generator_settings import read_generator_settings, save_generator_library_path
+from hdr_ffmpeg_installer import prompt_and_install_generator_tools
 from library_path_browse import browse_library_folder
 from trickplay_generator import collect_generation_candidates, generate_trickplay_for_media
 
@@ -59,6 +60,9 @@ def run_batch_dialog() -> None:
         "Generator settings: "
         f"enabled={settings.enabled} library_path={settings.library_path!r} "
         f"overwrite={settings.overwrite_existing} extract_mode={settings.extract_mode} "
+        f"hdr_tone_map={settings.hdr_tone_map} "
+        f"hdr_dovi_tool_fallback={settings.hdr_dovi_tool_fallback} "
+        f"ffmpeg_path={settings.ffmpeg_path!r} "
         f"stop_on_failure={settings.stop_on_failure} "
         f"tile_width={settings.tile_width} "
         f"grid={settings.grid} interval_ms={settings.interval_ms}"
@@ -108,6 +112,27 @@ def run_batch_dialog() -> None:
             xbmcgui.NOTIFICATION_INFO,
             4000,
         )
+        return
+
+    if not prompt_and_install_generator_tools(
+        hdr_tone_map_enabled=settings.hdr_tone_map,
+        hdr_dovi_tool_fallback_enabled=settings.hdr_dovi_tool_fallback,
+        custom_ffmpeg_path=settings.ffmpeg_path,
+        title=_ADDON.getLocalizedString(32063),
+        ffmpeg_prompt_yes=_ADDON.getLocalizedString(32099),
+        dovi_prompt_yes=_ADDON.getLocalizedString(32106),
+        prompt_no=_ADDON.getLocalizedString(32100),
+        download_yes=_ADDON.getLocalizedString(32105),
+        ffmpeg_progress_title=_ADDON.getLocalizedString(32101),
+        dovi_progress_title=_ADDON.getLocalizedString(32107),
+        ffmpeg_unsupported_message=_ADDON.getLocalizedString(32102),
+        dovi_unsupported_message=_ADDON.getLocalizedString(32108),
+        ffmpeg_failed_message=_ADDON.getLocalizedString(32103),
+        dovi_failed_message=_ADDON.getLocalizedString(32109),
+        ffmpeg_success_message=_ADDON.getLocalizedString(32104),
+        dovi_success_message=_ADDON.getLocalizedString(32110),
+    ):
+        _log("Batch aborted after HDR ffmpeg install prompt")
         return
 
     if plan.skipped_existing > 0:

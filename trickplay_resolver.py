@@ -15,6 +15,8 @@ from thumb_cropper import probe_image_dimensions
 # {basename}.trickplay/{width} - {tileW}x{tileH}/{index}.jpg
 # {basename}.trickplay/{width} - {tileW}x{tileH} - {intervalMs}/{index}.jpg
 DEFAULT_FOLDER_INTERVAL_MS = 10000
+INTERVAL_PREF_PREFERRED = "preferred"
+INTERVAL_PREF_SHORTEST = "shortest"
 _RESOLUTION_DIR_RE = re.compile(
     r"^(?P<width>\d+)\s*-\s*(?P<tile_w>\d+)x(?P<tile_h>\d+)"
     r"(?:\s*-\s*(?P<interval_ms>\d+))?$",
@@ -76,6 +78,105 @@ def _vfs_join(base: str, *parts: str) -> str:
     return path
 
 
+def _local_path(path: str) -> str:
+    if path.startswith(("special://", "vfs://", "zip://")):
+        return xbmcvfs.translatePath(path)
+    return path
+
+
+def _path_is_dir(path: str) -> bool:
+    if not path:
+        return False
+    local = _local_path(path)
+    if local and os.path.isdir(local):
+        return True
+    try:
+        return xbmcvfs.exists(path) and xbmcvfs.isdir(path)
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _list_immediate_subdir_names(directory: str) -> list[str]:
+    """List child directory names; prefer os.listdir for NFS/OS mounts."""
+    names: list[str] = []
+    local = _local_path(directory)
+    if local and os.path.isdir(local):
+        try:
+            for entry in os.listdir(local):
+                full = os.path.join(local, entry)
+                if os.path.isdir(full):
+                    names.append(str(entry))
+        except OSError:
+            pass
+    if names:
+        return names
+
+    try:
+        entries = xbmcvfs.listdir(directory)
+    except OSError:
+        return []
+
+    if isinstance(entries, (list, tuple)) and len(entries) == 2:
+        return [str(name) for name in entries[0]]
+    return []
+
+
+def _list_tile_jpg_names(tiles_dir: str) -> list[str]:
+    """List numbered tile JPG names; prefer os.listdir for NFS/OS mounts."""
+    names: list[str] = []
+    local = _local_path(tiles_dir)
+    if local and os.path.isdir(local):
+        try:
+            for entry in os.listdir(local):
+                if _TILE_FILE_RE.match(str(entry)):
+                    names.append(str(entry))
+        except OSError:
+            pass
+    if names:
+        return names
+
+    try:
+        entries = xbmcvfs.listdir(tiles_dir)
+    except OSError:
+        return []
+
+    dirs, files = (
+        entries
+        if isinstance(entries, (list, tuple)) and len(entries) == 2
+        else ([], entries)
+    )
+    for name in list(files) + list(dirs):
+        if _TILE_FILE_RE.match(str(name)):
+            names.append(str(name))
+    return names
+
+
+def _sidecar_lookup_media_paths(media_path: str) -> tuple[str, ...]:
+    """Paths that may share the same on-disk .trickplay sibling folder."""
+    from ffmpeg_media import resolve_ffmpeg_media_path
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+
+    def add(path: str) -> None:
+        cleaned = (path or "").strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            ordered.append(cleaned)
+
+    add(media_path)
+    resolved = resolve_media_path(media_path)
+    if resolved:
+        add(resolved)
+
+    for candidate in list(ordered):
+        ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(candidate)
+        if ffmpeg_input and not use_vfs_stream:
+            add(ffmpeg_input)
+
+    return tuple(ordered)
+
+
 def resolve_media_path(playing_file: str) -> str | None:
     """Return a local filesystem path for the currently playing item."""
     if not playing_file:
@@ -133,20 +234,11 @@ def parse_resolution_dir_name(name: str) -> tuple[int, int, int, int] | None:
 
 
 def _list_resolution_dirs(trickplay_root: str, debug: bool = False) -> list[TrickplayResolution]:
-    if not xbmcvfs.exists(trickplay_root):
+    if not _path_is_dir(trickplay_root):
         return []
 
     resolutions: list[TrickplayResolution] = []
-    try:
-        entries = xbmcvfs.listdir(trickplay_root)
-    except OSError:
-        return []
-
-    subdirs = entries[0] if isinstance(entries, (list, tuple)) and len(entries) >= 1 else []
-    if not subdirs and isinstance(entries, (list, tuple)) and len(entries) == 2:
-        subdirs = entries[0]
-
-    for name in subdirs:
+    for name in _list_immediate_subdir_names(trickplay_root):
         parsed = parse_resolution_dir_name(name)
         if parsed is None:
             continue
@@ -173,16 +265,9 @@ def _list_resolution_dirs(trickplay_root: str, debug: bool = False) -> list[Tric
 
 
 def _list_tile_paths(tiles_dir: str, debug: bool = False) -> tuple[str, ...]:
-    try:
-        entries = xbmcvfs.listdir(tiles_dir)
-    except OSError:
+    names = _list_tile_jpg_names(tiles_dir)
+    if not names:
         return ()
-
-    dirs, files = entries if isinstance(entries, (list, tuple)) and len(entries) == 2 else ([], entries)
-    names: list[str] = []
-    for name in list(files) + list(dirs):
-        if _TILE_FILE_RE.match(name):
-            names.append(name)
 
     def _tile_index(filename: str) -> int:
         return int(os.path.splitext(filename)[0])
@@ -197,6 +282,7 @@ def select_resolution(
     trickplay_root: str,
     preferred_width: int,
     preferred_interval_ms: int = DEFAULT_FOLDER_INTERVAL_MS,
+    interval_preference: str = INTERVAL_PREF_PREFERRED,
     debug: bool = False,
 ) -> TrickplayResolution | None:
     resolutions = _list_resolution_dirs(trickplay_root, debug=debug)
@@ -204,10 +290,22 @@ def select_resolution(
         _log_debug(debug, f"No trickplay resolutions under {trickplay_root}")
         return None
 
+    preference = normalize_interval_preference(interval_preference)
+    same_width = [res for res in resolutions if res.width == preferred_width]
+    pool = same_width if same_width else resolutions
+
+    if preference == INTERVAL_PREF_SHORTEST:
+        chosen = min(pool, key=lambda res: (res.interval_ms, res.width))
+        _log(
+            f"Using shortest interval {chosen.interval_ms}ms at {chosen.width}px "
+            f"({chosen.tiles_dir}, {len(chosen.tile_paths)} tile file(s))"
+        )
+        return chosen
+
     exact = [
         res
-        for res in resolutions
-        if res.width == preferred_width and res.interval_ms == preferred_interval_ms
+        for res in pool
+        if res.interval_ms == preferred_interval_ms
     ]
     if exact:
         chosen = exact[0]
@@ -217,7 +315,6 @@ def select_resolution(
         )
         return chosen
 
-    same_width = [res for res in resolutions if res.width == preferred_width]
     if same_width:
         chosen = min(
             same_width,
@@ -276,6 +373,88 @@ def parse_manual_tile_grid(manual_tile_grid: str) -> tuple[int, int] | None:
     cols = max(min(int(match.group(1)), _MAX_TILE_GRID), _MIN_TILE_GRID)
     rows = max(min(int(match.group(2)), _MAX_TILE_GRID), _MIN_TILE_GRID)
     return cols, rows
+
+
+def normalize_interval_preference(value: str) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized == INTERVAL_PREF_SHORTEST:
+        return INTERVAL_PREF_SHORTEST
+    return INTERVAL_PREF_PREFERRED
+
+
+def _grid_cols_rows(grid: str) -> tuple[int, int]:
+    parsed = parse_manual_tile_grid(grid)
+    if parsed:
+        return parsed
+    return 10, 10
+
+
+def resolution_matches_settings(
+    resolution: TrickplayResolution,
+    tile_width: int,
+    grid: str,
+    interval_ms: int,
+) -> bool:
+    """True when a sidecar folder matches generator width, grid, and interval."""
+    if not resolution.tile_paths:
+        return False
+    cols, rows = _grid_cols_rows(grid)
+    return (
+        resolution.width == tile_width
+        and resolution.tile_width == cols
+        and resolution.tile_height == rows
+        and resolution.interval_ms == interval_ms
+    )
+
+
+def find_matching_sidecar_resolution(
+    media_path: str,
+    tile_width: int,
+    grid: str,
+    interval_ms: int,
+    debug: bool = False,
+) -> TrickplayResolution | None:
+    """Return an existing sidecar folder compatible with generator settings."""
+    for lookup_path in _sidecar_lookup_media_paths(media_path):
+        trickplay_root = trickplay_root_for_media(lookup_path)
+        if not _path_is_dir(trickplay_root):
+            _log_debug(debug, f"No trickplay root at {trickplay_root}")
+            continue
+        for resolution in _list_resolution_dirs(trickplay_root, debug=debug):
+            if resolution_matches_settings(resolution, tile_width, grid, interval_ms):
+                if debug:
+                    _log(
+                        f"Matching sidecar for {os.path.basename(lookup_path)}: "
+                        f"{resolution.tiles_dir} "
+                        f"({len(resolution.tile_paths)} tile file(s))"
+                    )
+                return resolution
+            if debug:
+                _log(
+                    f"Sidecar folder not compatible for skip: {resolution.tiles_dir} "
+                    f"(want {tile_width}px {grid} @ {interval_ms}ms, "
+                    f"have {resolution.width}px "
+                    f"{resolution.tile_width}x{resolution.tile_height} "
+                    f"@ {resolution.interval_ms}ms)"
+                )
+    return None
+
+
+def has_matching_sidecar(
+    media_path: str,
+    tile_width: int,
+    grid: str,
+    interval_ms: int,
+    debug: bool = False,
+) -> bool:
+    """True when usable trickplay already exists for the requested layout."""
+    return find_matching_sidecar_resolution(
+        media_path,
+        tile_width,
+        grid,
+        interval_ms,
+        debug=debug,
+    ) is not None
 
 
 def _estimate_thumbnail_count(
@@ -468,6 +647,7 @@ def load_trickplay_for_file(
     duration_seconds: int,
     auto_tile_grid: bool = True,
     manual_tile_grid: str = "10x10",
+    interval_preference: str = INTERVAL_PREF_PREFERRED,
     debug: bool = False,
 ) -> TrickplayResolution | None:
     media_path = resolve_media_path(playing_file)
@@ -480,6 +660,7 @@ def load_trickplay_for_file(
         trickplay_root,
         preferred_width,
         preferred_interval_ms=interval_ms,
+        interval_preference=interval_preference,
         debug=debug,
     )
     if resolution is None:

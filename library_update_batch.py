@@ -105,6 +105,7 @@ def _filter_generation_candidates(
                 settings.tile_width,
                 settings.grid,
                 settings.interval_ms,
+                debug=settings.debug,
             )
         ):
             skipped_existing += 1

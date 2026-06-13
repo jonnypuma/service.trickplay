@@ -301,12 +301,11 @@ def extract_frames_via_pipe(
     ffmpeg: str,
     env: dict[str, str] | None,
     output_pattern: str,
-    interval_sec: float,
-    tile_width: int,
+    video_filter: str,
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
+    output_color_args: tuple[str, ...] = (),
 ) -> bool:
-    fps = 1.0 / max(interval_sec, 0.001)
     cmd = [
         ffmpeg,
         "-y",
@@ -322,17 +321,13 @@ def extract_frames_via_pipe(
         "-sn",
         "-dn",
         "-vf",
-        (
-            f"fps={fps:.8f},yadif=0:-1:0,"
-            f"scale={tile_width}:{max(int(round(tile_width * 9 / 16)), 2)}:"
-            f"force_original_aspect_ratio=decrease,"
-            f"pad={tile_width}:{max(int(round(tile_width * 9 / 16)), 2)}:"
-            f"(ow-iw)/2:(oh-ih)/2"
-        ),
+        video_filter,
         "-q:v",
         "2",
         output_pattern,
     ]
+    if output_color_args:
+        cmd = [*cmd[:-1], *output_color_args, cmd[-1]]
     try:
         proc = subprocess.Popen(
             cmd,

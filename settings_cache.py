@@ -26,3 +26,9 @@ def get_cached(key: str, factory: Callable[[], T]) -> T:
 
 def invalidate_settings_cache() -> None:
     _cache.clear()
+    try:
+        from ffmpeg_tools import invalidate_generator_ffmpeg_cache
+
+        invalidate_generator_ffmpeg_cache()
+    except ImportError:
+        pass

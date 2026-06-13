@@ -12,12 +12,13 @@ except ImportError:  # pragma: no cover
 from generator_extract_modes import EXTRACT_MODE_FAST, normalize_extract_mode
 from grid_settings import GRID_PRESET_AUTO, display_grid_uses_folder, resolve_grid_preset
 from settings_cache import get_cached
-from trickplay_resolver import parse_manual_tile_grid
+from trickplay_resolver import normalize_interval_preference, parse_manual_tile_grid
 
 
 @dataclass(frozen=True)
 class RuntimeSettings:
     interval_ms: int = 10000
+    interval_preference: str = "preferred"
     preferred_width: int = 320
     debug_logging: bool = False
     preview_hold_seconds: int = 4
@@ -34,6 +35,9 @@ class GeneratorSettings:
     overwrite_existing: bool = False
     extract_mode: str = EXTRACT_MODE_FAST
     stop_on_failure: bool = False
+    hdr_tone_map: bool = False
+    hdr_dovi_tool_fallback: bool = False
+    ffmpeg_path: str = ""
     library_path: str = ""
     tile_width: int = 320
     interval_ms: int = 10000
@@ -141,6 +145,9 @@ def _load_runtime_settings() -> RuntimeSettings:
     auto_tile_grid, manual_tile_grid = _load_display_grid_settings()
     return RuntimeSettings(
         interval_ms=max(_setting_int("interval_ms", 10000), 1000),
+        interval_preference=normalize_interval_preference(
+            _setting_string("interval_preference", "preferred")
+        ),
         preferred_width=max(_setting_int("preferred_width", 320), 120),
         debug_logging=_setting_bool("debug_logging", False),
         preview_hold_seconds=max(_setting_int("preview_hold_seconds", 4), 0),
@@ -179,6 +186,9 @@ def _load_generator_settings() -> GeneratorSettings:
         overwrite_existing=_read_overwrite_existing(),
         extract_mode=_read_extract_mode(),
         stop_on_failure=_setting_bool("generator_stop_on_failure", False),
+        hdr_tone_map=_setting_bool("generator_hdr_tone_map", False),
+        hdr_dovi_tool_fallback=_setting_bool("generator_hdr_dovi_tool_fallback", False),
+        ffmpeg_path=_setting_string("generator_ffmpeg_path", "").strip(),
         library_path=_setting_string("generator_library_path", "").strip(),
         tile_width=runtime.preferred_width,
         interval_ms=max(_setting_int("generator_interval_ms", 10000), 1000),

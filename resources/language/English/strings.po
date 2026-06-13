@@ -352,3 +352,91 @@ msgstr "Wait until Kodi is not playing video before starting trickplay generatio
 msgctxt "#32088"
 msgid "That folder is not a valid library path. Choose a folder that contains your video files (for example an NFS share or /storage/remote-shares/…)."
 msgstr "That folder is not a valid library path. Choose a folder that contains your video files (for example an NFS share or /storage/remote-shares/…)."
+
+msgctxt "#32089"
+msgid "Interval selection"
+msgstr "Interval selection"
+
+msgctxt "#32090"
+msgid "When multiple sidecar folders exist for the same tile width (e.g. 320 - 10x10 - 5000 and 320 - 10x10 - 10000), choose which interval to use during playback. Preferred uses the Preview thumbnail interval setting; Shortest uses the smallest interval available."
+msgstr "When multiple sidecar folders exist for the same tile width (e.g. 320 - 10x10 - 5000 and 320 - 10x10 - 10000), choose which interval to use during playback. Preferred uses the Preview thumbnail interval setting; Shortest uses the smallest interval available."
+
+msgctxt "#32091"
+msgid "Preferred interval"
+msgstr "Preferred interval"
+
+msgctxt "#32092"
+msgid "Shortest interval"
+msgstr "Shortest interval"
+
+msgctxt "#32093"
+msgid "HDR tone mapping for previews"
+msgstr "HDR tone mapping for previews"
+
+msgctxt "#32094"
+msgid "Tone-map HDR and Dolby Vision sources to SDR when generating trickplay JPEGs so colours match normal playback (similar to Jellyfin). Only applies to HDR/DV files; SDR generation is unchanged. Significantly slower on 4K HEVC — often several times longer per file — and requires ffmpeg tonemap support. Leave off if Jellyfin already generates sidecars or generation time matters."
+msgstr "Tone-map HDR and Dolby Vision sources to SDR when generating trickplay JPEGs so colours match normal playback (similar to Jellyfin). Only applies to HDR/DV files; SDR generation is unchanged. Significantly slower on 4K HEVC — often several times longer per file — and requires ffmpeg tonemap support. Leave off if Jellyfin already generates sidecars or generation time matters."
+
+msgctxt "#32095"
+msgid "HDR dovi_tool fallback"
+msgstr "HDR dovi_tool fallback"
+
+msgctxt "#32096"
+msgid "When HDR tone mapping is on, run dovi_tool on the first seconds of HEVC if ffprobe finds no HDR signals. Slower; place dovi_tool in the add-on folder or on PATH. Use for stubborn Dolby Vision remuxes. Skipped for VFS stream paths. With fallback on, Run can offer to download dovi_tool into the add-on folder."
+msgstr "When HDR tone mapping is on, run dovi_tool on the first seconds of HEVC if ffprobe finds no HDR signals. Slower; place dovi_tool in the add-on folder or on PATH. Use for stubborn Dolby Vision remuxes. Skipped for VFS stream paths. With fallback on, Run can offer to download dovi_tool into the add-on folder."
+
+msgctxt "#32097"
+msgid "Generator ffmpeg path"
+msgstr "Generator ffmpeg path"
+
+msgctxt "#32098"
+msgid "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ when present, otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a BtbN build into that folder. Playback cropping still uses tools.ffmpeg-tools."
+msgstr "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ when present, otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a BtbN build into that folder. Playback cropping still uses tools.ffmpeg-tools."
+
+msgctxt "#32099"
+msgid "HDR tone mapping is enabled but the generator ffmpeg lacks zscale or libplacebo. Download and install a BtbN build now?\n\nInstall location: %s"
+msgstr "HDR tone mapping is enabled but the generator ffmpeg lacks zscale or libplacebo. Download and install a BtbN build now?\n\nInstall location: %s"
+
+msgctxt "#32100"
+msgid "Continue without"
+msgstr "Continue without"
+
+msgctxt "#32101"
+msgid "Installing HDR ffmpeg…"
+msgstr "Installing HDR ffmpeg…"
+
+msgctxt "#32102"
+msgid "Automatic HDR ffmpeg install is not supported on this platform. Install a BtbN build manually (see README)."
+msgstr "Automatic HDR ffmpeg install is not supported on this platform. Install a BtbN build manually (see README)."
+
+msgctxt "#32103"
+msgid "HDR ffmpeg install failed:\n%s\n\nYou can install manually or continue with the current ffmpeg (HDR previews may look washed out)."
+msgstr "HDR ffmpeg install failed:\n%s\n\nYou can install manually or continue with the current ffmpeg (HDR previews may look washed out)."
+
+msgctxt "#32104"
+msgid "HDR ffmpeg installed (%s)."
+msgstr "HDR ffmpeg installed (%s)."
+
+msgctxt "#32105"
+msgid "Download"
+msgstr "Download"
+
+msgctxt "#32106"
+msgid "HDR dovi_tool fallback is enabled but dovi_tool was not found. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
+msgstr "HDR dovi_tool fallback is enabled but dovi_tool was not found. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
+
+msgctxt "#32107"
+msgid "Installing dovi_tool…"
+msgstr "Installing dovi_tool…"
+
+msgctxt "#32108"
+msgid "Automatic dovi_tool install is not supported on this platform. Download from quietvoid/dovi_tool releases and place dovi_tool in the add-on folder (see README)."
+msgstr "Automatic dovi_tool install is not supported on this platform. Download from quietvoid/dovi_tool releases and place dovi_tool in the add-on folder (see README)."
+
+msgctxt "#32109"
+msgid "dovi_tool install failed:\n%s\n\nYou can install manually in the add-on folder or continue without Dolby Vision fallback."
+msgstr "dovi_tool install failed:\n%s\n\nYou can install manually in the add-on folder or continue without Dolby Vision fallback."
+
+msgctxt "#32110"
+msgid "dovi_tool installed (%s)."
+msgstr "dovi_tool installed (%s)."

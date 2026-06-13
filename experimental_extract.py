@@ -124,6 +124,7 @@ def _extract_tile_experimental_ffmpeg(
     debug: bool,
     should_cancel: Callable[[], bool] | None,
     run_subprocess: Callable[..., tuple[int | None, str]],
+    output_color_args: tuple[str, ...] = (),
 ) -> list[str]:
     tile_start = start_index * interval_sec
     _log(
@@ -165,6 +166,7 @@ def _extract_tile_experimental_ffmpeg(
                     vf,
                     "-q:v",
                     "2",
+                    *output_color_args,
                     output_path,
                 ]
             )
@@ -216,6 +218,8 @@ def extract_tile_experimental(
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
     run_subprocess: Callable[..., tuple[int | None, str]] | None = None,
+    force_ffmpeg: bool = False,
+    output_color_args: tuple[str, ...] = (),
 ) -> list[str]:
     """One open + seek loop (PyAV) or one ffmpeg process with many seeks per chunk."""
     if should_cancel and should_cancel() or frame_count <= 0:
@@ -226,7 +230,7 @@ def extract_tile_experimental(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    if _pyav_available():
+    if not force_ffmpeg and _pyav_available():
         try:
             paths = _extract_tile_experimental_pyav(
                 ffmpeg_input,
@@ -248,6 +252,8 @@ def extract_tile_experimental(
             )
         except Exception as exc:
             _log(f"Experimental PyAV failed: {exc}", xbmc.LOGWARNING)
+    elif force_ffmpeg and debug:
+        _log("Experimental: using ffmpeg for HDR tone mapping")
 
     return _extract_tile_experimental_ffmpeg(
         ffmpeg,
@@ -263,4 +269,5 @@ def extract_tile_experimental(
         debug,
         should_cancel,
         run_subprocess,
+        output_color_args,
     )

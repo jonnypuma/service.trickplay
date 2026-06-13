@@ -5,6 +5,107 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.12] - 2026-06-13
+
+### Fixed
+
+- HDR trickplay generation on ffmpeg 8.x (BtbN `-gpl-8.1`): tone-mapped output now uses full-range **yuvj420p** with `-strict unofficial` and `-color_range pc`. Fixes mjpeg encoder failure: `Non full-range YUV is non-standard`.
+
+## [3.0.11] - 2026-06-13
+
+### Fixed
+
+- BtbN auto-install URLs: correct asset names use **`-gpl-8.1`** suffix (e.g. `linuxarm64-gpl-8.1.tar.xz`), not `-gpl.tar.xz` — fixes HTTP 404 on download.
+
+## [3.0.10] - 2026-06-13
+
+### Changed
+
+- Linux HDR ffmpeg auto-install now uses BtbN **`-gpl`** (static) builds instead of **`-gpl-shared`**. On CoreELEC the shared build often exposes only `tonemap` even with `LD_LIBRARY_PATH` set; the static `-gpl` tarball includes **zscale** and **libplacebo** without a separate `lib/` folder. Windows still uses gpl-shared zip. Re-run **Run** to replace a broken shared install.
+
+## [3.0.9] - 2026-06-13
+
+### Fixed
+
+- HDR ffmpeg filter detection after auto-install: tonemap capability cache now keys on `LD_LIBRARY_PATH` as well as binary path, and is cleared when generator ffmpeg is re-resolved. Fixes false "lacks zscale/libplacebo" results for BtbN **gpl-shared** builds when an earlier probe ran without `lib/` on the path.
+- Install verification logs `lib/` shared-library count and probe details; fails clearly when `lib/` is missing or empty (shared build required — static `-gpl` is not used).
+- **Generator ffmpeg path** setting missing `<control>` tag (Kodi log spam: `unable to read setting "generator_ffmpeg_path"`).
+
+## [3.0.8] - 2026-06-13
+
+### Added
+
+- **HDR ffmpeg auto-install on Run** — when **HDR tone mapping** is enabled and the generator ffmpeg lacks **zscale** or **libplacebo**, batch **Run** offers to download and install a pinned [BtbN gpl-shared](https://github.com/BtbN/FFmpeg-Builds/releases) build (linux64, linuxarm64, win64, winarm64). Installs to `/storage/.kodi/system/ffmpeg/` on Linux Kodi or `special://profile/addon_data/service.trickplay/system/ffmpeg/` on Windows.
+- **dovi_tool auto-install on Run** — when **HDR dovi_tool fallback** is enabled and `dovi_tool` is missing, **Run** offers to download and install pinned [dovi_tool 2.3.2](https://github.com/quietvoid/dovi_tool/releases/tag/2.3.2) into the add-on folder (same location as a manual `dovi_tool` beside `addon.xml`).
+
+## [3.0.7] - 2026-06-13
+
+### Added
+
+- **Generator ffmpeg path** setting (optional folder or binary). When empty, generation auto-uses `/storage/.kodi/system/ffmpeg/` if present, then falls back to **tools.ffmpeg-tools**. Playback cropping still uses **tools.ffmpeg-tools**. Documented [BtbN FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) for CoreELEC (linuxarm64-gpl-shared) and x86_64 Linux (linux64-gpl-shared) with install layout under `/storage/.kodi/system/ffmpeg/`.
+
+### Changed
+
+- HDR tonemap capability detection is cached per ffmpeg binary path (custom vs tools.ffmpeg-tools).
+
+## [3.0.6] - 2026-06-13
+
+### Fixed
+
+- HDR tone mapping filter chain now matches Jellyfin-style processing: `setparams` (BT.2020/PQ tags), linearize with `zscale`, gamut map to BT.709 (`zscale=p=bt709`), `tonemap=hable:desat=0`, then BT.709 limited-range output. Fixes washed-out, grey trickplay tiles caused by tonemapping without gamut/transfer conversion.
+- When `zscale` is unavailable, prefers **libplacebo** if present; otherwise logs a warning and uses an improved best-effort `tonemap` chain with explicit HDR tags and float workspace.
+- Tone-mapped JPEG extraction sets BT.709 output color metadata on ffmpeg.
+
+## [3.0.5] - 2026-06-13
+
+### Fixed
+
+- Batch cancel cleanup on NFS/local mounts: removes the in-progress resolution folder (e.g. `320 - 10x10 - 9000`) including partial tile JPEGs via the OS filesystem, not only `xbmcvfs`. Drops the parent `.trickplay` folder when no other resolution subfolders remain; keeps siblings such as `320 - 10x10` untouched.
+
+## [3.0.4] - 2026-05-22
+
+### Added
+
+- Optional **HDR dovi_tool fallback** generator setting (default off, visible when HDR tone mapping is enabled). When on, ffprobe misses can be confirmed by extracting a short HEVC sample and running `dovi_tool` (local paths only; looks for `dovi_tool` in the add-on folder or on PATH). Logs when the setting is enabled and when fallback is used or skipped.
+
+### Changed
+
+- HDR ffprobe detection: scans all video streams (not only `v:0`), parses DOVI configuration record profiles from `side_data_list`, and detects Dolby Vision enhancement-layer streams.
+
+## [3.0.3] - 2026-06-13
+
+### Fixed
+
+- HDR source detection for Dolby Vision / HDR10 remuxes: ffprobe now reads `side_data_list`, 10-bit `pix_fmt`, and bt2020 primaries (including DV streams tagged with bt709 transfer). Falls back to first-frame probe when stream-level metadata is missing.
+
+## [3.0.2] - 2026-06-13
+
+### Fixed
+
+- HDR tone-map detection: recognise `tonemap` in ffmpeg 8.x `-filters` output (e.g. `.S tonemap V->V`) so CoreELEC **tools.ffmpeg-tools** builds with tonemap but without zscale use **tonemap-only** mode instead of falsely reporting the filter as missing.
+
+## [3.0.1] - 2026-06-12
+
+### Fixed
+
+- Batch skip detection for existing Jellyfin sidecars (`320 - 10x10/`, etc.) now lists `.trickplay` folders via `os.listdir` on OS/NFS mounts when `xbmcvfs.listdir` misses them, and checks multiple media path variants (library path, resolved local path, ffmpeg path).
+
+## [3.0.0] - 2026-06-12
+
+### Added
+
+- Optional **HDR tone mapping for previews** generator setting (default off). When enabled, HDR and Dolby Vision sources are tone-mapped to SDR during JPEG extraction. Only applies to HDR/DV files; SDR is unchanged. Requires ffmpeg `tonemap` filter support; significantly slower on 4K HEVC.
+
+## [2.1.6] - 2026-06-12
+
+### Added
+
+- **Interval selection** playback setting: **Preferred interval** (match **Preview thumbnail interval**) or **Shortest interval** when multiple sidecar folders exist (e.g. `320 - 10x10 - 5000` vs `320 - 10x10 - 10000`).
+
+### Fixed
+
+- Batch and idle generation now skip existing Jellyfin sidecars in legacy folder names (`320 - 10x10/` without an interval suffix, treated as 10000 ms) when generator width, grid, and interval match — not only folders named `320 - 10x10 - 10000`.
+
 ## [2.1.5] - 2026-06-12
 
 ### Fixed

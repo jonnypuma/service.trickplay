@@ -369,6 +369,7 @@ class TrickplayService:
                 duration_seconds=duration_seconds,
                 auto_tile_grid=auto_tile_grid,
                 manual_tile_grid=manual_tile_grid,
+                interval_preference=runtime.interval_preference,
                 debug=runtime.debug_logging,
             )
             if resolution is None:

@@ -162,6 +162,32 @@
 
                 </setting>
 
+                <setting id="interval_preference" type="string" label="32089" help="32090">
+
+                    <level>0</level>
+
+                    <default>preferred</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32091">preferred</option>
+
+                            <option label="32092">shortest</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32089</heading>
+
+                    </control>
+
+                </setting>
+
                 <setting id="poll_ms" type="integer" label="32006" help="32007">
 
                     <level>1</level>
@@ -575,6 +601,80 @@
                         <dependency type="visible">
 
                             <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_ffmpeg_path" type="path" label="32097" help="32098">
+
+                    <level>0</level>
+
+                    <default></default>
+
+                    <constraints>
+
+                        <allowempty>true</allowempty>
+
+                        <writable>false</writable>
+
+                    </constraints>
+
+                    <control type="button" format="path">
+
+                        <heading>32097</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_hdr_tone_map" type="boolean" label="32093" help="32094">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_hdr_dovi_tool_fallback" type="boolean" label="32095" help="32096">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                            <condition setting="generator_hdr_tone_map">true</condition>
 
                         </dependency>
 
