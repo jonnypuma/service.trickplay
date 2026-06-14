@@ -14,6 +14,8 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
+from ffmpeg_tools import subprocess_hide_window_kwargs
+
 ADDON = xbmcaddon.Addon()
 FFMPEG_TOOLS_ADDON_ID = "tools.ffmpeg-tools"
 CACHE_VERSION = "v4"
@@ -637,7 +639,7 @@ def _probe_dimensions_with_ffprobe(local_path: str, env: dict[str, str]) -> tupl
             capture_output=True,
             text=True,
             timeout=10,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
         return 0, 0
@@ -664,7 +666,7 @@ def _probe_dimensions_with_ffmpeg(local_path: str, env: dict[str, str]) -> tuple
             capture_output=True,
             text=True,
             timeout=10,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
         return 0, 0
@@ -754,7 +756,7 @@ def _crop_with_ffmpeg(
             capture_output=True,
             text=True,
             timeout=15,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         _log(f"ffmpeg crop subprocess failed: {exc}", xbmc.LOGWARNING)

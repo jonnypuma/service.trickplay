@@ -12,6 +12,8 @@ from collections.abc import Callable
 import xbmc
 import xbmcvfs
 
+from ffmpeg_tools import subprocess_hide_window_kwargs
+
 _NETWORK_URL_RE = re.compile(r"^(nfs|smb|smb2|smb3)://([^/]+)/(.+)$", re.IGNORECASE)
 _MOUNT_CACHE_TTL_SEC = 60.0
 _mount_cache_at = 0.0
@@ -20,6 +22,17 @@ _mount_cache: list[tuple[str, str, str]] = []
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay.generator] {message}", level)
+
+
+def is_elementary_hevc_path(path: str) -> bool:
+    """True for annex-B HEVC elementary streams (e.g. dovi_tool convert output)."""
+    if not path or "://" in path:
+        return False
+    return path.lower().endswith(".hevc")
+
+
+def elementary_hevc_input_args(path: str) -> tuple[str, ...]:
+    return ("-f", "hevc") if is_elementary_hevc_path(path) else ()
 
 
 def _is_local_filesystem_path(path: str) -> bool:
@@ -252,7 +265,7 @@ def probe_duration_via_pipe(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except OSError as exc:
         _log(f"ffprobe pipe probe failed to start for {media_path}: {exc}", xbmc.LOGWARNING)
@@ -305,12 +318,14 @@ def extract_frames_via_pipe(
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> bool:
     cmd = [
         ffmpeg,
         "-y",
         "-loglevel",
         "error",
+        *ffmpeg_input_args,
         "-probesize",
         "50M",
         "-analyzeduration",
@@ -334,7 +349,7 @@ def extract_frames_via_pipe(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except OSError as exc:
         _log(f"ffmpeg pipe extract failed to start for {media_path}: {exc}", xbmc.LOGWARNING)
@@ -385,4 +400,99 @@ def extract_frames_via_pipe(
 
     if debug:
         _log(f"Streamed frames from {media_path} -> {output_pattern}")
+    return True
+
+
+def extract_frames_from_local_file(
+    local_input: str,
+    ffmpeg: str,
+    env: dict[str, str] | None,
+    output_pattern: str,
+    video_filter: str,
+    frame_count: int,
+    *,
+    timeout_sec: float = 3600.0,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+    output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
+) -> bool:
+    """Decode a local file sequentially (used for .hevc with no seek index)."""
+    if frame_count <= 0:
+        return False
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        *ffmpeg_input_args,
+        *elementary_hevc_input_args(local_input),
+        "-i",
+        local_input,
+        "-an",
+        "-sn",
+        "-dn",
+        "-vf",
+        video_filter,
+        "-frames:v",
+        str(frame_count),
+        "-q:v",
+        "2",
+        output_pattern,
+    ]
+    if output_color_args:
+        cmd = [*cmd[:-1], *output_color_args, cmd[-1]]
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+    except OSError as exc:
+        _log(
+            f"ffmpeg local extract failed to start for {local_input}: {exc}",
+            xbmc.LOGWARNING,
+        )
+        return False
+
+    deadline = time.monotonic() + max(timeout_sec, 120.0)
+    try:
+        while proc.poll() is None:
+            if should_cancel and should_cancel():
+                proc.kill()
+                try:
+                    proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+                _log(f"Local frame extract cancelled for {local_input}", xbmc.LOGINFO)
+                return False
+            if time.monotonic() >= deadline:
+                proc.kill()
+                proc.communicate()
+                _log(
+                    f"ffmpeg local extract timed out after {int(timeout_sec)}s "
+                    f"for {local_input}",
+                    xbmc.LOGWARNING,
+                )
+                return False
+            time.sleep(0.15)
+        _, stderr = proc.communicate()
+    except OSError:
+        proc.kill()
+        proc.communicate()
+        return False
+
+    if proc.returncode != 0:
+        detail = (stderr or "").strip()
+        _log(
+            f"ffmpeg local extract failed for {local_input} (rc={proc.returncode}): "
+            f"{detail[:800]}",
+            xbmc.LOGWARNING,
+        )
+        return False
+
+    if debug:
+        _log(f"Local frames from {local_input} -> {output_pattern}")
     return True

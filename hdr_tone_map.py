@@ -7,14 +7,18 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
+import uuid
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import xbmc
 import xbmcvfs
 
 from ffmpeg_media import _stream_to_pipe, resolve_ffmpeg_media_path
+from ffmpeg_tools import subprocess_hide_window_kwargs
 
 _HDR_TRANSFERS = frozenset({"smpte2084", "arib-std-b67", "smpte240m"})
 _HDR_PRIMARIES = frozenset({"bt2020", "bt2020nc", "bt2020c"})
@@ -29,8 +33,12 @@ _HDR_SIDE_DATA_HINTS = (
 )
 _10BIT_PIX_FMT_RE = re.compile(r"(10(le|be)?|p010)", re.IGNORECASE)
 _DOVI_PROFILE_RE = re.compile(r"profile[^0-9]*([0-9]{1,2})", re.IGNORECASE)
+_FILENAME_DOVI_RE = re.compile(r"[._]dv[._]", re.IGNORECASE)
 _DOVI_RPU_EXTRACT_SEC = 2.0
 _DOVI_PROBE_TIMEOUT_SEC = 90.0
+_DOVI_CONVERT_TIMEOUT_MIN_SEC = 600.0
+_DOVI_CONVERT_TIMEOUT_MAX_SEC = 7200.0
+_vulkan_available_cache: dict[str, bool] = {}
 _TONEMAP_MODE_NONE = "none"
 _TONEMAP_MODE_SIMPLE = "simple"
 _TONEMAP_MODE_ZSCALE = "zscale"
@@ -45,6 +53,72 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay.generator] {message}", level)
 
 
+def _dovi_prep_temp_root() -> str:
+    """Large-temp root on special://temp (not OS /tmp — often too small on CoreELEC)."""
+    root = xbmcvfs.translatePath("special://temp/service.trickplay/dovi")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def _create_dovi_prep_work_dir() -> str:
+    work = os.path.join(_dovi_prep_temp_root(), uuid.uuid4().hex)
+    os.makedirs(work, exist_ok=True)
+    return work
+
+
+def _media_file_size_bytes(local_path: str) -> int:
+    try:
+        if os.path.isfile(local_path):
+            return os.path.getsize(local_path)
+    except OSError:
+        pass
+    try:
+        stat_obj = xbmcvfs.Stat(local_path)
+        size = getattr(stat_obj, "st_size", None)
+        if callable(size):
+            size = size()
+        if size is None:
+            size = getattr(stat_obj, "size", None)
+            if callable(size):
+                size = size()
+        return int(size or 0)
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return 0
+
+
+def _disk_free_bytes(path: str) -> int | None:
+    try:
+        local = xbmcvfs.translatePath(path) if path.startswith("special://") else path
+        return shutil.disk_usage(local).free
+    except OSError:
+        return None
+
+
+def _dovi_convert_disk_check(local_input: str, work_dir: str) -> bool:
+    """Ensure enough free space for a full-file HEVC rewrite (~source video size)."""
+    source_size = _media_file_size_bytes(local_input)
+    if source_size <= 0:
+        return True
+    needed = int(source_size * 1.1) + (32 * 1024 * 1024)
+    free = _disk_free_bytes(work_dir)
+    if free is None:
+        return True
+    if free >= needed:
+        _log(
+            f"Dolby Vision prep: {free // (1024 * 1024)} MB free at {work_dir} "
+            f"(need ~{needed // (1024 * 1024)} MB for converted HEVC)"
+        )
+        return True
+    _log(
+        f"Dolby Vision prep: not enough disk space at {work_dir}: "
+        f"need ~{needed // (1024 * 1024)} MB, have {free // (1024 * 1024)} MB. "
+        f"Profile 5 convert writes a full HEVC copy under special://temp — "
+        f"free space on /storage or run batch generation on a device with more temp storage",
+        xbmc.LOGERROR,
+    )
+    return False
+
+
 @dataclass(frozen=True)
 class ThumbFilterContext:
     """Precomputed video filter chain for one generation job."""
@@ -53,7 +127,79 @@ class ThumbFilterContext:
     tonemap_mode: str
     thumb_vf: str
     hdr_transfer: str = _TONEMAP_TRANSFER_PQ
+    dolby_vision: bool = False
+    use_dovi_tool_zscale_prep: bool = False
     ffmpeg_color_args: tuple[str, ...] = ()
+    ffmpeg_input_args: tuple[str, ...] = ()
+
+
+def ffmpeg_libplacebo_input_args() -> tuple[str, ...]:
+    """Vulkan device init for libplacebo (Dolby Vision / HDR tone map)."""
+    return ("-init_hw_device", "vulkan=vk", "-filter_hw_device", "vk")
+
+
+def probe_vulkan_available(ffmpeg: str, env: dict[str, str] | None) -> bool:
+    """True when ffmpeg can init a Vulkan device (libvulkan present on the host)."""
+    if not ffmpeg:
+        return False
+    ld_path = env.get("LD_LIBRARY_PATH", "") if env else ""
+    cache_key = f"{ffmpeg}|{ld_path}"
+    cached = _vulkan_available_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    available = False
+    try:
+        completed = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-init_hw_device",
+                "vulkan=vk",
+                "-f",
+                "lavfi",
+                "-i",
+                "nullsrc",
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                "-",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        available = completed.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        available = False
+    _vulkan_available_cache[cache_key] = available
+    if not available:
+        if sys.platform.startswith("linux") and _linux_has_vulkan_icd_configs():
+            _log(
+                "Vulkan init failed but system ICD configs exist — static BtbN ffmpeg "
+                "may need VK_ICD_FILENAMES (and related VK_* vars) in the environment "
+                "so libplacebo can load GPU drivers; see README",
+                xbmc.LOGWARNING,
+            )
+        else:
+            _log(
+                "Vulkan unavailable (libvulkan missing or no device); "
+                "libplacebo cannot run on this host",
+                xbmc.LOGINFO,
+            )
+    return available
+
+
+def _linux_has_vulkan_icd_configs() -> bool:
+    icd_dir = "/usr/share/vulkan/icd.d"
+    try:
+        return os.path.isdir(icd_dir) and bool(os.listdir(icd_dir))
+    except OSError:
+        return False
 
 
 def ffmpeg_sdr_output_color_args() -> tuple[str, ...]:
@@ -109,11 +255,13 @@ def _zscale_tonemap_chain(transfer: str) -> str:
     )
 
 
-def _libplacebo_tonemap_chain() -> str:
+def _libplacebo_tonemap_chain(*, dolby_vision: bool = False) -> str:
+    dv_opts = "apply_dolbyvision=1:" if dolby_vision else ""
+    # ffmpeg 8.x libplacebo: gamut_mode (not color_mapping), no desaturation option.
     return (
-        "libplacebo=tonemapping=hable:desaturation=0:peak_detect=1:"
-        "color_mapping=perceptual:color_primaries=bt709:color_trc=bt709:"
-        "colorspace=bt709,format=yuvj420p,"
+        f"libplacebo={dv_opts}tonemapping=hable:peak_detect=1:"
+        "gamut_mode=perceptual:color_primaries=bt709:color_trc=bt709:"
+        "colorspace=bt709:range=pc,format=yuvj420p,"
     )
 
 
@@ -140,14 +288,53 @@ def _scale_pad_filter(tile_width: int) -> str:
     )
 
 
-def _tonemap_prefix(mode: str, hdr_transfer: str = _TONEMAP_TRANSFER_PQ) -> str:
+def _tonemap_prefix(
+    mode: str,
+    hdr_transfer: str = _TONEMAP_TRANSFER_PQ,
+    *,
+    dolby_vision: bool = False,
+) -> str:
     if mode == _TONEMAP_MODE_ZSCALE:
         return _zscale_tonemap_chain(hdr_transfer)
     if mode == _TONEMAP_MODE_LIBPLACEBO:
-        return _libplacebo_tonemap_chain()
+        return _libplacebo_tonemap_chain(dolby_vision=dolby_vision)
     if mode == _TONEMAP_MODE_SIMPLE:
         return _simple_tonemap_chain(hdr_transfer)
     return ""
+
+
+def ffmpeg_has_libplacebo(ffmpeg: str, env: dict[str, str] | None) -> bool:
+    """True when ffmpeg lists the libplacebo video filter."""
+    try:
+        completed = subprocess.run(
+            [ffmpeg, "-hide_banner", "-filters"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        text = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+        return _ffmpeg_lists_filter(text, "libplacebo")
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def ffmpeg_has_zscale(ffmpeg: str, env: dict[str, str] | None) -> bool:
+    """True when ffmpeg lists the zscale video filter."""
+    try:
+        completed = subprocess.run(
+            [ffmpeg, "-hide_banner", "-filters"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        text = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+        return _ffmpeg_lists_filter(text, "zscale")
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def build_thumb_video_filter(
@@ -155,6 +342,8 @@ def build_thumb_video_filter(
     apply_tonemap: bool,
     tonemap_mode: str,
     hdr_transfer: str = _TONEMAP_TRANSFER_PQ,
+    *,
+    dolby_vision: bool = False,
 ) -> str:
     scale_pad = _scale_pad_filter(tile_width)
     if apply_tonemap and tonemap_mode in (
@@ -162,7 +351,7 @@ def build_thumb_video_filter(
         _TONEMAP_MODE_SIMPLE,
         _TONEMAP_MODE_LIBPLACEBO,
     ):
-        return f"{_tonemap_prefix(tonemap_mode, hdr_transfer)}{scale_pad}"
+        return f"{_tonemap_prefix(tonemap_mode, hdr_transfer, dolby_vision=dolby_vision)}{scale_pad}"
     return f"yadif=0:-1:0,{scale_pad}"
 
 
@@ -172,25 +361,31 @@ def build_fps_batch_filter(
     apply_tonemap: bool,
     tonemap_mode: str,
     hdr_transfer: str = _TONEMAP_TRANSFER_PQ,
+    *,
+    dolby_vision: bool = False,
 ) -> str:
     if interval_sec == int(interval_sec):
         fps_expr = f"1/{int(interval_sec)}"
     else:
         fps_expr = f"{1.0 / interval_sec:.8g}"
     thumb_vf = build_thumb_video_filter(
-        tile_width, apply_tonemap, tonemap_mode, hdr_transfer
+        tile_width,
+        apply_tonemap,
+        tonemap_mode,
+        hdr_transfer,
+        dolby_vision=dolby_vision,
     )
     return f"fps={fps_expr},{thumb_vf}"
 
 
 def _ffmpeg_lists_filter(filters_text: str, filter_name: str) -> bool:
-    """True when ffmpeg -filters output lists a video filter by name."""
-    # ffmpeg 8.x lines look like: ".S tonemap           V->V       ..."
-    pattern = rf"^\s*\S+\s+{re.escape(filter_name)}\s+V->"
+    """True when ffmpeg -filters output lists a filter by name."""
+    # ffmpeg 8.x lines look like: ".S zscale V->V ..." or ".. libplacebo N->V ..."
+    pattern = rf"^\s*\S+\s+{re.escape(filter_name)}\s+\S+->"
     if re.search(pattern, filters_text, re.MULTILINE):
         return True
-    # Some shared builds pad columns differently; accept name before V-> on the line.
-    loose = rf"^\s*\S*\s*{re.escape(filter_name)}\s+.*V->"
+    # Some shared builds pad columns differently; accept name before I->O on the line.
+    loose = rf"^\s*\S*\s*{re.escape(filter_name)}\s+.*\S+->"
     return re.search(loose, filters_text, re.MULTILINE) is not None
 
 
@@ -204,6 +399,7 @@ def _tonemap_cache_key(ffmpeg: str, env: dict[str, str] | None) -> str:
 def invalidate_tonemap_support_cache() -> None:
     """Clear cached ffmpeg filter detection (e.g. after installing custom ffmpeg)."""
     _tonemap_support_cache.clear()
+    _vulkan_available_cache.clear()
 
 
 def detect_tonemap_support(
@@ -227,7 +423,7 @@ def detect_tonemap_support(
             capture_output=True,
             text=True,
             timeout=30,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
         text = f"{completed.stdout or ''}\n{completed.stderr or ''}"
         has_tonemap = _ffmpeg_lists_filter(text, "tonemap")
@@ -268,6 +464,191 @@ def detect_tonemap_support(
             xbmc.LOGWARNING,
         )
     return mode
+
+
+def _side_data_list_is_dovi(side_data_list: list | None) -> tuple[bool, str]:
+    for side in side_data_list or []:
+        side_type = str(side.get("side_data_type") or "")
+        side_lower = side_type.lower()
+        if "dovi" in side_lower or "dolby vision" in side_lower:
+            profile = _dovi_profile_from_side_entry(side)
+            detail = side_type if profile is None else f"{side_type} profile={profile}"
+            return True, detail
+    return False, ""
+
+
+def _filename_suggests_dolby_vision(media_path: str) -> bool:
+    return bool(_FILENAME_DOVI_RE.search(os.path.basename(media_path or "")))
+
+
+def _parse_dovi_from_ffprobe_json(payload: str, debug: bool, *, source_label: str) -> tuple[bool, str]:
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return False, "invalid ffprobe json"
+
+    for stream in data.get("streams") or []:
+        if (stream.get("codec_type") or "").lower() != "video":
+            continue
+        if _video_stream_is_enhancement_layer(stream):
+            reason = "Dolby Vision enhancement-layer video stream"
+            if debug:
+                _log(f"Dolby Vision detected from {source_label} stream metadata: {reason}")
+            return True, reason
+        is_dovi, reason = _side_data_list_is_dovi(stream.get("side_data_list"))
+        if is_dovi:
+            if debug:
+                _log(f"Dolby Vision detected from {source_label} stream side_data: {reason}")
+            return True, reason
+
+    for frame in data.get("frames") or []:
+        is_dovi, reason = _side_data_list_is_dovi(frame.get("side_data_list"))
+        if is_dovi:
+            if debug:
+                _log(f"Dolby Vision detected from {source_label} frame side_data: {reason}")
+            return True, reason
+
+    return False, "no Dolby Vision signals"
+
+
+def _ffprobe_dovi_local(ffprobe: str, local_path: str, env: dict[str, str] | None, debug: bool) -> bool:
+    stream_args = [
+        "-v",
+        "error",
+        "-show_entries",
+        _stream_probe_entries(),
+        "-of",
+        "json",
+        local_path,
+    ]
+    payload = _ffprobe_json(ffprobe, stream_args, env, 120.0)
+    if payload:
+        is_dovi, _reason = _parse_dovi_from_ffprobe_json(
+            payload, debug, source_label="stream"
+        )
+        if is_dovi:
+            return True
+
+    frame_args = [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-read_intervals",
+        "%+#1",
+        "-show_frames",
+        "-show_entries",
+        "frame=side_data_list",
+        "-of",
+        "json",
+        local_path,
+    ]
+    payload = _ffprobe_json(ffprobe, frame_args, env, 180.0)
+    if not payload:
+        return False
+    is_dovi, _reason = _parse_dovi_from_ffprobe_json(
+        payload, debug, source_label="first-frame"
+    )
+    return is_dovi
+
+
+def _ffprobe_dovi_via_pipe(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    debug: bool,
+) -> bool:
+    stream_args = [
+        "-v",
+        "error",
+        "-probesize",
+        "50M",
+        "-analyzeduration",
+        "50M",
+        "-show_entries",
+        _stream_probe_entries(),
+        "-of",
+        "json",
+        "pipe:0",
+    ]
+    payload = _ffprobe_hdr_via_pipe_impl(media_path, ffprobe, env, stream_args, 120.0)
+    if payload:
+        is_dovi, _reason = _parse_dovi_from_ffprobe_json(
+            payload, debug, source_label="stream pipe"
+        )
+        if is_dovi:
+            return True
+
+    frame_args = [
+        "-v",
+        "error",
+        "-probesize",
+        "50M",
+        "-analyzeduration",
+        "50M",
+        "-select_streams",
+        "v:0",
+        "-read_intervals",
+        "%+#1",
+        "-show_frames",
+        "-show_entries",
+        "frame=side_data_list",
+        "-of",
+        "json",
+        "pipe:0",
+    ]
+    payload = _ffprobe_hdr_via_pipe_impl(media_path, ffprobe, env, frame_args, 180.0)
+    if not payload:
+        return False
+    is_dovi, _reason = _parse_dovi_from_ffprobe_json(
+        payload, debug, source_label="first-frame pipe"
+    )
+    return is_dovi
+
+
+def probe_video_is_dolby_vision(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    *,
+    ffmpeg: str | None = None,
+    dovi_tool_fallback: bool = False,
+    debug: bool = False,
+) -> bool:
+    if not media_path:
+        return False
+
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    if use_vfs_stream:
+        if _ffprobe_dovi_via_pipe(media_path, ffprobe, env, debug):
+            return True
+    elif ffprobe:
+        local_path = ffmpeg_input
+        if local_path and (os.path.isfile(local_path) or xbmcvfs.exists(local_path)):
+            if _ffprobe_dovi_local(ffprobe, local_path, env, debug):
+                return True
+
+    if dovi_tool_fallback and ffmpeg and not use_vfs_stream:
+        local_path = ffmpeg_input
+        if local_path and (os.path.isfile(local_path) or xbmcvfs.exists(local_path)):
+            is_hdr, reason = _probe_hdr_via_dovi_tool(
+                local_path, ffmpeg, env, debug=debug
+            )
+            if is_hdr and "dovi_tool" in reason.lower():
+                if debug:
+                    _log(f"Dolby Vision detected via dovi_tool for {os.path.basename(media_path)}: {reason}")
+                return True
+
+    if _filename_suggests_dolby_vision(media_path):
+        if debug:
+            _log(
+                f"Dolby Vision assumed from filename for {os.path.basename(media_path)} "
+                "(ffprobe found no DOVI side_data)",
+                xbmc.LOGINFO,
+            )
+        return True
+
+    return False
 
 
 def _side_data_list_looks_hdr(side_data_list: list | None) -> bool:
@@ -438,7 +819,7 @@ def _ffprobe_json(
             capture_output=True,
             text=True,
             timeout=timeout,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         _log(f"HDR ffprobe failed: {exc}", xbmc.LOGWARNING)
@@ -583,22 +964,525 @@ def _dovi_tool_candidates() -> list[str]:
 
 
 def find_dovi_tool() -> str | None:
-    """Return path to dovi_tool in the add-on folder or on PATH."""
+    """Return path to a runnable dovi_tool in the add-on folder or on PATH."""
     return _find_dovi_tool()
+
+
+def _dovi_tool_runs(path: str) -> bool:
+    local = path
+    try:
+        import xbmcvfs
+
+        local = xbmcvfs.translatePath(path) if path.startswith("special://") else path
+    except (RuntimeError, ImportError):
+        pass
+    if not local or not os.path.isfile(local):
+        return False
+    try:
+        result = subprocess.run(
+            [local, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            **subprocess_hide_window_kwargs(),
+        )
+        return result.returncode == 0
+    except OSError as exc:
+        if getattr(exc, "errno", None) == 8:
+            _log(
+                f"dovi_tool at {path!r} is not runnable on this CPU (wrong architecture?)",
+                xbmc.LOGWARNING,
+            )
+        return False
+
+
+def _try_remove_broken_dovi_tool(path: str) -> None:
+    """Remove a non-runnable dovi_tool binary left in the add-on folder (wrong arch)."""
+    if path in ("dovi_tool", "dovi_tool.exe"):
+        return
+    local = path
+    try:
+        local = xbmcvfs.translatePath(path) if path.startswith("special://") else path
+    except (RuntimeError, ValueError):
+        pass
+    if not local or not os.path.isfile(local):
+        return
+    try:
+        result = subprocess.run(
+            [local, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            **subprocess_hide_window_kwargs(),
+        )
+        if result.returncode == 0:
+            return
+    except OSError:
+        pass
+    _log(
+        f"Removing unusable dovi_tool at {local} (wrong architecture or corrupt)",
+        xbmc.LOGWARNING,
+    )
+    try:
+        os.remove(local)
+    except OSError:
+        pass
 
 
 def _find_dovi_tool() -> str | None:
     for candidate in _dovi_tool_candidates():
         if candidate in ("dovi_tool", "dovi_tool.exe"):
             found = shutil.which(candidate)
-            if found:
+            if found and _dovi_tool_runs(found):
                 return found
             continue
-        if xbmcvfs.exists(candidate):
-            return candidate
-        if os.path.isfile(candidate):
-            return candidate
+        if xbmcvfs.exists(candidate) or os.path.isfile(candidate):
+            if _dovi_tool_runs(candidate):
+                return candidate
+            _try_remove_broken_dovi_tool(candidate)
     return None
+
+
+def _parse_dovi_profile_from_ffprobe_json(payload: str) -> str | None:
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    for stream in data.get("streams") or []:
+        if (stream.get("codec_type") or "").lower() != "video":
+            continue
+        if _video_stream_is_enhancement_layer(stream):
+            return "7"
+        for side in stream.get("side_data_list") or []:
+            profile = _dovi_profile_from_side_entry(side)
+            if profile:
+                return profile
+    for frame in data.get("frames") or []:
+        for side in frame.get("side_data_list") or []:
+            profile = _dovi_profile_from_side_entry(side)
+            if profile:
+                return profile
+    return None
+
+
+def probe_dovi_profile(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    *,
+    ffmpeg: str | None = None,
+    debug: bool = False,
+) -> str | None:
+    """Return Dolby Vision profile string from ffprobe or dovi_tool, or None."""
+    if not media_path or not ffprobe:
+        return None
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    if use_vfs_stream:
+        return None
+    local_path = ffmpeg_input
+    if not local_path or not (
+        os.path.isfile(local_path) or xbmcvfs.exists(local_path)
+    ):
+        return None
+
+    stream_args = [
+        "-v",
+        "error",
+        "-show_entries",
+        _stream_probe_entries(),
+        "-of",
+        "json",
+        local_path,
+    ]
+    payload = _ffprobe_json(ffprobe, stream_args, env, 120.0)
+    if payload:
+        profile = _parse_dovi_profile_from_ffprobe_json(payload)
+        if profile:
+            if debug:
+                _log(f"Dolby Vision profile from stream side_data: {profile}")
+            return profile
+
+    frame_args = [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-read_intervals",
+        "%+#1",
+        "-show_frames",
+        "-show_entries",
+        "frame=side_data_list",
+        "-of",
+        "json",
+        local_path,
+    ]
+    payload = _ffprobe_json(ffprobe, frame_args, env, 180.0)
+    if payload:
+        profile = _parse_dovi_profile_from_ffprobe_json(payload)
+        if profile:
+            if debug:
+                _log(f"Dolby Vision profile from first frame side_data: {profile}")
+            return profile
+
+    if ffmpeg:
+        profile = _dovi_profile_from_dovi_tool(
+            local_path, ffmpeg, env, debug=debug
+        )
+        if profile and debug:
+            _log(f"Dolby Vision profile from dovi_tool RPU: {profile}")
+        return profile
+    return None
+
+
+def _ffmpeg_demux_hevc_pipe_cmd(
+    ffmpeg: str,
+    local_input: str,
+    *,
+    max_sec: float | None = None,
+) -> list[str]:
+    """Demux the primary video track to annex-B HEVC on stdout (for dovi_tool)."""
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        local_input,
+        "-map",
+        "0:v:0",
+        "-c:v",
+        "copy",
+        "-bsf:v",
+        "hevc_mp4toannexb",
+    ]
+    if max_sec is not None:
+        cmd.extend(["-t", f"{max_sec:.3f}"])
+    cmd.extend(["-f", "hevc", "-"])
+    return cmd
+
+
+def _dovi_profile_from_dovi_tool(
+    local_path: str,
+    ffmpeg: str,
+    env: dict[str, str] | None,
+    *,
+    debug: bool = False,
+) -> str | None:
+    """Read DOVI profile from the first RPU via dovi_tool info."""
+    dovi_tool = _find_dovi_tool()
+    if not dovi_tool:
+        return None
+
+    rpu_fd, rpu_file = tempfile.mkstemp(suffix=".bin", prefix="trickplay_dovi_rpu_")
+    os.close(rpu_fd)
+    try:
+        extract_cmd = [dovi_tool, "extract-rpu", "-", "-o", rpu_file]
+        ff_proc = subprocess.Popen(
+            _ffmpeg_demux_hevc_pipe_cmd(
+                ffmpeg, local_path, max_sec=_DOVI_RPU_EXTRACT_SEC
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        dt_proc = subprocess.Popen(
+            extract_cmd,
+            stdin=ff_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        if ff_proc.stdout is not None:
+            ff_proc.stdout.close()
+        dt_proc.communicate(timeout=_DOVI_PROBE_TIMEOUT_SEC)
+        ff_proc.wait(timeout=5)
+
+        if not os.path.isfile(rpu_file) or os.path.getsize(rpu_file) <= 0:
+            if debug:
+                _log(
+                    f"dovi_tool profile probe: no RPU for "
+                    f"{os.path.basename(local_path)}"
+                )
+            return None
+
+        completed = subprocess.run(
+            [dovi_tool, "info", "-i", rpu_file, "-f", "0"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        profile = _dovi_profile_from_info_output(
+            completed.stdout or completed.stderr or ""
+        )
+        if profile and profile != "unknown":
+            return profile
+        return None
+    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired) as exc:
+        if debug:
+            _log(f"dovi_tool profile probe failed: {exc}", xbmc.LOGWARNING)
+        return None
+    finally:
+        try:
+            os.remove(rpu_file)
+        except OSError:
+            pass
+
+
+def _run_dovi_convert_mkv_to_hevc(
+    ffmpeg: str,
+    dovi_tool: str,
+    local_input: str,
+    convert_cmd: list[str],
+    hevc_out: str,
+    env: dict[str, str] | None,
+    *,
+    timeout: float,
+    should_cancel: Callable[[], bool] | None = None,
+) -> tuple[bool, str]:
+    """
+    Demux MKV/MP4 to annex-B HEVC, pipe through dovi_tool convert to a .hevc file.
+
+    dovi_tool convert does not accept Matroska; ffmpeg must demux first.
+    """
+    dovi_cmd = [*convert_cmd, "-", "-o", hevc_out]
+    ff_proc: subprocess.Popen[bytes] | None = None
+    dt_proc: subprocess.Popen[bytes] | None = None
+    try:
+        ff_proc = subprocess.Popen(
+            _ffmpeg_demux_hevc_pipe_cmd(ffmpeg, local_input),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        dt_proc = subprocess.Popen(
+            dovi_cmd,
+            stdin=ff_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env, **subprocess_hide_window_kwargs(),
+        )
+        if ff_proc.stdout is not None:
+            ff_proc.stdout.close()
+        _stdout, dt_stderr = dt_proc.communicate(timeout=timeout)
+        ff_returncode = ff_proc.wait(timeout=30)
+        if should_cancel and should_cancel():
+            return False, "cancelled"
+        if dt_proc.returncode != 0:
+            detail = (dt_stderr or b"").decode("utf-8", errors="replace").strip()
+            if ff_returncode != 0:
+                detail = f"{detail} (ffmpeg rc={ff_returncode})".strip()
+            return False, detail or f"dovi_tool convert rc={dt_proc.returncode}"
+        if not os.path.isfile(hevc_out) or os.path.getsize(hevc_out) <= 0:
+            return False, "dovi_tool convert produced no output"
+        return True, ""
+    except subprocess.TimeoutExpired:
+        for proc in (dt_proc, ff_proc):
+            if proc is not None:
+                proc.kill()
+                proc.communicate()
+        return False, f"timed out after {int(timeout)}s"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+
+
+def dovi_profile_needs_convert(profile: str | None) -> bool:
+    """
+    True when dovi_tool must rewrite the bitstream before zscale tonemap.
+
+    Profile 5 (IPT-PQ / web-DV) has no HDR10 base layer — zscale alone tinting.
+    Profiles 7 and 8 carry an HDR10-compatible base layer; zscale+tonemap is enough.
+    """
+    if not profile:
+        return False
+    normalized = str(profile).strip().lower().split(".")[0]
+    if not normalized.isdigit():
+        return False
+    return int(normalized) == 5
+
+
+def is_dv_profile_5(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    *,
+    ffmpeg: str | None = None,
+    debug: bool = False,
+) -> bool:
+    """True when media is Dolby Vision profile 5 (needs dovi_tool convert for tonemap)."""
+    if not media_path or not ffprobe:
+        return False
+    if not probe_video_is_dolby_vision(
+        media_path,
+        ffprobe,
+        env,
+        ffmpeg=ffmpeg,
+        debug=debug,
+    ):
+        return False
+    profile = probe_dovi_profile(
+        media_path,
+        ffprobe,
+        env,
+        ffmpeg=ffmpeg,
+        debug=debug,
+    )
+    return dovi_profile_needs_convert(profile)
+
+
+def _dovi_convert_command(
+    dovi_tool: str,
+    profile: str | None,
+    *,
+    has_enhancement_layer: bool = False,
+) -> list[str]:
+    """dovi_tool argv ending before input path (includes 'convert'). Profile 5 only."""
+    if not dovi_profile_needs_convert(profile):
+        return []
+    return [dovi_tool, "-m", "3", "convert"]
+
+
+def _media_has_dovi_enhancement_layer(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+) -> bool:
+    if not media_path or not ffprobe:
+        return False
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    if use_vfs_stream:
+        return False
+    local_path = ffmpeg_input
+    if not local_path or not (
+        os.path.isfile(local_path) or xbmcvfs.exists(local_path)
+    ):
+        return False
+    stream_args = [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_type,codec_name:stream_tags=title",
+        "-of",
+        "json",
+        local_path,
+    ]
+    payload = _ffprobe_json(ffprobe, stream_args, env, 120.0)
+    if not payload:
+        return False
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return False
+    for stream in data.get("streams") or []:
+        if _video_stream_is_enhancement_layer(stream):
+            return True
+    return False
+
+
+def prepare_dovi_zscale_media(
+    media_path: str,
+    ffmpeg: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    *,
+    duration_sec: float = 0.0,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> tuple[str | None, str | None]:
+    """
+    Convert Profile 5 DV to 8.1-compatible HEVC for zscale tonemap.
+
+    Returns (prepared_hevc_path, temp_dir). temp_dir must be removed by caller.
+    """
+    dovi_tool = _find_dovi_tool()
+    if not dovi_tool:
+        _log(
+            "Dolby Vision on this device requires dovi_tool (no Vulkan for libplacebo); "
+            "install dovi_tool via batch Run or place it in the add-on folder",
+            xbmc.LOGERROR,
+        )
+        return None, None
+
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    if use_vfs_stream:
+        _log(
+            "Dolby Vision dovi_tool convert cannot run on VFS stream paths",
+            xbmc.LOGERROR,
+        )
+        return None, None
+    local_input = ffmpeg_input
+    if not local_input or not (
+        os.path.isfile(local_input) or xbmcvfs.exists(local_input)
+    ):
+        _log(f"Dolby Vision prep: media not found: {media_path!r}", xbmc.LOGERROR)
+        return None, None
+
+    profile = probe_dovi_profile(
+        media_path, ffprobe, env, ffmpeg=ffmpeg, debug=debug
+    )
+    has_el = _media_has_dovi_enhancement_layer(media_path, ffprobe, env)
+    convert_cmd = _dovi_convert_command(
+        dovi_tool, profile, has_enhancement_layer=has_el
+    )
+    if not convert_cmd:
+        _log(
+            f"Dolby Vision profile {profile or 'unknown'}: "
+            "zscale+tonemap on source (no dovi_tool convert needed)"
+        )
+        return local_input, None
+
+    work_dir = _create_dovi_prep_work_dir()
+    if not _dovi_convert_disk_check(local_input, work_dir):
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return None, None
+
+    hevc_out = os.path.join(work_dir, "converted.hevc")
+    mode_label = " ".join(convert_cmd[1:-1]) if len(convert_cmd) > 2 else "convert"
+    _log(
+        f"Dolby Vision profile {profile}: converting {os.path.basename(media_path)} "
+        f"via ffmpeg pipe → dovi_tool ({mode_label}) + zscale "
+        f"(temp {work_dir}) — one-time step, may take several minutes"
+    )
+
+    timeout = min(
+        max(
+            _DOVI_CONVERT_TIMEOUT_MIN_SEC,
+            duration_sec * 1.5 + 120.0,
+        ),
+        _DOVI_CONVERT_TIMEOUT_MAX_SEC,
+    )
+    try:
+        ok, detail = _run_dovi_convert_mkv_to_hevc(
+            ffmpeg,
+            dovi_tool,
+            local_input,
+            convert_cmd,
+            hevc_out,
+            env,
+            timeout=timeout,
+            should_cancel=should_cancel,
+        )
+        if should_cancel and should_cancel():
+            shutil.rmtree(work_dir, ignore_errors=True)
+            return None, None
+        if not ok:
+            _log(f"dovi_tool convert failed: {detail[:500]}", xbmc.LOGERROR)
+            shutil.rmtree(work_dir, ignore_errors=True)
+            return None, None
+
+        _log(
+            f"Dolby Vision prep complete -> {hevc_out} "
+            f"({os.path.getsize(hevc_out) // (1024 * 1024)} MB)"
+        )
+        return hevc_out, work_dir
+    except (OSError, subprocess.SubprocessError) as exc:
+        _log(f"Dolby Vision prep failed: {exc}", xbmc.LOGERROR)
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return None, None
 
 
 def _dovi_profile_from_info_output(payload: str) -> str | None:
@@ -632,36 +1516,23 @@ def _probe_hdr_via_dovi_tool(
     rpu_fd, rpu_file = tempfile.mkstemp(suffix=".bin", prefix="trickplay_dovi_rpu_")
     os.close(rpu_fd)
     try:
-        ffmpeg_cmd = [
-            ffmpeg,
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            local_path,
-            "-c:v",
-            "copy",
-            "-to",
-            str(_DOVI_RPU_EXTRACT_SEC),
-            "-f",
-            "hevc",
-            "-",
-        ]
+        ffmpeg_cmd = _ffmpeg_demux_hevc_pipe_cmd(
+            ffmpeg, local_path, max_sec=_DOVI_RPU_EXTRACT_SEC
+        )
         extract_cmd = [dovi_tool, "extract-rpu", "-", "-o", rpu_file]
         try:
             ff_proc = subprocess.Popen(
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=env,
+                env=env, **subprocess_hide_window_kwargs(),
             )
             dt_proc = subprocess.Popen(
                 extract_cmd,
                 stdin=ff_proc.stdout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=env,
+                env=env, **subprocess_hide_window_kwargs(),
             )
             if ff_proc.stdout is not None:
                 ff_proc.stdout.close()
@@ -687,7 +1558,7 @@ def _probe_hdr_via_dovi_tool(
                 capture_output=True,
                 text=True,
                 timeout=30.0,
-                env=env,
+                env=env, **subprocess_hide_window_kwargs(),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             _log(f"HDR dovi_tool info failed: {exc}", xbmc.LOGWARNING)
@@ -720,7 +1591,7 @@ def _ffprobe_hdr_via_pipe_impl(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except OSError as exc:
         _log(f"HDR pipe probe failed to start for {media_path}: {exc}", xbmc.LOGWARNING)
@@ -875,6 +1746,8 @@ def resolve_thumb_filter_context(
     tonemap_mode = _TONEMAP_MODE_NONE
     apply_tonemap = False
     hdr_transfer = _TONEMAP_TRANSFER_PQ
+    is_dovi = False
+    use_dovi_tool_zscale_prep = False
 
     if hdr_tone_map_enabled:
         global _logged_hdr_dovi_tool_fallback_setting
@@ -897,9 +1770,92 @@ def resolve_thumb_filter_context(
             hdr_transfer = probe_hdr_transfer(
                 media_path, ffprobe, env, debug=debug
             )
+            is_dovi = probe_video_is_dolby_vision(
+                media_path,
+                ffprobe,
+                env,
+                ffmpeg=ffmpeg,
+                dovi_tool_fallback=hdr_dovi_tool_fallback,
+                debug=debug,
+            )
+            use_dovi_tool_zscale_prep = False
+            vulkan_ok = probe_vulkan_available(ffmpeg, env) if is_dovi else False
+            has_libplacebo = ffmpeg_has_libplacebo(ffmpeg, env)
+            zscale_ok = tonemap_mode == _TONEMAP_MODE_ZSCALE or ffmpeg_has_zscale(
+                ffmpeg, env
+            )
+            if is_dovi:
+                dv_profile = probe_dovi_profile(
+                    media_path, ffprobe, env, ffmpeg=ffmpeg, debug=debug
+                )
+                needs_dovi_prep = dovi_profile_needs_convert(dv_profile)
+                if vulkan_ok and has_libplacebo and needs_dovi_prep:
+                    tonemap_mode = _TONEMAP_MODE_LIBPLACEBO
+                    _log(
+                        f"Dolby Vision profile {dv_profile} for "
+                        f"{os.path.basename(media_path)}; "
+                        "using libplacebo with apply_dolbyvision (Vulkan available)"
+                    )
+                elif vulkan_ok and has_libplacebo and not needs_dovi_prep:
+                    tonemap_mode = _TONEMAP_MODE_ZSCALE
+                    _log(
+                        f"Dolby Vision profile {dv_profile or 'unknown'} for "
+                        f"{os.path.basename(media_path)}: "
+                        "zscale+tonemap on HDR10 base layer (libplacebo not required)"
+                    )
+                elif zscale_ok:
+                    tonemap_mode = _TONEMAP_MODE_ZSCALE
+                    if needs_dovi_prep:
+                        if _find_dovi_tool():
+                            use_dovi_tool_zscale_prep = True
+                            _log(
+                                f"Dolby Vision profile {dv_profile} for "
+                                f"{os.path.basename(media_path)}: "
+                                "dovi_tool convert (-m 3) + zscale tonemap "
+                                "(Profile 5 has no HDR10 base layer)"
+                            )
+                        else:
+                            _log(
+                                f"Dolby Vision profile 5 for {os.path.basename(media_path)} "
+                                "requires dovi_tool when Vulkan/libplacebo is unavailable; "
+                                "install via batch Run",
+                                xbmc.LOGWARNING,
+                            )
+                    else:
+                        _log(
+                            f"Dolby Vision profile {dv_profile or 'unknown'} for "
+                            f"{os.path.basename(media_path)}: "
+                            "zscale+tonemap on HDR10 base layer (no dovi_tool convert needed)"
+                        )
+                elif has_libplacebo and not vulkan_ok:
+                    _log(
+                        f"Dolby Vision detected for {os.path.basename(media_path)} but "
+                        "Vulkan/libvulkan is missing and dovi_tool is not installed; "
+                        "trickplay may fail or show green/purple tint",
+                        xbmc.LOGWARNING,
+                    )
+                elif not zscale_ok:
+                    _log(
+                        f"Dolby Vision detected for {os.path.basename(media_path)} but "
+                        "generator ffmpeg lacks zscale (required for CPU tonemap on this device)",
+                        xbmc.LOGERROR,
+                    )
+                else:
+                    _log(
+                        f"Dolby Vision detected for {os.path.basename(media_path)} but "
+                        "dovi_tool is not installed; install via batch Run",
+                        xbmc.LOGWARNING,
+                    )
+            mode_label = tonemap_mode
+            if is_dovi and tonemap_mode == _TONEMAP_MODE_LIBPLACEBO:
+                mode_label = f"{tonemap_mode}+dolbyvision"
+            elif is_dovi and use_dovi_tool_zscale_prep:
+                mode_label = "zscale+dovi_tool(p5)"
+            elif is_dovi and tonemap_mode == _TONEMAP_MODE_ZSCALE:
+                mode_label = "zscale+dv-bl"
             _log(
                 f"HDR tone mapping enabled for {os.path.basename(media_path)} "
-                f"({tonemap_mode}, transfer={hdr_transfer})"
+                f"({mode_label}, transfer={hdr_transfer})"
             )
         elif tonemap_mode != _TONEMAP_MODE_NONE:
             _log(
@@ -909,13 +1865,23 @@ def resolve_thumb_filter_context(
             )
 
     thumb_vf = build_thumb_video_filter(
-        tile_width, apply_tonemap, tonemap_mode, hdr_transfer
+        tile_width,
+        apply_tonemap,
+        tonemap_mode,
+        hdr_transfer,
+        dolby_vision=is_dovi and tonemap_mode == _TONEMAP_MODE_LIBPLACEBO,
     )
     color_args = ffmpeg_sdr_output_color_args() if apply_tonemap else ()
+    input_args = ()
+    if apply_tonemap and tonemap_mode == _TONEMAP_MODE_LIBPLACEBO:
+        input_args = ffmpeg_libplacebo_input_args()
     return ThumbFilterContext(
         apply_tonemap=apply_tonemap,
         tonemap_mode=tonemap_mode if apply_tonemap else _TONEMAP_MODE_NONE,
         thumb_vf=thumb_vf,
         hdr_transfer=hdr_transfer,
+        dolby_vision=is_dovi and tonemap_mode == _TONEMAP_MODE_LIBPLACEBO,
+        use_dovi_tool_zscale_prep=use_dovi_tool_zscale_prep if apply_tonemap else False,
         ffmpeg_color_args=color_args,
+        ffmpeg_input_args=input_args,
     )

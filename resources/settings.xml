@@ -682,7 +682,49 @@
 
                 </setting>
 
+                <setting id="generator_skip_dv_profile_5" type="boolean" label="32114" help="32115">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                            <condition setting="generator_hdr_tone_map">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
                 <setting id="generator_stop_on_failure" type="boolean" label="32078" help="32079">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_batch_background" type="boolean" label="32111" help="32112">
 
                     <level>0</level>
 

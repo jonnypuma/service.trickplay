@@ -125,6 +125,7 @@ def _extract_tile_experimental_ffmpeg(
     should_cancel: Callable[[], bool] | None,
     run_subprocess: Callable[..., tuple[int | None, str]],
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> list[str]:
     tile_start = start_index * interval_sec
     _log(
@@ -138,7 +139,7 @@ def _extract_tile_experimental_ffmpeg(
             return frame_paths
         chunk_end = min(chunk_start + _EXPERIMENTAL_FFMPEG_CHUNK, frame_count)
         chunk_len = chunk_end - chunk_start
-        cmd = [ffmpeg, "-y", "-loglevel", "error"]
+        cmd = [ffmpeg, "-y", "-loglevel", "error", *ffmpeg_input_args]
         chunk_outputs: list[str] = []
         for offset in range(chunk_start, chunk_end):
             timestamp = (start_index + offset) * interval_sec
@@ -220,6 +221,7 @@ def extract_tile_experimental(
     run_subprocess: Callable[..., tuple[int | None, str]] | None = None,
     force_ffmpeg: bool = False,
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> list[str]:
     """One open + seek loop (PyAV) or one ffmpeg process with many seeks per chunk."""
     if should_cancel and should_cancel() or frame_count <= 0:
@@ -270,4 +272,5 @@ def extract_tile_experimental(
         should_cancel,
         run_subprocess,
         output_color_args,
+        ffmpeg_input_args,
     )

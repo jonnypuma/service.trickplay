@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import xbmc
 import xbmcvfs
 
-from ffmpeg_tools import resolve_generator_ffmpeg_tools
+from ffmpeg_tools import resolve_generator_ffmpeg_tools, subprocess_hide_window_kwargs
 from generator_extract_modes import (
     EXTRACT_MODE_ACCURATE,
     EXTRACT_MODE_EXPERIMENTAL,
@@ -25,13 +25,18 @@ from generator_extract_modes import (
 from generator_settings import GeneratorSettings
 from experimental_extract import extract_tile_experimental
 from ffmpeg_media import (
+    elementary_hevc_input_args,
+    extract_frames_from_local_file,
     extract_frames_via_pipe,
+    is_elementary_hevc_path,
     probe_duration_via_pipe,
     resolve_ffmpeg_media_path,
 )
 from grid_settings import grid_tuple
 from hdr_tone_map import (
     build_fps_batch_filter,
+    is_dv_profile_5,
+    prepare_dovi_zscale_media,
     resolve_thumb_filter_context,
 )
 from trickplay_resolver import (
@@ -311,6 +316,7 @@ def has_generated_sidecar(
 class GenerationBatchPlan:
     candidates: list[str]
     skipped_existing: int
+    skipped_dv_profile_5: int
     total_videos: int
 
 
@@ -354,7 +360,7 @@ def probe_video_duration_seconds(
             capture_output=True,
             text=True,
             timeout=60,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         _log(f"ffprobe duration failed for {media_path} (path={local!r}): {exc}", xbmc.LOGWARNING)
@@ -380,7 +386,7 @@ def probe_video_duration_seconds(
             capture_output=True,
             text=True,
             timeout=60,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         _log(f"ffmpeg duration fallback failed for {media_path} (path={local!r}): {exc}", xbmc.LOGWARNING)
@@ -418,7 +424,7 @@ def _run_subprocess_cancellable(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=env,
+            env=env, **subprocess_hide_window_kwargs(),
         )
     except OSError as exc:
         return (-1, str(exc))
@@ -451,6 +457,10 @@ def _insert_before_output(cmd: list[str], extra: tuple[str, ...]) -> list[str]:
     return [*cmd[:-1], *extra, cmd[-1]]
 
 
+def _ffmpeg_cmd_prefix(ffmpeg: str, ffmpeg_input_args: tuple[str, ...] = ()) -> list[str]:
+    return [ffmpeg, "-y", "-loglevel", "error", *ffmpeg_input_args]
+
+
 def _extract_frame_accurate(
     ffmpeg: str,
     env: dict[str, str],
@@ -463,6 +473,7 @@ def _extract_frame_accurate(
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> bool:
     """Extract one thumbnail with seek after input (frame-accurate, slower)."""
     if _is_cancelled(should_cancel):
@@ -472,10 +483,7 @@ def _extract_frame_accurate(
     _ensure_local_dir(os.path.dirname(local_out))
     timeout = _accurate_frame_timeout_sec(thumb_index)
     cmd = [
-        ffmpeg,
-        "-y",
-        "-loglevel",
-        "error",
+        *_ffmpeg_cmd_prefix(ffmpeg, ffmpeg_input_args),
         "-i",
         ffmpeg_input,
         "-ss",
@@ -515,6 +523,7 @@ def _extract_frame_fast(
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> bool:
     """Extract one thumbnail with fast seek before input (keyframe-aligned)."""
     if _is_cancelled(should_cancel):
@@ -523,10 +532,7 @@ def _extract_frame_fast(
     local_out = _local_path(output_path)
     _ensure_local_dir(os.path.dirname(local_out))
     cmd = [
-        ffmpeg,
-        "-y",
-        "-loglevel",
-        "error",
+        *_ffmpeg_cmd_prefix(ffmpeg, ffmpeg_input_args),
         "-ss",
         f"{max(timestamp, 0.0):.3f}",
         "-i",
@@ -552,6 +558,14 @@ def _extract_frame_fast(
         _log(f"Fast frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
         return False
 
+    if not (os.path.isfile(local_out) or xbmcvfs.exists(output_path)):
+        _log(
+            f"Fast frame extract produced no output at {timestamp:.1f}s "
+            f"(path={local_out!r})",
+            xbmc.LOGWARNING,
+        )
+        return False
+
     if debug:
         _log(f"Fast extracted frame at {timestamp:.1f}s -> {output_path}")
     return os.path.isfile(local_out) or xbmcvfs.exists(output_path)
@@ -572,6 +586,7 @@ def _extract_tile_batch_fps(
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> list[str]:
     if _is_cancelled(should_cancel) or frame_count <= 0:
         return []
@@ -589,10 +604,7 @@ def _extract_tile_batch_fps(
     )
 
     cmd = [
-        ffmpeg,
-        "-y",
-        "-loglevel",
-        "error",
+        *_ffmpeg_cmd_prefix(ffmpeg, ffmpeg_input_args),
         "-ss",
         f"{max(tile_start, 0.0):.3f}",
         "-i",
@@ -655,6 +667,7 @@ def _extract_tile_fast_seek(
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> list[str]:
     """Extract one frame per interval via fast seek (-ss before -i)."""
     if _is_cancelled(should_cancel) or frame_count <= 0:
@@ -685,9 +698,14 @@ def _extract_tile_fast_seek(
             debug=debug,
             should_cancel=should_cancel,
             output_color_args=output_color_args,
+            ffmpeg_input_args=ffmpeg_input_args,
         ):
             return frame_paths
         frame_paths.append(frame_path)
+        _log(
+            f"Tile {tile_index + 1}/{tile_count}: thumb {offset + 1}/{frame_count} "
+            f"at {timestamp:.1f}s"
+        )
 
     _log(
         f"Tile {tile_index + 1}/{tile_count}: fast seek extracted "
@@ -712,6 +730,7 @@ def _extract_tile_fast(
     debug: bool = False,
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
 ) -> list[str]:
     tile_start = start_index * interval_sec
     if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
@@ -730,6 +749,7 @@ def _extract_tile_fast(
             debug=debug,
             should_cancel=should_cancel,
             output_color_args=output_color_args,
+            ffmpeg_input_args=ffmpeg_input_args,
         )
     return _extract_tile_fast_seek(
         ffmpeg,
@@ -746,6 +766,7 @@ def _extract_tile_fast(
         debug=debug,
         should_cancel=should_cancel,
         output_color_args=output_color_args,
+        ffmpeg_input_args=ffmpeg_input_args,
     )
 
 
@@ -893,14 +914,12 @@ def generate_trickplay_for_media(
         filter_ctx.apply_tonemap,
         filter_ctx.tonemap_mode,
         filter_ctx.hdr_transfer,
+        dolby_vision=filter_ctx.dolby_vision,
     )
     output_color_args = filter_ctx.ffmpeg_color_args
+    ffmpeg_input_args = filter_ctx.ffmpeg_input_args
     if settings.debug and filter_ctx.apply_tonemap:
         _log(f"HDR video filter: {filter_ctx.thumb_vf}")
-
-    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
-    if use_vfs_stream:
-        _log(f"Using VFS stream generation for {media_path}")
 
     duration = probe_video_duration_seconds(
         media_path, debug=settings.debug, ffmpeg_path=settings.ffmpeg_path
@@ -908,6 +927,41 @@ def generate_trickplay_for_media(
     if duration <= 0:
         _log(f"Could not determine duration for {media_path}", xbmc.LOGWARNING)
         return False
+
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    dovi_prep_dir: str | None = None
+    if filter_ctx.use_dovi_tool_zscale_prep:
+        if use_vfs_stream:
+            _log(
+                "Dolby Vision dovi_tool prep requires a local file path",
+                xbmc.LOGERROR,
+            )
+            return False
+        prepared_input, dovi_prep_dir = prepare_dovi_zscale_media(
+            media_path,
+            ffmpeg,
+            ffprobe or "",
+            env,
+            duration_sec=duration,
+            debug=settings.debug,
+            should_cancel=should_cancel,
+        )
+        if not prepared_input:
+            return False
+        if dovi_prep_dir:
+            ffmpeg_input = prepared_input
+            use_vfs_stream = False
+            _log(f"Using dovi_tool-prepared input for frame extraction: {ffmpeg_input}")
+
+    is_elementary_hevc = not use_vfs_stream and is_elementary_hevc_path(ffmpeg_input or "")
+    if is_elementary_hevc:
+        ffmpeg_input_args = (
+            *ffmpeg_input_args,
+            *elementary_hevc_input_args(ffmpeg_input),
+        )
+
+    if use_vfs_stream:
+        _log(f"Using VFS stream generation for {media_path}")
 
     interval_sec = max(settings.interval_ms / 1000.0, 0.001)
     thumb_count = int(duration / interval_sec) + 1
@@ -919,8 +973,10 @@ def generate_trickplay_for_media(
     _ensure_dir(work_dir)
     _ensure_local_dir(work_dir)
 
-    extract_mode = "VFS stream" if use_vfs_stream else extract_mode_log_label(
-        settings.extract_mode
+    extract_mode = "VFS stream" if use_vfs_stream else (
+        "dovi HEVC sequential" if is_elementary_hevc else extract_mode_log_label(
+            settings.extract_mode
+        )
     )
     hdr_note = ", HDR tone map" if filter_ctx.apply_tonemap else ""
     _log(
@@ -944,6 +1000,7 @@ def generate_trickplay_for_media(
                 debug=settings.debug,
                 should_cancel=should_cancel,
                 output_color_args=output_color_args,
+                ffmpeg_input_args=ffmpeg_input_args,
             ):
                 if _is_cancelled(should_cancel):
                     cancelled = True
@@ -954,6 +1011,67 @@ def generate_trickplay_for_media(
                 if not frame_paths:
                     success = False
                 else:
+                    for tile_index in range(tile_count):
+                        if _is_cancelled(should_cancel):
+                            cancelled = True
+                            break
+                        start_index = tile_index * thumbs_per_tile
+                        chunk = frame_paths[start_index : start_index + thumbs_per_tile]
+                        if not chunk:
+                            break
+                        tile_path = os.path.join(output_dir, f"{tile_index}.jpg")
+                        if not _tile_frames(
+                            ffmpeg,
+                            env,
+                            chunk,
+                            cols,
+                            rows,
+                            tile_path,
+                            debug=settings.debug,
+                            should_cancel=should_cancel,
+                        ):
+                            if _is_cancelled(should_cancel):
+                                cancelled = True
+                            else:
+                                success = False
+                            break
+        elif is_elementary_hevc:
+            hevc_timeout = max(3600.0, duration * 2.0 + 300.0)
+            frame_pattern = os.path.join(_local_path(work_dir), "thumb_%06d.jpg")
+            _log(
+                f"Dolby Vision HEVC: sequential extract of {thumb_count} frame(s) "
+                f"(elementary stream has no seek index; timeout {int(hevc_timeout)}s)"
+            )
+            if not extract_frames_from_local_file(
+                _local_path(ffmpeg_input) or ffmpeg_input,
+                ffmpeg,
+                env,
+                frame_pattern,
+                batch_vf,
+                thumb_count,
+                timeout_sec=hevc_timeout,
+                debug=settings.debug,
+                should_cancel=should_cancel,
+                output_color_args=output_color_args,
+                ffmpeg_input_args=ffmpeg_input_args,
+            ):
+                if _is_cancelled(should_cancel):
+                    cancelled = True
+                else:
+                    success = False
+            else:
+                frame_paths = _list_jpg_files(work_dir)[:thumb_count]
+                if not frame_paths:
+                    _log(
+                        "Dolby Vision HEVC extract produced no JPEGs",
+                        xbmc.LOGWARNING,
+                    )
+                    success = False
+                else:
+                    _log(
+                        f"Dolby Vision HEVC: extracted {len(frame_paths)} frame(s); "
+                        f"assembling {tile_count} tile(s)"
+                    )
                     for tile_index in range(tile_count):
                         if _is_cancelled(should_cancel):
                             cancelled = True
@@ -1010,6 +1128,7 @@ def generate_trickplay_for_media(
                         run_subprocess=_run_subprocess_cancellable,
                         force_ffmpeg=filter_ctx.apply_tonemap,
                         output_color_args=output_color_args,
+                        ffmpeg_input_args=ffmpeg_input_args,
                     )
                 elif settings.extract_mode == EXTRACT_MODE_FAST:
                     frame_paths = _extract_tile_fast(
@@ -1028,6 +1147,7 @@ def generate_trickplay_for_media(
                         debug=settings.debug,
                         should_cancel=should_cancel,
                         output_color_args=output_color_args,
+                        ffmpeg_input_args=ffmpeg_input_args,
                     )
                 elif settings.extract_mode == EXTRACT_MODE_ACCURATE:
                     frame_paths = []
@@ -1051,6 +1171,7 @@ def generate_trickplay_for_media(
                             debug=settings.debug,
                             should_cancel=should_cancel,
                             output_color_args=output_color_args,
+                            ffmpeg_input_args=ffmpeg_input_args,
                         ):
                             if _is_cancelled(should_cancel):
                                 cancelled = True
@@ -1080,6 +1201,7 @@ def generate_trickplay_for_media(
                         debug=settings.debug,
                         should_cancel=should_cancel,
                         output_color_args=output_color_args,
+                        ffmpeg_input_args=ffmpeg_input_args,
                     )
 
                 if cancelled or _is_cancelled(should_cancel):
@@ -1140,6 +1262,8 @@ def generate_trickplay_for_media(
         if cancelled or _is_cancelled(should_cancel):
             _cleanup_cancelled_sidecar(output_dir)
         _remove_tree(work_dir)
+        if dovi_prep_dir:
+            _remove_tree(dovi_prep_dir)
 
     if cancelled or _is_cancelled(should_cancel):
         return False
@@ -1191,6 +1315,19 @@ def collect_generation_candidates(
     _log(f"Scanned {len(videos)} video(s) under {root!r}")
     candidates: list[str] = []
     skipped = 0
+    skipped_dv_p5 = 0
+    skip_dv_p5 = settings.skip_dv_profile_5 and settings.hdr_tone_map
+    ffmpeg = ffprobe = None
+    env: dict[str, str] | None = None
+    if skip_dv_p5:
+        ffmpeg, ffprobe, env = resolve_generator_ffmpeg_tools(settings.ffmpeg_path)
+        if not ffprobe:
+            _log(
+                "Skip DV Profile 5 enabled but ffprobe unavailable; "
+                "profile scan disabled",
+                xbmc.LOGWARNING,
+            )
+            skip_dv_p5 = False
     for media_path in videos:
         if (
             not settings.overwrite_existing
@@ -1205,13 +1342,25 @@ def collect_generation_candidates(
             skipped += 1
             _log(f"Skipping existing sidecar: {os.path.basename(media_path)}")
             continue
+        if skip_dv_p5 and is_dv_profile_5(
+            media_path,
+            ffprobe,
+            env,
+            ffmpeg=ffmpeg,
+            debug=settings.debug,
+        ):
+            skipped_dv_p5 += 1
+            _log(f"Skipping DV Profile 5 (setting): {os.path.basename(media_path)}")
+            continue
         candidates.append(media_path)
     _log(
         f"Candidates: {len(candidates)} need generation, {skipped} skipped "
-        f"(existing sidecar, overwrite={settings.overwrite_existing})"
+        f"(existing sidecar), {skipped_dv_p5} skipped (DV Profile 5), "
+        f"overwrite={settings.overwrite_existing}"
     )
     return GenerationBatchPlan(
         candidates=candidates,
         skipped_existing=skipped,
+        skipped_dv_profile_5=skipped_dv_p5,
         total_videos=len(videos),
     )

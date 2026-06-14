@@ -390,12 +390,12 @@ msgid "Generator ffmpeg path"
 msgstr "Generator ffmpeg path"
 
 msgctxt "#32098"
-msgid "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ when present, otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a BtbN build into that folder. Playback cropping still uses tools.ffmpeg-tools."
-msgstr "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ when present, otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a BtbN build into that folder. Playback cropping still uses tools.ffmpeg-tools."
+msgid "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows). Playback cropping still uses tools.ffmpeg-tools."
+msgstr "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows). Playback cropping still uses tools.ffmpeg-tools."
 
 msgctxt "#32099"
-msgid "HDR tone mapping is enabled but the generator ffmpeg lacks zscale or libplacebo. Download and install a BtbN build now?\n\nInstall location: %s"
-msgstr "HDR tone mapping is enabled but the generator ffmpeg lacks zscale or libplacebo. Download and install a BtbN build now?\n\nInstall location: %s"
+msgid "HDR tone mapping needs a capable ffmpeg build. Download and install now?\n\nLinux: BtbN gpl-8.1 (zscale). Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nOn devices without Vulkan (e.g. CoreELEC), Profile 5 Dolby Vision uses dovi_tool instead of libplacebo.\n\nInstall location: %s"
+msgstr "HDR tone mapping needs a capable ffmpeg build. Download and install now?\n\nLinux: BtbN gpl-8.1 (zscale). Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nOn devices without Vulkan (e.g. CoreELEC), Profile 5 Dolby Vision uses dovi_tool instead of libplacebo.\n\nInstall location: %s"
 
 msgctxt "#32100"
 msgid "Continue without"
@@ -422,8 +422,8 @@ msgid "Download"
 msgstr "Download"
 
 msgctxt "#32106"
-msgid "HDR dovi_tool fallback is enabled but dovi_tool was not found. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
-msgstr "HDR dovi_tool fallback is enabled but dovi_tool was not found. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
+msgid "dovi_tool is required on this device for Dolby Vision trickplay (no Vulkan / libvulkan) or when HDR dovi_tool fallback is enabled. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
+msgstr "dovi_tool is required on this device for Dolby Vision trickplay (no Vulkan / libvulkan) or when HDR dovi_tool fallback is enabled. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
 
 msgctxt "#32107"
 msgid "Installing dovi_tool…"
@@ -440,3 +440,39 @@ msgstr "dovi_tool install failed:\n%s\n\nYou can install manually in the add-on 
 msgctxt "#32110"
 msgid "dovi_tool installed (%s)."
 msgstr "dovi_tool installed (%s)."
+
+msgctxt "#32111"
+msgid "Run batch in background"
+msgstr "Run batch in background"
+
+msgctxt "#32112"
+msgid "When enabled, batch Run shows a start notification and runs without the progress dialog. Progress is written to the Kodi log. You cannot cancel from the UI (stop Kodi or wait for completion). A notification is shown when the batch finishes."
+msgstr "When enabled, batch Run shows a start notification and runs without the progress dialog. Progress is written to the Kodi log. You cannot cancel from the UI (stop Kodi or wait for completion). A notification is shown when the batch finishes."
+
+msgctxt "#32113"
+msgid "Generating trickplay for %d file(s) — see log for progress"
+msgstr "Generating trickplay for %d file(s) — see log for progress"
+
+msgctxt "#32114"
+msgid "Skip Dolby Vision Profile 5"
+msgstr "Skip Dolby Vision Profile 5"
+
+msgctxt "#32115"
+msgid "When enabled, batch generation skips web-style Dolby Vision Profile 5 files (e.g. .DV. releases). Profile 5 needs a full dovi_tool convert before tonemapping — often hours plus ~1× video size temp space on devices like CoreELEC. Use a desktop with Vulkan or leave this off to process them."
+msgstr "When enabled, batch generation skips web-style Dolby Vision Profile 5 files (e.g. .DV. releases). Profile 5 needs a full dovi_tool convert before tonemapping — often hours plus ~1× video size temp space on devices like CoreELEC. Use a desktop with Vulkan or leave this off to process them."
+
+msgctxt "#32116"
+msgid "Generate trickplay for %d of %d video(s)? %d skipped (matching sidecars), %d skipped (Dolby Vision Profile 5)."
+msgstr "Generate trickplay for %d of %d video(s)? %d skipped (matching sidecars), %d skipped (Dolby Vision Profile 5)."
+
+msgctxt "#32117"
+msgid "Generate trickplay for %d of %d video(s)? %d skipped (Dolby Vision Profile 5)."
+msgstr "Generate trickplay for %d of %d video(s)? %d skipped (Dolby Vision Profile 5)."
+
+msgctxt "#32118"
+msgid "Vulkan (vulkan-1.dll) is missing on this PC. Dolby Vision via libplacebo needs it. Download and install the Vulkan loader next to ffmpeg?\n\nInstall location: %s"
+msgstr "Vulkan (vulkan-1.dll) is missing on this PC. Dolby Vision via libplacebo needs it. Download and install the Vulkan loader next to ffmpeg?\n\nInstall location: %s"
+
+msgctxt "#32119"
+msgid "Vulkan loader installed (%s)."
+msgstr "Vulkan loader installed (%s)."

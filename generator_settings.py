@@ -35,8 +35,10 @@ class GeneratorSettings:
     overwrite_existing: bool = False
     extract_mode: str = EXTRACT_MODE_FAST
     stop_on_failure: bool = False
+    batch_background: bool = False
     hdr_tone_map: bool = False
     hdr_dovi_tool_fallback: bool = False
+    skip_dv_profile_5: bool = False
     ffmpeg_path: str = ""
     library_path: str = ""
     tile_width: int = 320
@@ -186,8 +188,10 @@ def _load_generator_settings() -> GeneratorSettings:
         overwrite_existing=_read_overwrite_existing(),
         extract_mode=_read_extract_mode(),
         stop_on_failure=_setting_bool("generator_stop_on_failure", False),
+        batch_background=_setting_bool("generator_batch_background", False),
         hdr_tone_map=_setting_bool("generator_hdr_tone_map", False),
         hdr_dovi_tool_fallback=_setting_bool("generator_hdr_dovi_tool_fallback", False),
+        skip_dv_profile_5=_setting_bool("generator_skip_dv_profile_5", False),
         ffmpeg_path=_setting_string("generator_ffmpeg_path", "").strip(),
         library_path=_setting_string("generator_library_path", "").strip(),
         tile_width=runtime.preferred_width,
@@ -209,6 +213,21 @@ def save_generator_library_path(path: str) -> None:
     cleaned = path.strip()
     try:
         addon.setSettingString("generator_library_path", cleaned)
+    except (RuntimeError, TypeError, ValueError):
+        return
+    from settings_cache import invalidate_settings_cache
+
+    invalidate_settings_cache()
+
+
+def save_generator_ffmpeg_path(path: str) -> None:
+    """Persist auto-installed or selected generator ffmpeg root."""
+    addon = _addon()
+    if addon is None:
+        return
+    cleaned = path.strip()
+    try:
+        addon.setSettingString("generator_ffmpeg_path", cleaned)
     except (RuntimeError, TypeError, ValueError):
         return
     from settings_cache import invalidate_settings_cache

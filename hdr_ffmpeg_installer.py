@@ -1,4 +1,4 @@
-"""Download and install BtbN HDR-capable ffmpeg for trickplay generation."""
+"""Download and install HDR-capable ffmpeg for trickplay generation."""
 
 from __future__ import annotations
 
@@ -19,23 +19,26 @@ import xbmcaddon
 import xbmcvfs
 
 from ffmpeg_tools import (
-    DEFAULT_GENERATOR_FFMPEG_ROOTS,
     _layout_from_root,
     _local_path,
     _path_is_executable_file,
-    _prepend_ld_library_path,
+    build_generator_subprocess_env,
+    subprocess_hide_window_kwargs,
+    default_install_root,
     invalidate_generator_ffmpeg_cache,
 )
 from hdr_tone_map import (
     _TONEMAP_MODE_LIBPLACEBO,
     _TONEMAP_MODE_ZSCALE,
     detect_tonemap_support,
+    ffmpeg_has_libplacebo,
     find_dovi_tool,
+    probe_vulkan_available,
 )
 
-# Pinned BtbN builds (autobuild-2026-06-13-13-31).
-# Linux: static -gpl-8.1 (zscale/libplacebo built in; no lib/ on CoreELEC).
-# Windows: -gpl-8.1 zip.
+# Pinned BtbN builds (autobuild-2026-06-13-13-31) — Linux only.
+# Linux: static gpl-8.1 (zscale; reliable on CoreELEC without lib/ / Vulkan).
+# Profile 5 without Vulkan uses dovi_tool + zscale instead.
 _BTBN_LINUX64_URL = (
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/"
     "autobuild-2026-06-13-13-31/"
@@ -46,11 +49,13 @@ _BTBN_LINUXARM64_URL = (
     "autobuild-2026-06-13-13-31/"
     "ffmpeg-n8.1.1-13-g83e8541aa6-linuxarm64-gpl-8.1.tar.xz"
 )
-_BTBN_WIN64_URL = (
-    "https://github.com/BtbN/FFmpeg-Builds/releases/download/"
-    "autobuild-2026-06-13-13-31/"
-    "ffmpeg-n8.1.1-13-g83e8541aa6-win64-gpl-8.1.zip"
+# Windows x64: Gyan CODEX full build (static; zscale + libplacebo + Vulkan).
+# Pinned GitHub release zip — gyan.dev ffmpeg-release-full.zip does not exist.
+_GYAN_WIN64_URL = (
+    "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/"
+    "ffmpeg-8.1.1-full_build.zip"
 )
+# Windows ARM64: no Gyan build — fallback BtbN gpl-8.1 (zscale only).
 _BTBN_WINARM64_URL = (
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/"
     "autobuild-2026-06-13-13-31/"
@@ -80,12 +85,16 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay.generator] {message}", level)
 
 
-def default_install_root() -> str:
-    if sys.platform.startswith("win"):
-        return xbmcvfs.translatePath(
-            "special://profile/addon_data/service.trickplay/system/ffmpeg"
-        )
-    return DEFAULT_GENERATOR_FFMPEG_ROOTS[0]
+# NuGet Vulkan.Loader redistributable (vulkan-1.dll, win-x64).
+_VULKAN_LOADER_NUGET_URL = "https://www.nuget.org/api/v2/package/Vulkan.Loader/1.3.296.0"
+_VULKAN_DLL_NAME = "vulkan-1.dll"
+
+
+def _env_for_layout(lib_dir: str | None, ffmpeg: str | None = None) -> dict[str, str]:
+    bin_dir = None
+    if ffmpeg:
+        bin_dir = os.path.dirname(_local_path(ffmpeg) or ffmpeg)
+    return build_generator_subprocess_env(lib_dir, bin_dir)
 
 
 def default_dovi_tool_install_root() -> str:
@@ -95,12 +104,202 @@ def default_dovi_tool_install_root() -> str:
         return os.path.dirname(os.path.abspath(__file__))
 
 
+def _count_shared_libs(lib_dir: str | None) -> int:
+    if not lib_dir:
+        return 0
+    local = _local_path(lib_dir)
+    if not local or not os.path.isdir(local):
+        return 0
+    count = 0
+    for name in os.listdir(local):
+        lower = name.lower()
+        if lower.endswith(".dll"):
+            count += 1
+        elif ".so" in lower:
+            count += 1
+    return count
+
+
+def _persist_generator_ffmpeg_path(install_root: str) -> None:
+    try:
+        from generator_settings import save_generator_ffmpeg_path
+
+        save_generator_ffmpeg_path(install_root)
+    except ImportError:
+        pass
+
+
+def _system_vulkan_dll_path() -> str | None:
+    if not sys.platform.startswith("win"):
+        return None
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    for sub in ("System32", "SysWOW64"):
+        candidate = os.path.join(system_root, sub, _VULKAN_DLL_NAME)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _find_vulkan_dll_in_zip(zf: zipfile.ZipFile) -> str | None:
+    for name in zf.namelist():
+        if name.replace("\\", "/").endswith(f"runtimes/win-x64/native/{_VULKAN_DLL_NAME}"):
+            return name
+        if os.path.basename(name).lower() == _VULKAN_DLL_NAME:
+            return name
+    return None
+
+
+def install_windows_vulkan_loader(
+    bin_dir: str,
+    *,
+    progress: Callable[[int, str], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> tuple[bool, str]:
+    """Install vulkan-1.dll beside ffmpeg on Windows when the system loader is missing."""
+    if not sys.platform.startswith("win"):
+        return True, "not required"
+
+    local_bin = _local_path(bin_dir) or bin_dir
+    dest = os.path.join(local_bin, _VULKAN_DLL_NAME)
+    if os.path.isfile(dest):
+        return True, "already installed"
+
+    system_dll = _system_vulkan_dll_path()
+    if system_dll:
+        try:
+            shutil.copy2(system_dll, dest)
+            _log(f"Copied {_VULKAN_DLL_NAME} from {system_dll}")
+            return True, "copied from Windows System32"
+        except OSError as exc:
+            _log(f"Could not copy system Vulkan loader: {exc}", xbmc.LOGWARNING)
+
+    temp_dir = tempfile.mkdtemp(prefix="trickplay_vulkan_dl_")
+    archive_path = os.path.join(temp_dir, "Vulkan.Loader.nupkg")
+    try:
+        if progress:
+            progress(0, "Downloading Vulkan loader…")
+        _log(f"Downloading Vulkan loader from {_VULKAN_LOADER_NUGET_URL}")
+        _download_file(
+            _VULKAN_LOADER_NUGET_URL,
+            archive_path,
+            progress=progress,
+            should_cancel=should_cancel,
+        )
+        if should_cancel and should_cancel():
+            return False, "cancelled"
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            member = _find_vulkan_dll_in_zip(zf)
+            if not member:
+                return False, "vulkan-1.dll not found in Vulkan.Loader package"
+            os.makedirs(local_bin, exist_ok=True)
+            with zf.open(member) as src, open(dest, "wb") as out:
+                shutil.copyfileobj(src, out)
+        _log(f"Installed {_VULKAN_DLL_NAME} at {dest}")
+        return True, "downloaded Vulkan loader"
+    except (OSError, urllib.error.URLError, zipfile.BadZipFile, RuntimeError) as exc:
+        return False, str(exc)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def should_offer_vulkan_loader_download(
+    hdr_tone_map_enabled: bool,
+    custom_ffmpeg_path: str = "",
+) -> bool:
+    if not hdr_tone_map_enabled or not sys.platform.startswith("win"):
+        return False
+    from ffmpeg_tools import resolve_generator_ffmpeg_tools
+
+    ffmpeg, _, env = resolve_generator_ffmpeg_tools(custom_ffmpeg_path)
+    if not ffmpeg or probe_vulkan_available(ffmpeg, env):
+        return False
+    bin_dir = os.path.dirname(_local_path(ffmpeg) or ffmpeg)
+    dest = os.path.join(bin_dir, _VULKAN_DLL_NAME)
+    return not os.path.isfile(dest)
+
+
+def prompt_and_install_vulkan_loader(
+    *,
+    hdr_tone_map_enabled: bool,
+    custom_ffmpeg_path: str = "",
+    title: str,
+    prompt_yes: str,
+    prompt_no: str,
+    download_yes: str,
+    progress_title: str,
+    failed_message: str,
+    success_message: str,
+) -> bool:
+    if not should_offer_vulkan_loader_download(hdr_tone_map_enabled, custom_ffmpeg_path):
+        return True
+
+    from ffmpeg_tools import resolve_generator_ffmpeg_tools
+
+    ffmpeg, _, _ = resolve_generator_ffmpeg_tools(custom_ffmpeg_path)
+    if not ffmpeg:
+        return True
+
+    xbmcgui = __import__("xbmcgui")
+    bin_dir = os.path.dirname(_local_path(ffmpeg) or ffmpeg)
+    if not xbmcgui.Dialog().yesno(
+        title,
+        prompt_yes % bin_dir,
+        nolabel=prompt_no,
+        yeslabel=download_yes,
+    ):
+        _log("Vulkan loader download declined", xbmc.LOGWARNING)
+        return True
+
+    monitor = xbmc.Monitor()
+    progress = xbmcgui.DialogProgress()
+    progress.create(progress_title, "Starting…")
+    cancelled = False
+
+    def _should_cancel() -> bool:
+        nonlocal cancelled
+        if monitor.abortRequested() or progress.iscanceled():
+            cancelled = True
+            return True
+        return False
+
+    def _progress(percent: int, line: str) -> None:
+        if _should_cancel():
+            return
+        progress.update(percent, line)
+
+    try:
+        ok, detail = install_windows_vulkan_loader(
+            bin_dir,
+            progress=_progress,
+            should_cancel=_should_cancel,
+        )
+    finally:
+        progress.close()
+
+    if cancelled:
+        return True
+
+    if ok:
+        invalidate_generator_ffmpeg_cache()
+        try:
+            from hdr_tone_map import invalidate_tonemap_support_cache
+
+            invalidate_tonemap_support_cache()
+        except ImportError:
+            pass
+        xbmcgui.Dialog().notification(title, success_message % detail, xbmcgui.NOTIFICATION_INFO, 5000)
+        return True
+
+    xbmcgui.Dialog().ok(title, failed_message % detail)
+    return True
+
+
 def _ffmpeg_download_url_for_platform() -> str | None:
     machine = platform.machine().lower()
     if sys.platform.startswith("win"):
         if machine in ("aarch64", "arm64"):
             return _BTBN_WINARM64_URL
-        return _BTBN_WIN64_URL
+        return _GYAN_WIN64_URL
     if machine in ("aarch64", "arm64"):
         return _BTBN_LINUXARM64_URL
     if machine in ("x86_64", "amd64", "i686", "i386"):
@@ -121,29 +320,6 @@ def _dovi_tool_download_url_for_platform() -> str | None:
     return None
 
 
-def _env_for_layout(lib_dir: str | None) -> dict[str, str]:
-    env = os.environ.copy()
-    if lib_dir:
-        _prepend_ld_library_path(env, lib_dir)
-    return env
-
-
-def _count_shared_libs(lib_dir: str | None) -> int:
-    if not lib_dir:
-        return 0
-    local = _local_path(lib_dir)
-    if not local or not os.path.isdir(local):
-        return 0
-    count = 0
-    for name in os.listdir(local):
-        lower = name.lower()
-        if lower.endswith(".dll"):
-            count += 1
-        elif ".so" in lower:
-            count += 1
-    return count
-
-
 def _tonemap_mode_for_layout(
     ffmpeg: str,
     ffprobe: str,
@@ -153,9 +329,10 @@ def _tonemap_mode_for_layout(
 ) -> str:
     if not _path_is_executable_file(ffmpeg):
         return "none"
-    env = _env_for_layout(lib_dir)
+    local_ffmpeg = _local_path(ffmpeg) or ffmpeg
+    env = _env_for_layout(lib_dir, local_ffmpeg)
     return detect_tonemap_support(
-        _local_path(ffmpeg) or ffmpeg,
+        local_ffmpeg,
         env,
         use_cache=use_cache,
     )
@@ -183,15 +360,66 @@ def install_root_is_hdr_capable(install_root: str | None = None) -> bool:
     return is_hdr_capable_tonemap_mode(mode)
 
 
+def generator_ffmpeg_has_libplacebo(custom_path: str = "") -> bool:
+    from ffmpeg_tools import resolve_generator_ffmpeg_tools
+
+    ffmpeg, _, env = resolve_generator_ffmpeg_tools(custom_path)
+    if not ffmpeg:
+        return False
+    return ffmpeg_has_libplacebo(ffmpeg, env)
+
+
+def _windows_gyan_full_target() -> bool:
+    """True on Windows x64 where Gyan full (libplacebo) is the auto-install target."""
+    if not sys.platform.startswith("win"):
+        return False
+    return platform.machine().lower() not in ("aarch64", "arm64")
+
+
+def generator_ffmpeg_is_fully_hdr_capable(custom_path: str = "") -> bool:
+    """True when generator ffmpeg meets platform HDR requirements (libplacebo on Win x64 + Vulkan)."""
+    if not generator_ffmpeg_is_hdr_capable(custom_path):
+        return False
+    if _windows_gyan_full_target() and _generator_vulkan_available(custom_path):
+        return generator_ffmpeg_has_libplacebo(custom_path)
+    return True
+
+
+def _generator_vulkan_available(custom_ffmpeg_path: str = "") -> bool:
+    from ffmpeg_tools import resolve_generator_ffmpeg_tools
+
+    ffmpeg, _, env = resolve_generator_ffmpeg_tools(custom_ffmpeg_path)
+    if not ffmpeg:
+        return False
+    return probe_vulkan_available(ffmpeg, env)
+
+
+def install_root_is_fully_hdr_capable(install_root: str | None = None) -> bool:
+    root = install_root or default_install_root()
+    if not install_root_is_hdr_capable(root):
+        return False
+    if not _windows_gyan_full_target():
+        return True
+    ffmpeg, _, lib_dir = _layout_from_root(root)
+    local_ffmpeg = _local_path(ffmpeg) or ffmpeg
+    if not local_ffmpeg:
+        return False
+    env = _env_for_layout(lib_dir, local_ffmpeg)
+    if not probe_vulkan_available(local_ffmpeg, env):
+        return True
+    return ffmpeg_has_libplacebo(local_ffmpeg, env)
+
+
 def should_offer_hdr_ffmpeg_download(
     hdr_tone_map_enabled: bool,
     custom_ffmpeg_path: str = "",
 ) -> bool:
+    """Offer download only when the resolved generator ffmpeg lacks zscale (and libplacebo on Vulkan hosts)."""
     if not hdr_tone_map_enabled:
         return False
-    if custom_ffmpeg_path.strip():
-        return not generator_ffmpeg_is_hdr_capable(custom_ffmpeg_path)
-    if install_root_is_hdr_capable():
+    if generator_ffmpeg_is_fully_hdr_capable(custom_ffmpeg_path):
+        return False
+    if not (custom_ffmpeg_path or "").strip() and install_root_is_fully_hdr_capable():
         return False
     return True
 
@@ -200,10 +428,46 @@ def dovi_tool_is_installed() -> bool:
     return find_dovi_tool() is not None
 
 
-def should_offer_dovi_tool_download(hdr_dovi_tool_fallback_enabled: bool) -> bool:
-    if not hdr_dovi_tool_fallback_enabled:
+def _remove_broken_dovi_tool_at_dest(install_root: str) -> None:
+    dest = _dovi_tool_dest_path(install_root)
+    if not os.path.isfile(dest):
+        return
+    local = _local_path(dest) or dest
+    try:
+        result = subprocess.run(
+            [local, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            **subprocess_hide_window_kwargs(),
+        )
+        if result.returncode == 0:
+            return
+    except OSError:
+        pass
+    _log(
+        f"Removing unusable dovi_tool at {dest} (wrong architecture or corrupt)",
+        xbmc.LOGWARNING,
+    )
+    try:
+        os.remove(dest)
+    except OSError:
+        pass
+
+
+def should_offer_dovi_tool_download(
+    hdr_dovi_tool_fallback_enabled: bool,
+    hdr_tone_map_enabled: bool = False,
+    custom_ffmpeg_path: str = "",
+) -> bool:
+    if dovi_tool_is_installed():
         return False
-    return not dovi_tool_is_installed()
+    if hdr_dovi_tool_fallback_enabled:
+        return True
+    if hdr_tone_map_enabled and not _generator_vulkan_available(custom_ffmpeg_path):
+        return True
+    return False
 
 
 def _find_dovi_binary(extract_dir: str) -> str | None:
@@ -233,6 +497,7 @@ def _verify_dovi_tool(install_root: str) -> tuple[bool, str]:
             text=True,
             timeout=30,
             check=False,
+            **subprocess_hide_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc)
@@ -301,23 +566,48 @@ def _remove_install_artifacts(install_root: str) -> None:
 def _verify_installed(install_root: str) -> tuple[bool, str]:
     ffmpeg, ffprobe, lib_dir = _layout_from_root(install_root)
     local_root = _local_path(install_root) or install_root
+    local_ffmpeg = _local_path(ffmpeg) or ffmpeg
     lib_count = _count_shared_libs(lib_dir)
-    env = _env_for_layout(lib_dir)
+    env = _env_for_layout(lib_dir, local_ffmpeg)
     _log(
         f"Verifying HDR ffmpeg at {local_root}: "
-        f"ffmpeg={_local_path(ffmpeg) or ffmpeg} "
+        f"ffmpeg={local_ffmpeg} "
         f"lib={_local_path(lib_dir) if lib_dir else '(none)'} "
         f"shared_libs={lib_count} "
-        f"LD_LIBRARY_PATH={env.get('LD_LIBRARY_PATH', '') or '(unset)'}"
+        f"PATH={env.get('PATH', '')[:120] or '(unset)'}"
     )
     mode = _tonemap_mode_for_layout(ffmpeg, ffprobe, lib_dir, use_cache=False)
     if not is_hdr_capable_tonemap_mode(mode) and lib_dir:
-        _log("HDR ffmpeg probe with lib/ failed; retrying without LD_LIBRARY_PATH")
+        _log("HDR ffmpeg probe with lib/ failed; retrying without shared lib path")
         mode = _tonemap_mode_for_layout(ffmpeg, ffprobe, None, use_cache=False)
+    env = _env_for_layout(lib_dir, local_ffmpeg)
+    has_lp = ffmpeg_has_libplacebo(local_ffmpeg, env)
+    vulkan_ok = probe_vulkan_available(local_ffmpeg, env)
     if not is_hdr_capable_tonemap_mode(mode):
         return False, (
             f"installed ffmpeg lacks zscale/libplacebo filters (detected: {mode}); "
-            "re-run download or install BtbN -gpl (Linux) manually"
+            + (
+                "install Gyan ffmpeg-8.1.1-full_build on Windows or BtbN gpl-8.1 on Linux"
+                if sys.platform.startswith("win")
+                else "install a BtbN gpl-8.1 build with zscale"
+            )
+        )
+    if vulkan_ok and has_lp:
+        _log("HDR ffmpeg verified (zscale + libplacebo, Vulkan available)")
+    elif vulkan_ok and _windows_gyan_full_target():
+        return False, (
+            "installed ffmpeg lacks libplacebo filter (required on Windows for "
+            "Dolby Vision via Vulkan); re-run Run to install Gyan full build"
+        )
+    elif vulkan_ok:
+        _log(
+            "HDR ffmpeg verified (zscale; Vulkan available but no libplacebo filter — "
+            "Profile 5 Dolby Vision uses dovi_tool + zscale, not libplacebo)"
+        )
+    else:
+        _log(
+            "HDR ffmpeg verified for no-Vulkan host (zscale); "
+            "Profile 5 Dolby Vision uses dovi_tool, not libplacebo"
         )
     return True, mode
 
@@ -365,7 +655,7 @@ def install_hdr_ffmpeg(
     progress: Callable[[int, str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> tuple[bool, str]:
-    """Download BtbN ffmpeg into install_root. Returns (ok, detail)."""
+    """Download HDR ffmpeg into install_root. Returns (ok, detail)."""
     root = install_root or default_install_root()
     local_root = _local_path(root)
     url = _ffmpeg_download_url_for_platform()
@@ -414,6 +704,25 @@ def install_hdr_ffmpeg(
         ok, detail = _verify_installed(root)
         if not ok:
             return False, detail
+        _persist_generator_ffmpeg_path(root)
+        if sys.platform.startswith("win"):
+            ffmpeg, _, _ = _layout_from_root(root)
+            local_ffmpeg = _local_path(ffmpeg) or ffmpeg
+            if local_ffmpeg:
+                bin_dir = os.path.dirname(local_ffmpeg)
+                if not probe_vulkan_available(
+                    local_ffmpeg,
+                    _env_for_layout(None, local_ffmpeg),
+                ):
+                    install_windows_vulkan_loader(bin_dir)
+                elif not os.path.isfile(os.path.join(bin_dir, _VULKAN_DLL_NAME)):
+                    ok_vk, vk_detail = install_windows_vulkan_loader(bin_dir)
+                    if ok_vk:
+                        _log(
+                            f"Bundled {_VULKAN_DLL_NAME} beside ffmpeg ({vk_detail}) "
+                            "for libplacebo / future HDR use"
+                        )
+                invalidate_generator_ffmpeg_cache()
         _log(f"HDR ffmpeg installed at {local_root} ({detail})")
         return True, detail
     except (OSError, urllib.error.URLError, tarfile.TarError, zipfile.BadZipFile, RuntimeError) as exc:
@@ -444,6 +753,7 @@ def install_dovi_tool(
     dest_path = _dovi_tool_dest_path(root)
 
     try:
+        _remove_broken_dovi_tool_at_dest(root)
         if progress:
             progress(0, "Downloading dovi_tool…")
         _log(f"Downloading dovi_tool from {url}")
@@ -495,17 +805,28 @@ def prompt_and_install_hdr_ffmpeg(
     success_message: str,
 ) -> bool:
     """
-    Offer BtbN ffmpeg download when HDR tone mapping is on and zscale is missing.
+    Offer HDR ffmpeg download when HDR tone mapping is on and zscale/libplacebo is missing.
 
     Returns True when batch generation may continue, False when the user aborts Run.
     """
     if not should_offer_hdr_ffmpeg_download(hdr_tone_map_enabled, custom_ffmpeg_path):
         if hdr_tone_map_enabled and not generator_ffmpeg_is_hdr_capable(custom_ffmpeg_path):
             _log(
-                "HDR tone mapping enabled but generator ffmpeg lacks zscale/libplacebo; "
+                "HDR tone mapping enabled but generator ffmpeg lacks zscale; "
                 "previews may look washed out",
                 xbmc.LOGWARNING,
             )
+        elif hdr_tone_map_enabled and not _generator_vulkan_available(custom_ffmpeg_path):
+            _log(
+                "HDR ffmpeg OK without libplacebo (no Vulkan on this device); "
+                "HDR10 uses zscale, Profile 5 DV uses dovi_tool",
+            )
+        elif hdr_tone_map_enabled and _generator_vulkan_available(custom_ffmpeg_path):
+            if not generator_ffmpeg_has_libplacebo(custom_ffmpeg_path):
+                _log(
+                    "HDR ffmpeg OK (zscale); Vulkan available but no libplacebo — "
+                    "Profile 5 DV uses dovi_tool + zscale",
+                )
         return True
 
     if not _ffmpeg_download_url_for_platform():
@@ -552,6 +873,7 @@ def prompt_and_install_hdr_ffmpeg(
         return True
 
     if ok:
+        _persist_generator_ffmpeg_path(default_install_root())
         xbmcgui.Dialog().notification(title, success_message % detail, xbmcgui.NOTIFICATION_INFO, 5000)
         return True
 
@@ -563,6 +885,8 @@ def prompt_and_install_hdr_ffmpeg(
 def prompt_and_install_dovi_tool(
     *,
     hdr_dovi_tool_fallback_enabled: bool,
+    hdr_tone_map_enabled: bool = False,
+    custom_ffmpeg_path: str = "",
     title: str,
     prompt_yes: str,
     prompt_no: str,
@@ -577,7 +901,12 @@ def prompt_and_install_dovi_tool(
 
     Returns True when batch generation may continue.
     """
-    if not should_offer_dovi_tool_download(hdr_dovi_tool_fallback_enabled):
+    _remove_broken_dovi_tool_at_dest(default_dovi_tool_install_root())
+    if not should_offer_dovi_tool_download(
+        hdr_dovi_tool_fallback_enabled,
+        hdr_tone_map_enabled=hdr_tone_map_enabled,
+        custom_ffmpeg_path=custom_ffmpeg_path,
+    ):
         return True
 
     if not _dovi_tool_download_url_for_platform():
@@ -650,8 +979,15 @@ def prompt_and_install_generator_tools(
     dovi_failed_message: str,
     ffmpeg_success_message: str,
     dovi_success_message: str,
+    vulkan_prompt_yes: str = "",
+    vulkan_success_message: str = "",
 ) -> bool:
-    """Offer HDR ffmpeg and dovi_tool downloads before batch generation."""
+    """Offer HDR ffmpeg, Vulkan loader (Windows), and dovi_tool downloads before batch generation."""
+    vulkan_prompt = vulkan_prompt_yes or (
+        "Vulkan (vulkan-1.dll) is missing. Install the Vulkan loader next to ffmpeg?\n\n"
+        "Install location: %s"
+    )
+    vulkan_success = vulkan_success_message or "Vulkan loader installed (%s)"
     prompt_and_install_hdr_ffmpeg(
         hdr_tone_map_enabled=hdr_tone_map_enabled,
         custom_ffmpeg_path=custom_ffmpeg_path,
@@ -664,8 +1000,21 @@ def prompt_and_install_generator_tools(
         failed_message=ffmpeg_failed_message,
         success_message=ffmpeg_success_message,
     )
+    prompt_and_install_vulkan_loader(
+        hdr_tone_map_enabled=hdr_tone_map_enabled,
+        custom_ffmpeg_path=custom_ffmpeg_path or default_install_root(),
+        title=title,
+        prompt_yes=vulkan_prompt,
+        prompt_no=prompt_no,
+        download_yes=download_yes,
+        progress_title=ffmpeg_progress_title,
+        failed_message=ffmpeg_failed_message,
+        success_message=vulkan_success,
+    )
     prompt_and_install_dovi_tool(
         hdr_dovi_tool_fallback_enabled=hdr_dovi_tool_fallback_enabled,
+        hdr_tone_map_enabled=hdr_tone_map_enabled,
+        custom_ffmpeg_path=custom_ffmpeg_path,
         title=title,
         prompt_yes=dovi_prompt_yes,
         prompt_no=prompt_no,

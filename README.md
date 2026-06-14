@@ -146,32 +146,34 @@ Generation requires **write access** next to your media files. Pauses automatica
 
 **tools.ffmpeg-tools** (required for playback preview cropping) includes `tonemap` but not **zscale** or **libplacebo**, so HDR trickplay generation can look washed out unless you install a fuller ffmpeg for the **generator** only.
 
-Pre-built releases: **[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)**.
+Pre-built releases: **[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)** (Linux) and **[Gyan CODEX ffmpeg](https://www.gyan.dev/ffmpeg/builds/)** (Windows).
 
 #### Which download?
 
-| Device / OS | BtbN asset | Notes |
+| Device / OS | Build | Notes |
 |---|---|---|
-| CoreELEC / LibreELEC on **Ugoos AM9 Pro** and similar | `ffmpeg-…-linuxarm64-gpl-8.1.tar.xz` | Static **`-gpl-8.1`** |
-| **x86_64** Linux (Ryzen headless Kodi, PC, etc.) | `ffmpeg-…-linux64-gpl-8.1.tar.xz` | Static **`-gpl-8.1`** |
-| Windows Kodi | `ffmpeg-…-win64-gpl-8.1.zip` | **`-gpl-8.1`** zip |
+| CoreELEC / LibreELEC on **Ugoos AM9 Pro** and similar | BtbN `ffmpeg-…-linuxarm64-gpl-8.1.tar.xz` | Static **zscale**; Profile 5 uses **dovi_tool** |
+| **x86_64** Linux (Ryzen headless Kodi, etc.) | BtbN `ffmpeg-…-linux64-gpl-8.1.tar.xz` | Static **zscale** |
+| **Windows Kodi (x64)** | [Gyan `ffmpeg-8.1.1-full_build.zip`](https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip) | Static **zscale + libplacebo** (DV Profile 5 via Vulkan) |
 
-On **Linux / CoreELEC**, prefer **`-gpl`** (not `-gpl-shared`). The shared tarball often exposes only `tonemap` on embedded Kodi even with `LD_LIBRARY_PATH` set. The static `-gpl` binary is larger but works without a separate `lib/` tree.
+On **Linux / CoreELEC**, prefer **`-gpl-8.1`** static (not `-gpl-shared`). The shared tarball often exposes only `tonemap` on embedded Kodi even with `LD_LIBRARY_PATH` set.
 
 #### Automatic install (batch Run)
 
-When **HDR tone mapping** is enabled and no HDR-capable generator ffmpeg is found, **Run** on the add-on Information page offers to download and install a pinned BtbN **`-gpl-8.1`** build:
+When **HDR tone mapping** is enabled and no HDR-capable generator ffmpeg is found, **Run** offers to download and install a pinned build:
 
-| Platform | Install location |
-|---|---|
-| CoreELEC / LibreELEC / Linux Kodi | `/storage/.kodi/system/ffmpeg/` |
-| Windows Kodi | `special://profile/addon_data/service.trickplay/system/ffmpeg/` |
+| Platform | Auto-install source | Install location |
+|---|---|---|
+| CoreELEC / LibreELEC / Linux Kodi | BtbN **gpl-8.1** | `/storage/.kodi/system/ffmpeg/` |
+| Windows Kodi (x64) | Gyan **full build** zip (GitHub) | `special://profile/addon_data/service.trickplay/system/ffmpeg/` |
 
 You can decline and continue with **tools.ffmpeg-tools** (HDR previews may look washed out), or install manually using the steps below.
 
 When **HDR dovi_tool fallback** is enabled and `dovi_tool` is not in the add-on folder or on PATH, **Run** also offers to download **dovi_tool 2.3.2** into the add-on root (beside `addon.xml`).
 
-Pinned release (autobuild-2026-06-13-13-31): [linuxarm64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linuxarm64-gpl-8.1.tar.xz), [linux64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linux64-gpl-8.1.tar.xz), [win64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-win64-gpl-8.1.zip), [winarm64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-winarm64-gpl-8.1.zip).
+Pinned **Linux** (autobuild-2026-06-13-13-31): [linuxarm64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linuxarm64-gpl-8.1.tar.xz), [linux64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linux64-gpl-8.1.tar.xz).
+
+Pinned **Windows x64**: [Gyan ffmpeg-8.1.1-full_build.zip](https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip).
 
 Pinned **dovi_tool** (2.3.2): [linuxarm64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-aarch64-unknown-linux-musl.tar.gz), [linux64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-x86_64-unknown-linux-musl.tar.gz), [win64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-x86_64-pc-windows-msvc.zip), [winarm64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-aarch64-pc-windows-msvc.zip).
 
@@ -208,6 +210,28 @@ Steps:
 On **x86_64** Linux Kodi, use the same folder layout under `/storage/.kodi/system/ffmpeg/` (or set **Generator ffmpeg path** to your install location).
 
 The add-on logs the chosen binary at generation start, e.g. `Generator ffmpeg: … (default (/storage/.kodi/system/ffmpeg))`. With HDR tone mapping enabled you should see `using zscale + tonemap` or `using libplacebo` in `kodi.log`.
+
+#### libplacebo + Vulkan on Windows and desktop Linux
+
+**Gyan full build** on Windows includes **libplacebo** and **zscale** in a static `bin/ffmpeg.exe`. Dolby Vision Profile 5 uses **libplacebo + apply_dolbyvision** when Vulkan init succeeds (install may bundle `vulkan-1.dll` beside ffmpeg).
+
+BtbN **`-gpl-8.1`** on Linux is static with **zscale**; **libplacebo** may be absent. On **CoreELEC** there is usually no usable Vulkan stack; Profile 5 DV uses **dovi_tool + zscale** instead (no libplacebo).
+
+On **desktop Linux** (e.g. headless Kodi on Ryzen with NVIDIA/AMD), if `-init_hw_device vulkan` fails even though `libvulkan` is installed, export the ICD path before starting Kodi (or in the service environment):
+
+```bash
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json   # or amd_icd64.json, etc.
+export VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d   # if needed
+```
+
+Then verify:
+
+```bash
+/storage/.kodi/system/ffmpeg/bin/ffmpeg -hide_banner -init_hw_device vulkan=vk \
+  -f lavfi -i nullsrc -frames:v 1 -f null -
+```
+
+Generator subprocesses inherit the Kodi process environment (`VK_*` vars are not stripped). The add-on logs a hint when Vulkan init fails but ICD configs are present on disk.
 
 **Note:** Preview cropping during playback still uses **tools.ffmpeg-tools**; only batch/idle **generation** uses the custom ffmpeg.
 

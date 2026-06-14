@@ -5,6 +5,139 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.11] - 2026-06-14
+
+### Fixed
+
+- **Fast extract progress logging:** log each thumb as it is written during per-frame fast seek (`Tile 1/3: thumb 42/100 at 378.0s`). Reverts the 3.1.10 batch-threshold / libplacebo batch changes — fast seek + libplacebo was already working well for Jellyfin-style intervals.
+
+## [3.1.10] - 2026-06-14
+
+### Fixed
+
+- *(Superseded by 3.1.11 — batch-threshold change reverted; logging fix only.)*
+
+## [3.1.9] - 2026-06-14
+
+### Fixed
+
+- Batch generation crash: `creationflags` was accidentally passed to `resolve_thumb_filter_context()` after the 3.1.8 hide-window change (only subprocess calls should get it).
+
+## [3.1.8] - 2026-06-14
+
+### Fixed
+
+- **Windows:** ffmpeg/ffprobe/dovi_tool subprocesses now use `CREATE_NO_WINDOW` so batch generation and playback cropping no longer flash a **cmd.exe** window on every frame extract or probe.
+
+## [3.1.7] - 2026-06-14
+
+### Fixed
+
+- **libplacebo filter chain** for ffmpeg 8.x (Gyan full / BtbN with libplacebo): replaced removed options **`desaturation`** and **`color_mapping`** with **`gamut_mode=perceptual`**. Fixes `Option not found` failures on Dolby Vision Profile 5 generation.
+
+## [3.1.6] - 2026-06-14
+
+### Fixed
+
+- **libplacebo filter detection** on ffmpeg 8.x: Gyan full builds list `libplacebo` as **`N->V`**, not **`V->V`**. Install verification and Dolby Vision routing no longer falsely report “lacks libplacebo” when the filter is present.
+
+## [3.1.5] - 2026-05-22
+
+### Fixed
+
+- **Windows HDR ffmpeg auto-install** now downloads [Gyan **ffmpeg-8.1.1-full_build.zip**](https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip) from GitHub (static **zscale + libplacebo**). Reverts the 3.1.4 essentials fallback — essentials lacks libplacebo and cannot handle Dolby Vision Profile 5 via Vulkan.
+
+## [3.1.4] - 2026-05-22
+
+### Fixed
+
+- **Windows HDR ffmpeg auto-install** URL corrected to Gyan **ffmpeg-release-essentials.zip** *(superseded by 3.1.5 — essentials is not suitable for libplacebo / DV Profile 5)*.
+
+## [3.1.3] - 2026-06-14
+
+### Changed
+
+- **Windows HDR ffmpeg auto-install** now downloads Gyan **ffmpeg-release-full.zip** instead of BtbN **gpl-8.1**. *(URL was invalid — fixed in 3.1.4.)*
+- Windows x64 with Vulkan re-requires **libplacebo** in the installed ffmpeg for “fully HDR capable” checks; Linux / CoreELEC still uses BtbN **gpl-8.1** (zscale + **dovi_tool** for Profile 5). *(Relaxed in 3.1.4 for Gyan essentials.)*
+
+## [3.1.2] - 2026-06-14
+
+### Fixed
+
+- **Dolby Vision Profile 5** frame extraction after **dovi_tool** convert: **`converted.hevc`** is an elementary stream with no seek index — per-tile **fast seek** (`-ss` before `-i`) failed silently on Windows. Generation now uses a **single sequential decode** with **`-f hevc`** and the **fps** batch filter (same strategy as VFS pipe extract), then assembles tiles as before.
+
+## [3.1.1] - 2026-06-13
+
+### Fixed
+
+- **Windows HDR ffmpeg install** no longer fails verification when **Vulkan** is available but the BtbN **gpl-8.1** build has **zscale** only (no **libplacebo** filter). Install is accepted; HDR10 and DV P7/P8 use zscale, Profile 5 uses **dovi_tool + zscale** (same as no-Vulkan hosts). Re-run **Run** is not prompted again after a successful zscale install.
+- Wrong-architecture **dovi_tool** binaries in the add-on folder are removed automatically so batch **Run** can offer the correct Windows download.
+- Windows HDR ffmpeg install now **bundles `vulkan-1.dll`** into `bin/` (copied from System32 when present) even when Vulkan already works system-wide, so the folder is self-contained.
+
+## [3.1.0] - 2026-05-22
+
+### Added
+
+- **Windows Vulkan loader install** — when HDR tonemapping is enabled and ffmpeg cannot init Vulkan, batch **Run** offers to install **`vulkan-1.dll`** beside the generator ffmpeg (copies from `%SystemRoot%\System32` when present, otherwise downloads the NuGet **Vulkan.Loader** redistributable). Dolby Vision via **libplacebo** needs this on many Windows Kodi setups. Silent install is also attempted immediately after HDR ffmpeg auto-install.
+
+### Fixed
+
+- **Windows HDR ffmpeg install folder** — auto-install and default generator ffmpeg resolution now use **`special://profile/addon_data/service.trickplay/system/ffmpeg/`** on Windows Kodi instead of the Linux-only **`/storage/.kodi/system/ffmpeg/`** path (which broke download prompts and left ffmpeg undetected on PC).
+- Windows generator subprocesses resolve **`ffmpeg.exe` / `ffprobe.exe`**, prepend the install **`bin/`** (and **`lib/`** when present) plus **System32** to **`PATH`**, so BtbN **gpl-8.1** builds and the bundled Vulkan loader load correctly.
+
+## [3.0.19] - 2026-05-22
+
+### Added
+
+- Generator setting **Skip Dolby Vision Profile 5** (`generator_skip_dv_profile_5`): when HDR tonemapping is enabled, batch scans skip Profile 5 files (web `.DV.` releases) that need a full **dovi_tool** convert. Skipped files are counted separately in the batch confirmation dialog and logged as `Skipping DV Profile 5 (setting): …`.
+
+## [3.0.18] - 2026-06-13
+
+### Fixed
+
+- Profile 5 **dovi_tool** convert temp files now use **`special://temp/service.trickplay/dovi/`** (on `/storage`) instead of OS **`/tmp`**, which is often too small on CoreELEC for a full 4K HEVC rewrite (`No space left on device`).
+- Skip redundant MKV remux after convert — frame extraction reads the **`.hevc`** elementary stream directly (halves peak temp disk use).
+- Preflight disk-space check before Profile 5 convert with a clear log message when space is insufficient.
+
+## [3.0.17] - 2026-06-13
+
+### Fixed
+
+- **dovi_tool convert** for Profile 5: `convert` does not accept Matroska — ffmpeg now demuxes to annex-B HEVC (`hevc_mp4toannexb`) and pipes into `dovi_tool -m 3 convert -`.
+- Dolby Vision **profile detection** uses dovi_tool RPU info when ffprobe lacks `DOVI configuration record`; Profile **7/8** (e.g. DSNP FLUX) skip dovi_tool convert and use zscale only; Profile **5** (web `.DV.`) uses dovi_tool + zscale on no-Vulkan hosts.
+- README: static BtbN **libplacebo** on desktop Linux may need `VK_ICD_FILENAMES` (and related `VK_*` env) so the static ffmpeg binary can load system Vulkan ICDs; logged when ICD configs exist but init fails.
+
+## [3.0.16] - 2026-06-13
+
+### Fixed
+
+- Batch **Run** no longer prompts to re-download **gpl-shared** ffmpeg when **zscale** already works but **libplacebo** is absent — on no-Vulkan hosts (CoreELEC) libplacebo is not required; Profile 5 DV uses **dovi_tool + zscale**.
+- Linux HDR ffmpeg auto-install uses static **gpl-8.1** again (zscale on CoreELEC without `lib/` / Vulkan).
+- **dovi_tool** detection skips wrong-architecture binaries (`Exec format error`); broken installs are removed before re-download.
+
+## [3.0.15] - 2026-06-13
+
+### Fixed
+
+- **Dolby Vision on CoreELEC / no-Vulkan hosts** — Profile **5** (web-DV, no HDR10 base layer) uses **dovi_tool** `-m 3 convert` then **zscale + tonemap**. Profiles **7** and **8** keep the original **zscale + tonemap** path on the HDR10 base layer (no dovi_tool convert). libplacebo is used for any DV profile when Vulkan is available.
+
+## [3.0.14] - 2026-06-13
+
+### Added
+
+- **Run batch in background** generator setting — batch **Run** can show a start notification and run without the blocking progress dialog; progress goes to the Kodi log and a notification appears when finished.
+
+### Fixed
+
+- **Dolby Vision** tone mapping: Linux auto-install again uses BtbN **gpl-shared-8.1** (zscale + libplacebo with clean `LD_LIBRARY_PATH`). Re-run **Run** to replace a static `-gpl-8.1` install that has zscale but no libplacebo.
+- libplacebo Vulkan init (`-init_hw_device vulkan`) is passed on every frame-extract ffmpeg invocation when DV/HDR uses libplacebo.
+
+## [3.0.13] - 2026-06-13
+
+### Fixed
+
+- **Dolby Vision** trickplay thumbs (green/purple tint): DV sources are detected (DOVI side_data, dovi_tool, or `.DV.` in filename) and routed through **libplacebo** with `apply_dolbyvision=1` instead of the HDR10 zscale chain, which cannot apply DV RPU metadata.
+
 ## [3.0.12] - 2026-06-13
 
 ### Fixed

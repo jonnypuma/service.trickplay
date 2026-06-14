@@ -15,7 +15,7 @@ _ADDON_PATH = _ADDON.getAddonInfo("path")
 if _ADDON_PATH and _ADDON_PATH not in sys.path:
     sys.path.insert(0, _ADDON_PATH)
 
-from generator_settings import read_generator_settings, save_generator_library_path
+from generator_settings import GeneratorSettings, read_generator_settings, save_generator_library_path
 from hdr_ffmpeg_installer import prompt_and_install_generator_tools
 from library_path_browse import browse_library_folder
 from trickplay_generator import collect_generation_candidates, generate_trickplay_for_media
@@ -53,6 +53,70 @@ def _browse_library_path(current: str) -> str | None:
     return folder
 
 
+def _run_batch_generation(
+    candidates: list[str],
+    settings: GeneratorSettings,
+    *,
+    progress: xbmcgui.DialogProgress | None = None,
+    monitor: xbmc.Monitor | None = None,
+) -> tuple[int, int, bool]:
+    """Generate trickplay for each candidate. Returns (ok_count, fail_count, cancelled)."""
+    ok_count = 0
+    fail_count = 0
+    cancelled = False
+    total = len(candidates)
+
+    if monitor is None:
+        monitor = xbmc.Monitor()
+
+    def _should_cancel() -> bool:
+        nonlocal cancelled
+        if monitor.abortRequested():
+            cancelled = True
+            return True
+        if progress is not None and progress.iscanceled():
+            cancelled = True
+            return True
+        return False
+
+    for index, media_path in enumerate(candidates):
+        if _should_cancel():
+            _log(
+                f"Batch stopped early at {index + 1}/{total}",
+                xbmc.LOGWARNING,
+            )
+            break
+
+        label = os.path.basename(media_path)
+        status = _ADDON.getLocalizedString(32070) % (index + 1, total)
+        if progress is not None:
+            # Kodi v19+ DialogProgress.update() accepts only percent + one message line.
+            progress.update(
+                int((index * 100) / max(total, 1)),
+                f"{status} — {label}",
+            )
+        else:
+            _log(f"{status}: {label}")
+
+        _log(f"Generating {index + 1}/{total}: {media_path}")
+        if generate_trickplay_for_media(
+            media_path,
+            settings,
+            should_cancel=_should_cancel,
+        ):
+            ok_count += 1
+        elif cancelled:
+            break
+        else:
+            fail_count += 1
+            _log(f"Generation failed: {media_path}", xbmc.LOGWARNING)
+            if settings.stop_on_failure:
+                _log("Stopping batch (stop on first failure enabled)", xbmc.LOGWARNING)
+                break
+
+    return ok_count, fail_count, cancelled
+
+
 def run_batch_dialog() -> None:
     _log("run_batch_dialog started")
     settings = read_generator_settings()
@@ -64,6 +128,7 @@ def run_batch_dialog() -> None:
         f"hdr_dovi_tool_fallback={settings.hdr_dovi_tool_fallback} "
         f"ffmpeg_path={settings.ffmpeg_path!r} "
         f"stop_on_failure={settings.stop_on_failure} "
+        f"batch_background={settings.batch_background} "
         f"tile_width={settings.tile_width} "
         f"grid={settings.grid} interval_ms={settings.interval_ms}"
     )
@@ -102,7 +167,9 @@ def run_batch_dialog() -> None:
     candidates = plan.candidates
     _log(
         f"Found {len(candidates)} candidate(s) "
-        f"({plan.skipped_existing} skipped of {plan.total_videos} total)"
+        f"({plan.skipped_existing} skipped existing, "
+        f"{plan.skipped_dv_profile_5} skipped DV Profile 5, "
+        f"{plan.total_videos} total)"
     )
     if not candidates:
         _log("No candidates; showing notification", xbmc.LOGINFO)
@@ -131,15 +198,30 @@ def run_batch_dialog() -> None:
         dovi_failed_message=_ADDON.getLocalizedString(32109),
         ffmpeg_success_message=_ADDON.getLocalizedString(32104),
         dovi_success_message=_ADDON.getLocalizedString(32110),
+        vulkan_prompt_yes=_ADDON.getLocalizedString(32118),
+        vulkan_success_message=_ADDON.getLocalizedString(32119),
     ):
         _log("Batch aborted after HDR ffmpeg install prompt")
         return
 
-    if plan.skipped_existing > 0:
+    if plan.skipped_existing > 0 and plan.skipped_dv_profile_5 > 0:
+        confirm = _ADDON.getLocalizedString(32116) % (
+            len(candidates),
+            plan.total_videos,
+            plan.skipped_existing,
+            plan.skipped_dv_profile_5,
+        )
+    elif plan.skipped_existing > 0:
         confirm = _ADDON.getLocalizedString(32083) % (
             len(candidates),
             plan.total_videos,
             plan.skipped_existing,
+        )
+    elif plan.skipped_dv_profile_5 > 0:
+        confirm = _ADDON.getLocalizedString(32117) % (
+            len(candidates),
+            plan.total_videos,
+            plan.skipped_dv_profile_5,
         )
     else:
         confirm = _ADDON.getLocalizedString(32068) % len(candidates)
@@ -153,55 +235,43 @@ def run_batch_dialog() -> None:
 
     _log(f"Starting batch generation for {len(candidates)} file(s)")
     monitor = xbmc.Monitor()
+
+    if settings.batch_background:
+        xbmcgui.Dialog().notification(
+            _ADDON.getLocalizedString(32063),
+            _ADDON.getLocalizedString(32113) % len(candidates),
+            xbmcgui.NOTIFICATION_INFO,
+            5000,
+        )
+        ok_count, fail_count, cancelled = _run_batch_generation(
+            candidates,
+            settings,
+            monitor=monitor,
+        )
+        if cancelled:
+            _log(f"Batch cancelled (ok={ok_count} fail={fail_count})")
+            return
+        _log(f"Batch complete: ok={ok_count} fail={fail_count}")
+        xbmcgui.Dialog().notification(
+            _ADDON.getLocalizedString(32063),
+            _ADDON.getLocalizedString(32071) % (ok_count, fail_count),
+            xbmcgui.NOTIFICATION_INFO,
+            8000,
+        )
+        return
+
     progress = xbmcgui.DialogProgress()
     progress.create(
         _ADDON.getLocalizedString(32063),
         _ADDON.getLocalizedString(32069),
     )
-
-    ok_count = 0
-    fail_count = 0
-    total = len(candidates)
-    cancelled = False
-
-    def _should_cancel() -> bool:
-        nonlocal cancelled
-        if monitor.abortRequested() or progress.iscanceled():
-            cancelled = True
-            return True
-        return False
-
     try:
-        for index, media_path in enumerate(candidates):
-            if _should_cancel():
-                _log(
-                    f"Batch stopped early at {index + 1}/{total}",
-                    xbmc.LOGWARNING,
-                )
-                break
-
-            label = os.path.basename(media_path)
-            status = _ADDON.getLocalizedString(32070) % (index + 1, total)
-            # Kodi v19+ DialogProgress.update() accepts only percent + one message line.
-            progress.update(
-                int((index * 100) / max(total, 1)),
-                f"{status} — {label}",
-            )
-            _log(f"Generating {index + 1}/{total}: {media_path}")
-            if generate_trickplay_for_media(
-                media_path,
-                settings,
-                should_cancel=_should_cancel,
-            ):
-                ok_count += 1
-            elif cancelled:
-                break
-            else:
-                fail_count += 1
-                _log(f"Generation failed: {media_path}", xbmc.LOGWARNING)
-                if settings.stop_on_failure:
-                    _log("Stopping batch (stop on first failure enabled)", xbmc.LOGWARNING)
-                    break
+        ok_count, fail_count, cancelled = _run_batch_generation(
+            candidates,
+            settings,
+            progress=progress,
+            monitor=monitor,
+        )
     finally:
         progress.close()
 
