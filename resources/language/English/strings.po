@@ -476,3 +476,11 @@ msgstr "Vulkan (vulkan-1.dll) is missing on this PC. Dolby Vision via libplacebo
 msgctxt "#32119"
 msgid "Vulkan loader installed (%s)."
 msgstr "Vulkan loader installed (%s)."
+
+msgctxt "#32120"
+msgid "Windows hardware decode"
+msgstr "Windows hardware decode"
+
+msgctxt "#32121"
+msgid "On Windows only: use D3D11VA (GPU) for HEVC decode when extracting trickplay thumbnails (~25–30% faster on 4K HDR/Dolby Vision). Works with zscale and libplacebo (Vulkan) tonemapping. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). Falls back to software decode if a frame fails. No effect on Linux or CoreELEC."
+msgstr "On Windows only: use D3D11VA (GPU) for HEVC decode when extracting trickplay thumbnails (~25–30% faster on 4K HDR/Dolby Vision). Works with zscale and libplacebo (Vulkan) tonemapping. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). Falls back to software decode if a frame fails. No effect on Linux or CoreELEC."

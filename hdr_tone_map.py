@@ -144,6 +144,40 @@ def ffmpeg_libplacebo_input_args() -> tuple[str, ...]:
     return ("-init_hw_device", "vulkan=vk", "-filter_hw_device", "vk")
 
 
+_HW_DOWNLOAD_PREFIX = "hwdownload,format=p010le,"
+
+
+def ffmpeg_d3d11_hwaccel_input_args() -> tuple[str, ...]:
+    """Windows D3D11VA decode (pairs with hwdownload before CPU/GPU filters)."""
+    return ("-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11")
+
+
+def windows_hw_decode_available() -> bool:
+    """True when this host can use the Windows D3D11VA thumbnail decode path."""
+    return sys.platform == "win32"
+
+
+def augment_thumb_extract_for_windows_hw_decode(
+    thumb_vf: str,
+    ffmpeg_input_args: tuple[str, ...],
+    *,
+    enabled: bool,
+) -> tuple[str, tuple[str, ...], bool]:
+    """
+    Prefix filter/input args for D3D11VA HEVC decode on Windows.
+
+    Uses p010le after hwdownload (10-bit HEVC Main10 / HDR/DV). Caller should
+    pass software thumb_vf and ffmpeg_input_args as fallback when hw fails.
+    """
+    if not enabled or not windows_hw_decode_available():
+        return thumb_vf, ffmpeg_input_args, False
+    return (
+        f"{_HW_DOWNLOAD_PREFIX}{thumb_vf}",
+        (*ffmpeg_d3d11_hwaccel_input_args(), *ffmpeg_input_args),
+        True,
+    )
+
+
 def probe_vulkan_available(ffmpeg: str, env: dict[str, str] | None) -> bool:
     """True when ffmpeg can init a Vulkan device (libvulkan present on the host)."""
     if not ffmpeg:

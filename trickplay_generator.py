@@ -34,6 +34,7 @@ from ffmpeg_media import (
 )
 from grid_settings import grid_tuple
 from hdr_tone_map import (
+    augment_thumb_extract_for_windows_hw_decode,
     build_fps_batch_filter,
     is_dv_profile_5,
     prepare_dovi_zscale_media,
@@ -457,6 +458,17 @@ def _insert_before_output(cmd: list[str], extra: tuple[str, ...]) -> list[str]:
     return [*cmd[:-1], *extra, cmd[-1]]
 
 
+def _sw_extract_fallback(
+    sw_fallback: tuple[str, tuple[str, ...]] | None,
+) -> tuple[str, tuple[str, ...]] | None:
+    if not sw_fallback:
+        return None
+    thumb_vf, input_args = sw_fallback
+    if not thumb_vf:
+        return None
+    return thumb_vf, input_args
+
+
 def _ffmpeg_cmd_prefix(ffmpeg: str, ffmpeg_input_args: tuple[str, ...] = ()) -> list[str]:
     return [ffmpeg, "-y", "-loglevel", "error", *ffmpeg_input_args]
 
@@ -474,6 +486,7 @@ def _extract_frame_accurate(
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
+    sw_fallback: tuple[str, tuple[str, ...]] | None = None,
 ) -> bool:
     """Extract one thumbnail with seek after input (frame-accurate, slower)."""
     if _is_cancelled(should_cancel):
@@ -504,6 +517,28 @@ def _extract_frame_accurate(
     if returncode is None:
         return False
     if returncode != 0:
+        fallback = _sw_extract_fallback(sw_fallback)
+        if fallback:
+            _log(
+                f"Frame extract failed at {timestamp:.1f}s with hardware decode; "
+                "retrying with software decode",
+                xbmc.LOGINFO,
+            )
+            return _extract_frame_accurate(
+                ffmpeg,
+                env,
+                ffmpeg_input,
+                timestamp,
+                tile_width,
+                output_path,
+                fallback[0],
+                thumb_index=thumb_index,
+                debug=debug,
+                should_cancel=should_cancel,
+                output_color_args=output_color_args,
+                ffmpeg_input_args=fallback[1],
+                sw_fallback=None,
+            )
         _log(f"Frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
         return False
 
@@ -524,6 +559,7 @@ def _extract_frame_fast(
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
+    sw_fallback: tuple[str, tuple[str, ...]] | None = None,
 ) -> bool:
     """Extract one thumbnail with fast seek before input (keyframe-aligned)."""
     if _is_cancelled(should_cancel):
@@ -555,6 +591,27 @@ def _extract_frame_fast(
     if returncode is None:
         return False
     if returncode != 0:
+        fallback = _sw_extract_fallback(sw_fallback)
+        if fallback:
+            _log(
+                f"Fast frame extract failed at {timestamp:.1f}s with hardware decode; "
+                "retrying with software decode",
+                xbmc.LOGINFO,
+            )
+            return _extract_frame_fast(
+                ffmpeg,
+                env,
+                ffmpeg_input,
+                timestamp,
+                tile_width,
+                output_path,
+                fallback[0],
+                debug=debug,
+                should_cancel=should_cancel,
+                output_color_args=output_color_args,
+                ffmpeg_input_args=fallback[1],
+                sw_fallback=None,
+            )
         _log(f"Fast frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
         return False
 
@@ -587,6 +644,7 @@ def _extract_tile_batch_fps(
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
+    sw_fallback: tuple[str, tuple[str, ...]] | None = None,
 ) -> list[str]:
     if _is_cancelled(should_cancel) or frame_count <= 0:
         return []
@@ -627,6 +685,36 @@ def _extract_tile_batch_fps(
     if returncode is None:
         return []
     if returncode != 0:
+        fallback = _sw_extract_fallback(sw_fallback)
+        if fallback:
+            _log(
+                f"Tile fps batch failed at {tile_start:.1f}s with hardware decode; "
+                "retrying with software decode",
+                xbmc.LOGINFO,
+            )
+            comma = batch_vf.find(",")
+            if batch_vf.startswith("fps=") and comma >= 0:
+                sw_batch_vf = f"{batch_vf[: comma + 1]}{fallback[0]}"
+            else:
+                sw_batch_vf = fallback[0]
+            return _extract_tile_batch_fps(
+                ffmpeg,
+                env,
+                ffmpeg_input,
+                tile_start,
+                frame_count,
+                interval_sec,
+                tile_width,
+                output_dir,
+                sw_batch_vf,
+                tile_index=tile_index,
+                tile_count=tile_count,
+                debug=debug,
+                should_cancel=should_cancel,
+                output_color_args=output_color_args,
+                ffmpeg_input_args=fallback[1],
+                sw_fallback=None,
+            )
         _log(
             f"Tile fps batch failed at {tile_start:.1f}s "
             f"({frame_count} frame(s)): {detail[:500]}",
@@ -668,6 +756,7 @@ def _extract_tile_fast_seek(
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
+    sw_fallback: tuple[str, tuple[str, ...]] | None = None,
 ) -> list[str]:
     """Extract one frame per interval via fast seek (-ss before -i)."""
     if _is_cancelled(should_cancel) or frame_count <= 0:
@@ -699,6 +788,7 @@ def _extract_tile_fast_seek(
             should_cancel=should_cancel,
             output_color_args=output_color_args,
             ffmpeg_input_args=ffmpeg_input_args,
+            sw_fallback=sw_fallback,
         ):
             return frame_paths
         frame_paths.append(frame_path)
@@ -731,6 +821,7 @@ def _extract_tile_fast(
     should_cancel: Callable[[], bool] | None = None,
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
+    sw_fallback: tuple[str, tuple[str, ...]] | None = None,
 ) -> list[str]:
     tile_start = start_index * interval_sec
     if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
@@ -750,6 +841,7 @@ def _extract_tile_fast(
             should_cancel=should_cancel,
             output_color_args=output_color_args,
             ffmpeg_input_args=ffmpeg_input_args,
+            sw_fallback=sw_fallback,
         )
     return _extract_tile_fast_seek(
         ffmpeg,
@@ -767,6 +859,7 @@ def _extract_tile_fast(
         should_cancel=should_cancel,
         output_color_args=output_color_args,
         ffmpeg_input_args=ffmpeg_input_args,
+        sw_fallback=sw_fallback,
     )
 
 
@@ -908,14 +1001,6 @@ def generate_trickplay_for_media(
         env=env,
         debug=settings.debug,
     )
-    batch_vf = build_fps_batch_filter(
-        settings.tile_width,
-        max(settings.interval_ms / 1000.0, 0.001),
-        filter_ctx.apply_tonemap,
-        filter_ctx.tonemap_mode,
-        filter_ctx.hdr_transfer,
-        dolby_vision=filter_ctx.dolby_vision,
-    )
     output_color_args = filter_ctx.ffmpeg_color_args
     ffmpeg_input_args = filter_ctx.ffmpeg_input_args
     if settings.debug and filter_ctx.apply_tonemap:
@@ -960,10 +1045,40 @@ def generate_trickplay_for_media(
             *elementary_hevc_input_args(ffmpeg_input),
         )
 
+    sw_extract_fallback: tuple[str, tuple[str, ...]] | None = None
+    sw_ffmpeg_input_args = ffmpeg_input_args
+    thumb_vf, ffmpeg_input_args, hw_decode_active = (
+        augment_thumb_extract_for_windows_hw_decode(
+            filter_ctx.thumb_vf,
+            ffmpeg_input_args,
+            enabled=settings.hw_decode and not use_vfs_stream,
+        )
+    )
+    if hw_decode_active:
+        sw_extract_fallback = (filter_ctx.thumb_vf, sw_ffmpeg_input_args)
+        _log("Windows hardware decode enabled (D3D11VA, 10-bit HEVC)")
+    elif settings.hw_decode and use_vfs_stream:
+        _debug(settings, "Hardware decode skipped for VFS stream input")
+
+    interval_sec = max(settings.interval_ms / 1000.0, 0.001)
+    batch_vf = build_fps_batch_filter(
+        settings.tile_width,
+        interval_sec,
+        filter_ctx.apply_tonemap,
+        filter_ctx.tonemap_mode,
+        filter_ctx.hdr_transfer,
+        dolby_vision=filter_ctx.dolby_vision,
+    )
+    if hw_decode_active:
+        comma = batch_vf.find(",")
+        if batch_vf.startswith("fps=") and comma >= 0:
+            batch_vf = f"{batch_vf[: comma + 1]}{thumb_vf}"
+        else:
+            batch_vf = thumb_vf
+
     if use_vfs_stream:
         _log(f"Using VFS stream generation for {media_path}")
 
-    interval_sec = max(settings.interval_ms / 1000.0, 0.001)
     thumb_count = int(duration / interval_sec) + 1
     thumbs_per_tile = cols * rows
     tile_count = (thumb_count + thumbs_per_tile - 1) // thumbs_per_tile
@@ -979,10 +1094,11 @@ def generate_trickplay_for_media(
         )
     )
     hdr_note = ", HDR tone map" if filter_ctx.apply_tonemap else ""
+    hw_note = ", D3D11VA hw decode" if hw_decode_active else ""
     _log(
         f"Generating trickplay for {os.path.basename(media_path)} "
         f"({thumb_count} thumbs, {tile_count} tile(s), {settings.grid}, "
-        f"{settings.tile_width}px, {settings.interval_ms}ms, {extract_mode}{hdr_note}) "
+        f"{settings.tile_width}px, {settings.interval_ms}ms, {extract_mode}{hdr_note}{hw_note}) "
         f"-> {output_dir}"
     )
 
@@ -1042,7 +1158,7 @@ def generate_trickplay_for_media(
                 f"Dolby Vision HEVC: sequential extract of {thumb_count} frame(s) "
                 f"(elementary stream has no seek index; timeout {int(hevc_timeout)}s)"
             )
-            if not extract_frames_from_local_file(
+            hevc_extract_ok = extract_frames_from_local_file(
                 _local_path(ffmpeg_input) or ffmpeg_input,
                 ffmpeg,
                 env,
@@ -1054,7 +1170,31 @@ def generate_trickplay_for_media(
                 should_cancel=should_cancel,
                 output_color_args=output_color_args,
                 ffmpeg_input_args=ffmpeg_input_args,
-            ):
+            )
+            if not hevc_extract_ok and sw_extract_fallback:
+                _log(
+                    "Dolby Vision HEVC sequential extract failed with hardware "
+                    "decode; retrying with software decode",
+                    xbmc.LOGINFO,
+                )
+                sw_batch = sw_extract_fallback[0]
+                comma = batch_vf.find(",")
+                if batch_vf.startswith("fps=") and comma >= 0:
+                    sw_batch = f"{batch_vf[: comma + 1]}{sw_extract_fallback[0]}"
+                hevc_extract_ok = extract_frames_from_local_file(
+                    _local_path(ffmpeg_input) or ffmpeg_input,
+                    ffmpeg,
+                    env,
+                    frame_pattern,
+                    sw_batch,
+                    thumb_count,
+                    timeout_sec=hevc_timeout,
+                    debug=settings.debug,
+                    should_cancel=should_cancel,
+                    output_color_args=output_color_args,
+                    ffmpeg_input_args=sw_extract_fallback[1],
+                )
+            if not hevc_extract_ok:
                 if _is_cancelled(should_cancel):
                     cancelled = True
                 else:
@@ -1119,14 +1259,14 @@ def generate_trickplay_for_media(
                         chunk_count,
                         interval_sec,
                         settings.tile_width,
-                        filter_ctx.thumb_vf,
+                        thumb_vf,
                         tile_work_dir,
                         tile_index=tile_index,
                         tile_count=tile_count,
                         debug=settings.debug,
                         should_cancel=should_cancel,
                         run_subprocess=_run_subprocess_cancellable,
-                        force_ffmpeg=filter_ctx.apply_tonemap,
+                        force_ffmpeg=filter_ctx.apply_tonemap or hw_decode_active,
                         output_color_args=output_color_args,
                         ffmpeg_input_args=ffmpeg_input_args,
                     )
@@ -1140,7 +1280,7 @@ def generate_trickplay_for_media(
                         interval_sec,
                         settings.tile_width,
                         tile_work_dir,
-                        filter_ctx.thumb_vf,
+                        thumb_vf,
                         batch_vf,
                         tile_index=tile_index,
                         tile_count=tile_count,
@@ -1148,6 +1288,7 @@ def generate_trickplay_for_media(
                         should_cancel=should_cancel,
                         output_color_args=output_color_args,
                         ffmpeg_input_args=ffmpeg_input_args,
+                        sw_fallback=sw_extract_fallback,
                     )
                 elif settings.extract_mode == EXTRACT_MODE_ACCURATE:
                     frame_paths = []
@@ -1166,12 +1307,13 @@ def generate_trickplay_for_media(
                             timestamp,
                             settings.tile_width,
                             frame_path,
-                            filter_ctx.thumb_vf,
+                            thumb_vf,
                             thumb_index=thumb_index,
                             debug=settings.debug,
                             should_cancel=should_cancel,
                             output_color_args=output_color_args,
                             ffmpeg_input_args=ffmpeg_input_args,
+                            sw_fallback=sw_extract_fallback,
                         ):
                             if _is_cancelled(should_cancel):
                                 cancelled = True
@@ -1194,7 +1336,7 @@ def generate_trickplay_for_media(
                         interval_sec,
                         settings.tile_width,
                         tile_work_dir,
-                        filter_ctx.thumb_vf,
+                        thumb_vf,
                         batch_vf,
                         tile_index=tile_index,
                         tile_count=tile_count,
@@ -1202,6 +1344,7 @@ def generate_trickplay_for_media(
                         should_cancel=should_cancel,
                         output_color_args=output_color_args,
                         ffmpeg_input_args=ffmpeg_input_args,
+                        sw_fallback=sw_extract_fallback,
                     )
 
                 if cancelled or _is_cancelled(should_cancel):

@@ -136,6 +136,8 @@ Off by default. When disabled, all generator options are hidden.
 - **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Same ffmpeg is used for generation and playback preview cropping. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
 - **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires **zscale** or **libplacebo** in the generator ffmpeg. With tone mapping on, **Run** can prompt to download a pinned build if none is installed.
 - **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in generator ffmpeg `bin/` or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the generator tools folder.
+- **Skip Dolby Vision Profile 5** — optional when tone mapping is on; skips web-style DV P5 files in batch (full dovi_tool convert is very slow on CoreELEC).
+- **Windows hardware decode** — optional; on Windows only, uses D3D11VA GPU HEVC decode during thumbnail extraction (~25–30% faster on 4K HDR/DV with the Gyan full ffmpeg build). Works with zscale and libplacebo (Vulkan) tonemapping. Falls back to software decode on failure. No effect on Linux or CoreELEC.
 - **Overwrite existing sidecars** — replace matching sidecar folders when already present (default off). Skips Jellyfin legacy folders such as `320 - 10x10/` (treated as 10000 ms) when generator settings match width, grid, and interval
 - **Library folder** — root path for batch and idle scans (must be writable for sidecar output). **Configure** the generator here, press **OK** to save, then use **Run** on the add-on’s Information page to start batch generation (not from inside Configure). If the path is empty or missing, batch generation opens the full Kodi folder browser and saves your selection. Prefer your OS mount path (e.g. `/storage/remote-shares/…`) when available — it is faster than `nfs://` URLs for generation.
 - **Generator thumbnail interval (ms)** — time between generated frames; included in the sidecar folder name (default `10000`, e.g. `320 - 10x10 - 1000`)
@@ -216,9 +218,9 @@ The add-on logs the chosen binary at generation start, e.g. `Generator ffmpeg: �
 
 #### libplacebo + Vulkan on Windows and desktop Linux
 
-**Gyan full build** on Windows includes **libplacebo** and **zscale** in a static `bin/ffmpeg.exe`. Dolby Vision Profile 5 uses **libplacebo + apply_dolbyvision** when Vulkan init succeeds (install may bundle `vulkan-1.dll` beside ffmpeg).
+**Gyan full build** on Windows includes **libplacebo** and **zscale** in a static `bin/ffmpeg.exe`. Dolby Vision Profile 5 uses **libplacebo + apply_dolbyvision** when Vulkan init succeeds (install may bundle `vulkan-1.dll` beside ffmpeg). Enable **Windows hardware decode** in generator settings for D3D11VA HEVC decode (~25–30% faster thumbnail extraction on 4K HDR/DV).
 
-BtbN **`-gpl-8.1`** on Linux is static with **zscale**; **libplacebo** may be absent. On **CoreELEC** there is usually no usable Vulkan stack; Profile 5 DV uses **dovi_tool + zscale** instead (no libplacebo).
+BtbN **`-gpl-8.1`** on Linux is static with **zscale**; **libplacebo** may be absent. On **CoreELEC** there is usually no usable Vulkan stack; Profile 5 DV uses **dovi_tool + zscale** instead (no libplacebo). Hardware decode is Windows-only.
 
 On **desktop Linux** (e.g. headless Kodi on Ryzen with NVIDIA/AMD), if `-init_hw_device vulkan` fails even though `libvulkan` is installed, export the ICD path before starting Kodi (or in the service environment):
 

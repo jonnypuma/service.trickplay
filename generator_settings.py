@@ -39,6 +39,7 @@ class GeneratorSettings:
     hdr_tone_map: bool = False
     hdr_dovi_tool_fallback: bool = False
     skip_dv_profile_5: bool = False
+    hw_decode: bool = False
     ffmpeg_path: str = ""
     library_path: str = ""
     tile_width: int = 320
@@ -192,6 +193,7 @@ def _load_generator_settings() -> GeneratorSettings:
         hdr_tone_map=_setting_bool("generator_hdr_tone_map", False),
         hdr_dovi_tool_fallback=_setting_bool("generator_hdr_dovi_tool_fallback", False),
         skip_dv_profile_5=_setting_bool("generator_skip_dv_profile_5", False),
+        hw_decode=_setting_bool("generator_hw_decode", False),
         ffmpeg_path=_setting_string("generator_ffmpeg_path", "").strip(),
         library_path=_setting_string("generator_library_path", "").strip(),
         tile_width=runtime.preferred_width,

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-05-22
+
+### Added
+
+- **Windows hardware decode** — optional generator setting **Windows hardware decode** (default off). On Windows, uses D3D11VA GPU HEVC decode with `hwdownload,format=p010le` before zscale or libplacebo (Vulkan) tonemapping (~25–30% faster on 4K HDR/Dolby Vision in testing). Skipped for VFS stream paths. Falls back to software decode automatically when a frame or batch extract fails. No effect on Linux or CoreELEC.
+
 ## [3.3.0] - 2026-06-14
 
 ### Changed

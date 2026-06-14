@@ -704,6 +704,26 @@
 
                 </setting>
 
+                <setting id="generator_hw_decode" type="boolean" label="32120" help="32121">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
                 <setting id="generator_stop_on_failure" type="boolean" label="32078" help="32079">
 
                     <level>0</level>
