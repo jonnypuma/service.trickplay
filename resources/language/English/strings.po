@@ -382,16 +382,16 @@ msgid "HDR dovi_tool fallback"
 msgstr "HDR dovi_tool fallback"
 
 msgctxt "#32096"
-msgid "When HDR tone mapping is on, run dovi_tool on the first seconds of HEVC if ffprobe finds no HDR signals. Slower; place dovi_tool in the add-on folder or on PATH. Use for stubborn Dolby Vision remuxes. Skipped for VFS stream paths. With fallback on, Run can offer to download dovi_tool into the add-on folder."
-msgstr "When HDR tone mapping is on, run dovi_tool on the first seconds of HEVC if ffprobe finds no HDR signals. Slower; place dovi_tool in the add-on folder or on PATH. Use for stubborn Dolby Vision remuxes. Skipped for VFS stream paths. With fallback on, Run can offer to download dovi_tool into the add-on folder."
+msgid "When HDR tone mapping is on, run dovi_tool on the first seconds of HEVC if ffprobe finds no HDR signals. Slower; place dovi_tool in generator ffmpeg bin/ (same folder as HDR ffmpeg) or on PATH. Use for stubborn Dolby Vision remuxes. Skipped for VFS stream paths. With fallback on, Run can offer to download dovi_tool there."
+msgstr "When HDR tone mapping is on, run dovi_tool on the first seconds of HEVC if ffprobe finds no HDR signals. Slower; place dovi_tool in generator ffmpeg bin/ (same folder as HDR ffmpeg) or on PATH. Use for stubborn Dolby Vision remuxes. Skipped for VFS stream paths. With fallback on, Run can offer to download dovi_tool there."
 
 msgctxt "#32097"
 msgid "Generator ffmpeg path"
 msgstr "Generator ffmpeg path"
 
 msgctxt "#32098"
-msgid "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows). Playback cropping still uses tools.ffmpeg-tools."
-msgstr "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise tools.ffmpeg-tools. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows). Playback cropping still uses tools.ffmpeg-tools."
+msgid "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows)."
+msgstr "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows)."
 
 msgctxt "#32099"
 msgid "HDR tone mapping needs a capable ffmpeg build. Download and install now?\n\nLinux: BtbN gpl-8.1 (zscale). Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nOn devices without Vulkan (e.g. CoreELEC), Profile 5 Dolby Vision uses dovi_tool instead of libplacebo.\n\nInstall location: %s"
@@ -422,20 +422,20 @@ msgid "Download"
 msgstr "Download"
 
 msgctxt "#32106"
-msgid "dovi_tool is required on this device for Dolby Vision trickplay (no Vulkan / libvulkan) or when HDR dovi_tool fallback is enabled. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
-msgstr "dovi_tool is required on this device for Dolby Vision trickplay (no Vulkan / libvulkan) or when HDR dovi_tool fallback is enabled. Download and install dovi_tool to the add-on folder now?\n\nInstall location: %s"
+msgid "dovi_tool is required on this device for Dolby Vision trickplay (no Vulkan / libvulkan) or when HDR dovi_tool fallback is enabled. Download and install dovi_tool beside generator ffmpeg now?\n\nInstall location: %s"
+msgstr "dovi_tool is required on this device for Dolby Vision trickplay (no Vulkan / libvulkan) or when HDR dovi_tool fallback is enabled. Download and install dovi_tool beside generator ffmpeg now?\n\nInstall location: %s"
 
 msgctxt "#32107"
 msgid "Installing dovi_tool…"
 msgstr "Installing dovi_tool…"
 
 msgctxt "#32108"
-msgid "Automatic dovi_tool install is not supported on this platform. Download from quietvoid/dovi_tool releases and place dovi_tool in the add-on folder (see README)."
-msgstr "Automatic dovi_tool install is not supported on this platform. Download from quietvoid/dovi_tool releases and place dovi_tool in the add-on folder (see README)."
+msgid "Automatic dovi_tool install is not supported on this platform. Download from quietvoid/dovi_tool releases and place dovi_tool in generator ffmpeg bin/ (see README)."
+msgstr "Automatic dovi_tool install is not supported on this platform. Download from quietvoid/dovi_tool releases and place dovi_tool in generator ffmpeg bin/ (see README)."
 
 msgctxt "#32109"
-msgid "dovi_tool install failed:\n%s\n\nYou can install manually in the add-on folder or continue without Dolby Vision fallback."
-msgstr "dovi_tool install failed:\n%s\n\nYou can install manually in the add-on folder or continue without Dolby Vision fallback."
+msgid "dovi_tool install failed:\n%s\n\nYou can install manually in generator ffmpeg bin/ or continue without Dolby Vision fallback."
+msgstr "dovi_tool install failed:\n%s\n\nYou can install manually in generator ffmpeg bin/ or continue without Dolby Vision fallback."
 
 msgctxt "#32110"
 msgid "dovi_tool installed (%s)."

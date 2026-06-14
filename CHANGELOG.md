@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-06-14
+
+### Changed
+
+- **Removed `tools.ffmpeg-tools` dependency** — generation and playback preview cropping both use the same ffmpeg resolution: custom **Generator ffmpeg path**, auto-installed **`/storage/.kodi/system/ffmpeg/`** (Linux/CoreELEC) or **`addon_data/.../system/ffmpeg/`** (Windows), then system `PATH`. Run batch **Run** once with HDR tone mapping to install ffmpeg if needed.
+
+## [3.2.0] - 2026-06-14
+
+### Changed
+
+- **dovi_tool auto-install** now installs beside generator ffmpeg (**`/storage/.kodi/system/ffmpeg/bin/dovi_tool`** on CoreELEC/Linux, **`addon_data/.../system/ffmpeg/bin/dovi_tool.exe`** on Windows) instead of the add-on package root. Survives add-on updates like the HDR ffmpeg install. Legacy add-on-root copies are migrated automatically on first detection.
+
 ## [3.1.11] - 2026-06-14
 
 ### Fixed

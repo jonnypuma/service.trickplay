@@ -23,9 +23,11 @@ from ffmpeg_tools import (
     _local_path,
     _path_is_executable_file,
     build_generator_subprocess_env,
-    subprocess_hide_window_kwargs,
+    default_dovi_tool_bin_dir,
     default_install_root,
     invalidate_generator_ffmpeg_cache,
+    migrate_legacy_dovi_tool_if_needed,
+    subprocess_hide_window_kwargs,
 )
 from hdr_tone_map import (
     _TONEMAP_MODE_LIBPLACEBO,
@@ -98,10 +100,7 @@ def _env_for_layout(lib_dir: str | None, ffmpeg: str | None = None) -> dict[str,
 
 
 def default_dovi_tool_install_root() -> str:
-    try:
-        return xbmcaddon.Addon("service.trickplay").getAddonInfo("path")
-    except RuntimeError:
-        return os.path.dirname(os.path.abspath(__file__))
+    return default_dovi_tool_bin_dir()
 
 
 def _count_shared_libs(lib_dir: str | None) -> int:
@@ -738,7 +737,8 @@ def install_dovi_tool(
     progress: Callable[[int, str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> tuple[bool, str]:
-    """Download dovi_tool into the add-on root folder. Returns (ok, detail)."""
+    """Download dovi_tool into generator ffmpeg bin/ (same root as HDR ffmpeg). Returns (ok, detail)."""
+    migrate_legacy_dovi_tool_if_needed()
     root = install_root or default_dovi_tool_install_root()
     local_root = _local_path(root) or root
     url = _dovi_tool_download_url_for_platform()
@@ -902,6 +902,7 @@ def prompt_and_install_dovi_tool(
     Returns True when batch generation may continue.
     """
     _remove_broken_dovi_tool_at_dest(default_dovi_tool_install_root())
+    migrate_legacy_dovi_tool_if_needed()
     if not should_offer_dovi_tool_download(
         hdr_dovi_tool_fallback_enabled,
         hdr_tone_map_enabled=hdr_tone_map_enabled,

@@ -18,7 +18,13 @@ import xbmc
 import xbmcvfs
 
 from ffmpeg_media import _stream_to_pipe, resolve_ffmpeg_media_path
-from ffmpeg_tools import subprocess_hide_window_kwargs
+from ffmpeg_tools import (
+    _local_path,
+    default_dovi_tool_path,
+    legacy_dovi_tool_paths,
+    migrate_legacy_dovi_tool_if_needed,
+    subprocess_hide_window_kwargs,
+)
 
 _HDR_TRANSFERS = frozenset({"smpte2084", "arib-std-b67", "smpte240m"})
 _HDR_PRIMARIES = frozenset({"bt2020", "bt2020nc", "bt2020c"})
@@ -941,30 +947,24 @@ def _ffprobe_hdr_via_pipe(
 
 def _dovi_tool_candidates() -> list[str]:
     candidates: list[str] = []
-    addon_paths: list[str] = []
-    try:
-        import xbmcaddon
-
-        addon_paths.append(xbmcaddon.Addon().getAddonInfo("path"))
-    except RuntimeError:
-        pass
-    addon_paths.append(os.path.dirname(os.path.abspath(__file__)))
-
     seen: set[str] = set()
-    for addon_path in addon_paths:
-        if not addon_path or addon_path in seen:
-            continue
-        seen.add(addon_path)
-        for name in ("dovi_tool", "dovi_tool.exe"):
-            candidates.append(os.path.join(addon_path, name))
 
+    def add(path: str) -> None:
+        key = path if path in ("dovi_tool", "dovi_tool.exe") else (_local_path(path) or path)
+        if key not in seen:
+            seen.add(key)
+            candidates.append(path)
+
+    add(default_dovi_tool_path())
+    for legacy in legacy_dovi_tool_paths():
+        add(legacy)
     for name in ("dovi_tool", "dovi_tool.exe"):
-        candidates.append(name)
+        add(name)
     return candidates
 
 
 def find_dovi_tool() -> str | None:
-    """Return path to a runnable dovi_tool in the add-on folder or on PATH."""
+    """Return path to a runnable dovi_tool in generator bin/, legacy add-on root, or PATH."""
     return _find_dovi_tool()
 
 
@@ -1032,6 +1032,7 @@ def _try_remove_broken_dovi_tool(path: str) -> None:
 
 
 def _find_dovi_tool() -> str | None:
+    migrate_legacy_dovi_tool_if_needed()
     for candidate in _dovi_tool_candidates():
         if candidate in ("dovi_tool", "dovi_tool.exe"):
             found = shutil.which(candidate)
@@ -1402,7 +1403,8 @@ def prepare_dovi_zscale_media(
     if not dovi_tool:
         _log(
             "Dolby Vision on this device requires dovi_tool (no Vulkan for libplacebo); "
-            "install dovi_tool via batch Run or place it in the add-on folder",
+            "install dovi_tool via batch Run or place it in generator ffmpeg bin/ "
+            "(see README)",
             xbmc.LOGERROR,
         )
         return None, None
@@ -1510,7 +1512,7 @@ def _probe_hdr_via_dovi_tool(
 ) -> tuple[bool, str]:
     dovi_tool = _find_dovi_tool()
     if not dovi_tool:
-        _log("HDR dovi_tool fallback: dovi_tool not found (addon folder or PATH)", xbmc.LOGWARNING)
+        _log("HDR dovi_tool fallback: dovi_tool not found (generator bin/, legacy add-on root, or PATH)", xbmc.LOGWARNING)
         return False, "dovi_tool missing"
 
     rpu_fd, rpu_file = tempfile.mkstemp(suffix=".bin", prefix="trickplay_dovi_rpu_")
@@ -1754,7 +1756,7 @@ def resolve_thumb_filter_context(
         if hdr_dovi_tool_fallback and not _logged_hdr_dovi_tool_fallback_setting:
             _log(
                 "HDR dovi_tool fallback setting: enabled "
-                "(used when ffprobe finds no HDR signals; looks in addon folder then PATH)"
+                "(used when ffprobe finds no HDR signals; looks in generator ffmpeg bin/ then PATH)"
             )
             _logged_hdr_dovi_tool_fallback_setting = True
         tonemap_mode = detect_tonemap_support(ffmpeg, env)

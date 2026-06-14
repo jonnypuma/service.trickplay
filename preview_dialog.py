@@ -513,7 +513,7 @@ class PreviewDialogController:
         ):
             xbmc.log(
                 "[service.trickplay] Could not crop preview thumb; "
-                "install tools.ffmpeg-tools",
+                "install ffmpeg via batch Run or set Generator ffmpeg path",
                 xbmc.LOGWARNING,
             )
             self._crop_failed = False

@@ -2,7 +2,7 @@
 
 <img width="424" height="395" alt="icon" src="https://github.com/user-attachments/assets/52bc6554-8d8f-4229-8801-80cecc7f0354" />
 
-Kodi background service that can generate/show **Jellyfin trickplay** or custom trickplay thumbnails.
+Kodi background service that can generate/show **Jellyfin trickplay** or custom trickplay thumbnails (tile grid, duration and resolution can be customized).
 
 ## Skin integration required
 
@@ -17,7 +17,9 @@ The reference snippets in this addon are:
 | Estuary Mod v2 | `resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml` |
 | Arctic Fuse 3 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.3.xml` |
 
-Those filenames are deliberate: they are **not** dropped into Kodi as-is. Copy the preview block from the matching file into your skin’s real **`DialogSeekBar.xml`**. Other skins need the same approach, but coordinates, control IDs, and visibility conditions will differ.
+Those filenames are deliberate: they are **not** dropped into Kodi as-is. Either: Copy the preview block from the matching file into your skin’s real **`DialogSeekBar.xml`** or copy the entire snippet xml into your skin's xml folder and rename it DialogSeekBar.xml (rembember to backup original one first). 
+
+Other skins need the same approach, but coordinates, control IDs, and visibility conditions will differ.
 
 ### Skin profiles (auto-detect)
 
@@ -97,7 +99,7 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 
 - Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin), **or** use the built-in generator (see below)
 - **Skin edit** to `DialogSeekBar.xml` (see above)
-- **tools.ffmpeg-tools** — crops one frame from each sprite tile (required dependency; install from your Kodi repository before this addon)
+- **ffmpeg** and **ffprobe** — auto-installed via batch **Run** (HDR tone mapping), or manual install under `/storage/.kodi/system/ffmpeg/` (CoreELEC) / `addon_data/.../system/ffmpeg/` (Windows); used for generation and playback preview cropping
 
 ## Settings
 
@@ -131,9 +133,9 @@ Off by default. When disabled, all generator options are hidden.
 - **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
 - **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
 - **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default), or **Experimental**
-- **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary for generation. Leave empty to auto-use that default folder when installed, otherwise **tools.ffmpeg-tools**. Playback cropping always uses **tools.ffmpeg-tools**. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
-- **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires a generator ffmpeg with **zscale** or **libplacebo** for good results; **tools.ffmpeg-tools** alone is tonemap-only and may look dull on HDR. With tone mapping on, **Run** can prompt to download a BtbN build if none is installed.
-- **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in the add-on folder or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the add-on folder.
+- **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Same ffmpeg is used for generation and playback preview cropping. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
+- **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires **zscale** or **libplacebo** in the generator ffmpeg. With tone mapping on, **Run** can prompt to download a pinned build if none is installed.
+- **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in generator ffmpeg `bin/` or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the generator tools folder.
 - **Overwrite existing sidecars** — replace matching sidecar folders when already present (default off). Skips Jellyfin legacy folders such as `320 - 10x10/` (treated as 10000 ms) when generator settings match width, grid, and interval
 - **Library folder** — root path for batch and idle scans (must be writable for sidecar output). **Configure** the generator here, press **OK** to save, then use **Run** on the add-on’s Information page to start batch generation (not from inside Configure). If the path is empty or missing, batch generation opens the full Kodi folder browser and saves your selection. Prefer your OS mount path (e.g. `/storage/remote-shares/…`) when available — it is faster than `nfs://` URLs for generation.
 - **Generator thumbnail interval (ms)** — time between generated frames; included in the sidecar folder name (default `10000`, e.g. `320 - 10x10 - 1000`)
@@ -144,7 +146,7 @@ Generation requires **write access** next to your media files. Pauses automatica
 
 ### Custom ffmpeg for HDR generation
 
-**tools.ffmpeg-tools** (required for playback preview cropping) includes `tonemap` but not **zscale** or **libplacebo**, so HDR trickplay generation can look washed out unless you install a fuller ffmpeg for the **generator** only.
+**Generator ffmpeg** (auto-installed or manual) includes **zscale** for HDR trickplay. Without it, HDR previews may look washed out until you install a capable build via batch **Run**.
 
 Pre-built releases: **[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)** (Linux) and **[Gyan CODEX ffmpeg](https://www.gyan.dev/ffmpeg/builds/)** (Windows).
 
@@ -164,12 +166,12 @@ When **HDR tone mapping** is enabled and no HDR-capable generator ffmpeg is foun
 
 | Platform | Auto-install source | Install location |
 |---|---|---|
-| CoreELEC / LibreELEC / Linux Kodi | BtbN **gpl-8.1** | `/storage/.kodi/system/ffmpeg/` |
-| Windows Kodi (x64) | Gyan **full build** zip (GitHub) | `special://profile/addon_data/service.trickplay/system/ffmpeg/` |
+| CoreELEC / LibreELEC / Linux Kodi | BtbN **gpl-8.1** | `/storage/.kodi/system/ffmpeg/` (ffmpeg, ffprobe, **dovi_tool** in `bin/`) |
+| Windows Kodi (x64) | Gyan **full build** zip (GitHub) | `special://profile/addon_data/service.trickplay/system/ffmpeg/` (`bin/` includes **dovi_tool.exe** when installed) |
 
-You can decline and continue with **tools.ffmpeg-tools** (HDR previews may look washed out), or install manually using the steps below.
+You can decline and continue without a capable ffmpeg (HDR previews may look washed out), or install manually using the steps below.
 
-When **HDR dovi_tool fallback** is enabled and `dovi_tool` is not in the add-on folder or on PATH, **Run** also offers to download **dovi_tool 2.3.2** into the add-on root (beside `addon.xml`).
+When **HDR dovi_tool fallback** is enabled and `dovi_tool` is missing, **Run** offers to download **dovi_tool 2.3.2** into the generator ffmpeg **`bin/`** folder (same location as auto-installed ffmpeg — survives add-on updates).
 
 Pinned **Linux** (autobuild-2026-06-13-13-31): [linuxarm64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linuxarm64-gpl-8.1.tar.xz), [linux64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linux64-gpl-8.1.tar.xz).
 
@@ -195,7 +197,8 @@ Default layout (auto-detected when **Generator ffmpeg path** is empty):
 /storage/.kodi/system/ffmpeg/
 └── bin/
     ├── ffmpeg
-    └── ffprobe
+    ├── ffprobe
+    └── dovi_tool          ← auto-install (3.2.0+); survives add-on updates
 ```
 
 (`lib/` is only needed for Windows gpl-shared or manual Linux shared installs.)
@@ -204,7 +207,7 @@ Steps:
 
 1. Extract the **`-gpl`** tarball on a PC or on the box (Linux) or **`-gpl-shared`** zip (Windows).
 2. Copy the **`bin`** folder into `/storage/.kodi/system/ffmpeg/` (and **`lib`** on Windows).
-3. Make binaries executable: `chmod +x /storage/.kodi/system/ffmpeg/bin/ffmpeg /storage/.kodi/system/ffmpeg/bin/ffprobe`
+3. Make binaries executable: `chmod +x /storage/.kodi/system/ffmpeg/bin/ffmpeg /storage/.kodi/system/ffmpeg/bin/ffprobe` (and `dovi_tool` if installed manually)
 4. Leave **Generator ffmpeg path** empty (uses the folder above) or set it explicitly to `/storage/.kodi/system/ffmpeg/` or `/storage/.kodi/system/ffmpeg/bin/ffmpeg`.
 
 On **x86_64** Linux Kodi, use the same folder layout under `/storage/.kodi/system/ffmpeg/` (or set **Generator ffmpeg path** to your install location).
@@ -233,15 +236,13 @@ Then verify:
 
 Generator subprocesses inherit the Kodi process environment (`VK_*` vars are not stripped). The add-on logs a hint when Vulkan init fails but ICD configs are present on disk.
 
-**Note:** Preview cropping during playback still uses **tools.ffmpeg-tools**; only batch/idle **generation** uses the custom ffmpeg.
-
 ## Installation
 
-1. Install **tools.ffmpeg-tools** from your Kodi repository (required).
-2. Zip the `service.trickplay` folder so `addon.xml` is at the root of the archive.
-3. In Kodi: **Settings → Add-ons → Install from zip file**.
-4. **Merge the skin snippet** into your active skin’s `DialogSeekBar.xml` (required).
-5. Enable the service if needed (**Settings → Add-ons → My add-ons → Services**).
+1. Zip the `service.trickplay` folder so `addon.xml` is at the root of the archive.
+2. In Kodi: **Settings → Add-ons → Install from zip file**.
+3. **Merge the skin snippet** into your active skin’s `DialogSeekBar.xml` (required).
+4. Enable the service if needed (**Settings → Add-ons → My add-ons → Services**).
+5. For generation or preview cropping: run batch **Run** once (with **HDR tone mapping** on) to auto-install ffmpeg, or install manually — see [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation).
 6. Tail `kodi.log` for `[service.trickplay]` messages when debugging.
 
 ## Supported paths

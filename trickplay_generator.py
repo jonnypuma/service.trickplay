@@ -895,7 +895,7 @@ def generate_trickplay_for_media(
 
     ffmpeg, ffprobe, env = resolve_generator_ffmpeg_tools(settings.ffmpeg_path)
     if not ffmpeg:
-        _log("ffmpeg not found; install tools.ffmpeg-tools", xbmc.LOGERROR)
+        _log("ffmpeg not found; install via batch Run or set Generator ffmpeg path", xbmc.LOGERROR)
         return False
 
     filter_ctx = resolve_thumb_filter_context(

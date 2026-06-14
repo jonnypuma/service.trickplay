@@ -1,4 +1,4 @@
-"""FFmpeg/ffprobe resolution for trickplay generation (optional custom HDR-capable build)."""
+"""FFmpeg/ffprobe resolution for trickplay generation and playback cropping."""
 
 from __future__ import annotations
 
@@ -10,8 +10,6 @@ import sys
 import xbmc
 import xbmcaddon
 import xbmcvfs
-
-FFMPEG_TOOLS_ADDON_ID = "tools.ffmpeg-tools"
 
 # Windows: hide console window when spawning ffmpeg/ffprobe/dovi_tool (Python 3.7+).
 _WIN_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
@@ -72,6 +70,87 @@ def addon_ffmpeg_install_roots() -> tuple[str, ...]:
 
 def default_install_root() -> str:
     return addon_ffmpeg_install_roots()[0]
+
+
+def default_dovi_tool_bin_dir() -> str:
+    """Directory for dovi_tool beside generator ffmpeg (survives add-on updates)."""
+    return os.path.join(default_install_root(), "bin")
+
+
+def default_dovi_tool_path() -> str:
+    return _program_path(default_dovi_tool_bin_dir(), "dovi_tool")
+
+
+def legacy_dovi_tool_paths() -> tuple[str, ...]:
+    """Pre-3.2.0 locations in the add-on package root (removed on add-on update)."""
+    paths: list[str] = []
+    seen: set[str] = set()
+    try:
+        addon_path = xbmcaddon.Addon(ADDON_FFMPEG_INSTALL_ID).getAddonInfo("path")
+        if addon_path:
+            candidate = _program_path(addon_path, "dovi_tool")
+            key = _local_path(candidate) or candidate
+            if key not in seen:
+                seen.add(key)
+                paths.append(candidate)
+    except RuntimeError:
+        pass
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    candidate = _program_path(module_dir, "dovi_tool")
+    key = _local_path(candidate) or candidate
+    if key not in seen:
+        paths.append(candidate)
+    return tuple(paths)
+
+
+def _dovi_tool_binary_runs(path: str) -> bool:
+    local = _local_path(path) or path
+    if not local or not os.path.isfile(local):
+        return False
+    try:
+        result = subprocess.run(
+            [local, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            **subprocess_hide_window_kwargs(),
+        )
+        return result.returncode == 0
+    except OSError:
+        return False
+
+
+def migrate_legacy_dovi_tool_if_needed() -> bool:
+    """Copy a working legacy add-on-root dovi_tool into generator ffmpeg bin/."""
+    dest = default_dovi_tool_path()
+    local_dest = _local_path(dest) or dest
+    if os.path.isfile(local_dest) and _dovi_tool_binary_runs(local_dest):
+        return False
+    bin_dir = os.path.dirname(local_dest)
+    os.makedirs(bin_dir, exist_ok=True)
+    for legacy in legacy_dovi_tool_paths():
+        local_legacy = _local_path(legacy) or legacy
+        if local_legacy == local_dest:
+            continue
+        if not os.path.isfile(local_legacy) or not _dovi_tool_binary_runs(local_legacy):
+            continue
+        if os.path.isfile(local_dest):
+            return False
+        try:
+            shutil.copy2(local_legacy, local_dest)
+            if not sys.platform.startswith("win"):
+                os.chmod(local_dest, 0o755)
+            _log(f"Migrated dovi_tool from {local_legacy} to {local_dest}")
+            try:
+                os.remove(local_legacy)
+            except OSError:
+                pass
+            return True
+        except OSError as exc:
+            _log(f"Could not migrate dovi_tool to {local_dest}: {exc}", xbmc.LOGWARNING)
+            return False
+    return False
 
 
 def _path_is_executable_file(path: str) -> bool:
@@ -179,33 +258,6 @@ def _layout_from_binary(ffmpeg_path: str) -> tuple[str, str, str | None]:
     return ffmpeg_path, ffprobe, lib_path
 
 
-def _addon_is_installed(addon_id: str) -> bool:
-    try:
-        return bool(xbmc.getCondVisibility(f"System.HasAddon({addon_id})"))
-    except (RuntimeError, AttributeError, TypeError):
-        return False
-
-
-def _tools_ffmpeg_tools_layout() -> tuple[str | None, str | None, str | None]:
-    if not _addon_is_installed(FFMPEG_TOOLS_ADDON_ID):
-        return None, None, None
-    try:
-        tools_addon = xbmcaddon.Addon(FFMPEG_TOOLS_ADDON_ID)
-        addon_path = tools_addon.getAddonInfo("path")
-    except RuntimeError:
-        return None, None, None
-    bin_dir = os.path.join(addon_path, "bin")
-    lib_dir = os.path.join(addon_path, "lib")
-    ffmpeg = _program_path(bin_dir, "ffmpeg")
-    ffprobe = _program_path(bin_dir, "ffprobe")
-    lib_path = lib_dir if xbmcvfs.exists(lib_dir) else None
-    if not _path_is_executable_file(ffmpeg):
-        return None, None, lib_path
-    if not _path_is_executable_file(ffprobe):
-        ffprobe = None
-    return ffmpeg, ffprobe, lib_path
-
-
 def _candidate_layouts(custom_path: str) -> list[tuple[str, str, str | None, str]]:
     layouts: list[tuple[str, str, str | None, str]] = []
     seen: set[str] = set()
@@ -228,10 +280,6 @@ def _candidate_layouts(custom_path: str) -> list[tuple[str, str, str | None, str
     for root in addon_ffmpeg_install_roots():
         ffmpeg, ffprobe, lib_dir = _layout_from_root(root)
         add(ffmpeg, ffprobe, lib_dir, f"addon install ({root})")
-
-    ffmpeg, ffprobe, lib_dir = _tools_ffmpeg_tools_layout()
-    if ffmpeg:
-        add(ffmpeg, ffprobe or "", lib_dir, "tools.ffmpeg-tools")
 
     for name in ("ffmpeg", "/usr/bin/ffmpeg"):
         found = shutil.which(name)
@@ -273,7 +321,11 @@ def resolve_generator_ffmpeg_tools(
         break
 
     if not _gen_ffmpeg_bin:
-        _log("Generator ffmpeg not found; install tools.ffmpeg-tools or custom ffmpeg", xbmc.LOGERROR)
+        _log(
+            "Generator ffmpeg not found; install via batch Run (HDR tone mapping) "
+            "or set Generator ffmpeg path — see README",
+            xbmc.LOGERROR,
+        )
     else:
         env = build_generator_subprocess_env(selected_lib, selected_bin)
 
@@ -293,5 +345,11 @@ def invalidate_generator_ffmpeg_cache() -> None:
         from hdr_tone_map import invalidate_tonemap_support_cache
 
         invalidate_tonemap_support_cache()
+    except ImportError:
+        pass
+    try:
+        from thumb_cropper import invalidate_playback_ffmpeg_cache
+
+        invalidate_playback_ffmpeg_cache()
     except ImportError:
         pass

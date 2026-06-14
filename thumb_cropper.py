@@ -17,7 +17,6 @@ import xbmcvfs
 from ffmpeg_tools import subprocess_hide_window_kwargs
 
 ADDON = xbmcaddon.Addon()
-FFMPEG_TOOLS_ADDON_ID = "tools.ffmpeg-tools"
 CACHE_VERSION = "v4"
 CACHE_DIR = xbmcvfs.translatePath(
     "special://profile/addon_data/service.trickplay/thumbs/"
@@ -552,67 +551,23 @@ def _resolve_ffmpeg_tools() -> tuple[str | None, str | None, dict[str, str]]:
     if _FFMPEG_BIN is not None:
         return _FFMPEG_BIN, _FFPROBE_BIN, _FFMPEG_ENV or os.environ.copy()
 
-    env = os.environ.copy()
-    ffmpeg_candidates: list[str] = []
-    ffprobe_candidates: list[str] = []
+    from ffmpeg_tools import resolve_generator_ffmpeg_tools
 
+    custom_path = ""
     try:
-        tools_addon = xbmcaddon.Addon(FFMPEG_TOOLS_ADDON_ID)
-        addon_path = tools_addon.getAddonInfo("path")
-        bin_dir = os.path.join(addon_path, "bin")
-        lib_dir = os.path.join(addon_path, "lib")
-        for name in ("ffmpeg", "ffmpeg.exe"):
-            ffmpeg_candidates.append(os.path.join(bin_dir, name))
-        for name in ("ffprobe", "ffprobe.exe"):
-            ffprobe_candidates.append(os.path.join(bin_dir, name))
-        if xbmcvfs.exists(lib_dir):
-            lib_path = _local_path(lib_dir)
-            existing = env.get("LD_LIBRARY_PATH", "")
-            env["LD_LIBRARY_PATH"] = (
-                f"{lib_path}:{existing}" if existing else lib_path
-            )
-    except RuntimeError:
+        from generator_settings import load_generator_settings
+
+        custom_path = load_generator_settings().ffmpeg_path
+    except ImportError:
         pass
 
-    ffmpeg_candidates.extend(
-        (
-            "ffmpeg",
-            "/usr/bin/ffmpeg",
-            "/storage/.kodi/addons/tools.ffmpeg-tools/bin/ffmpeg",
-        )
-    )
-    ffprobe_candidates.extend(
-        (
-            "ffprobe",
-            "/usr/bin/ffprobe",
-            "/storage/.kodi/addons/tools.ffmpeg-tools/bin/ffprobe",
-        )
-    )
-
-    for candidate in ffmpeg_candidates:
-        local = _local_path(candidate)
-        if local and xbmcvfs.exists(local):
-            _FFMPEG_BIN = local
-            break
-        found = shutil.which(candidate)
-        if found and xbmcvfs.exists(found):
-            _FFMPEG_BIN = _local_path(found)
-            break
-
-    for candidate in ffprobe_candidates:
-        local = _local_path(candidate)
-        if local and xbmcvfs.exists(local):
-            _FFPROBE_BIN = local
-            break
-        found = shutil.which(candidate)
-        if found and xbmcvfs.exists(found):
-            _FFPROBE_BIN = _local_path(found)
-            break
-
-    _FFMPEG_ENV = env
+    ffmpeg, ffprobe, env = resolve_generator_ffmpeg_tools(custom_path)
+    _FFMPEG_BIN = ffmpeg
+    _FFPROBE_BIN = ffprobe
+    _FFMPEG_ENV = env or os.environ.copy()
     if _FFMPEG_BIN:
         _log(f"Using ffmpeg at {_FFMPEG_BIN}")
-    return _FFMPEG_BIN, _FFPROBE_BIN, env
+    return _FFMPEG_BIN, _FFPROBE_BIN, _FFMPEG_ENV
 
 
 def _probe_dimensions_with_ffprobe(local_path: str, env: dict[str, str]) -> tuple[int, int]:
@@ -844,7 +799,7 @@ def get_cropped_thumb_path(
                 )
             else:
                 _log(
-                    "No ffmpeg binary found; install tools.ffmpeg-tools",
+                    "No ffmpeg binary found; install via batch Run or set Generator ffmpeg path",
                     xbmc.LOGWARNING,
                 )
     finally:
@@ -853,6 +808,14 @@ def get_cropped_thumb_path(
         wait_event.set()
 
     return result
+
+
+def invalidate_playback_ffmpeg_cache() -> None:
+    """Clear cached playback ffmpeg resolution (e.g. after generator install)."""
+    global _FFMPEG_BIN, _FFPROBE_BIN, _FFMPEG_ENV
+    _FFMPEG_BIN = None
+    _FFPROBE_BIN = None
+    _FFMPEG_ENV = None
 
 
 def resolve_ffmpeg_tools() -> tuple[str | None, str | None, dict[str, str]]:
