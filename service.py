@@ -171,6 +171,7 @@ class TrickplayService:
         self._load_target = ""
         self._load_settled_for = ""
         self._load_thread: threading.Thread | None = None
+        self._playback_block_reason = ""
         self._log_skin_profile(force=True)
 
     def _preview_hold_seconds(self) -> int:
@@ -288,6 +289,7 @@ class TrickplayService:
         self._load_target = ""
         self._load_settled_for = ""
         self.prefetch.cancel()
+        self._playback_block_reason = ""
         self.clear_preview_properties()
 
     def _refresh_resolution_if_needed(self) -> None:
@@ -318,6 +320,24 @@ class TrickplayService:
 
     def _preview_allowed(self) -> bool:
         return self.resolution is not None and self.resolution.is_usable
+
+    def _playback_block_message(self) -> str:
+        if self._load_in_progress():
+            return "trickplay still loading"
+        if self.playing_file and self._load_settled_for != self.playing_file:
+            return "trickplay load has not finished"
+        if self.resolution is None:
+            return "no trickplay sidecar for this file"
+        if not self.resolution.is_usable:
+            return "trickplay metadata unusable (check kodi.log at playback start)"
+        return ""
+
+    def _log_playback_block_once(self) -> None:
+        message = self._playback_block_message()
+        if not message or message == self._playback_block_reason:
+            return
+        self._playback_block_reason = message
+        _log(f"Preview unavailable during playback: {message}", xbmc.LOGINFO)
 
     def _current_playing_file(self) -> str:
         try:
@@ -405,6 +425,16 @@ class TrickplayService:
                 f"{len(self.resolution.tile_paths)} tile file(s))"
             )
 
+            from thumb_cropper import resolve_ffmpeg_tools
+
+            ffmpeg, _, _ = resolve_ffmpeg_tools()
+            if not ffmpeg:
+                _log(
+                    "Preview cropping needs ffmpeg; install via batch Run "
+                    "(HDR tone mapping) or set Generator ffmpeg path",
+                    xbmc.LOGWARNING,
+                )
+
             play_seconds = _player_time_seconds(self.player)
             runtime = read_runtime_settings()
             warm_lookup = lookup_thumbnail(
@@ -451,6 +481,7 @@ class TrickplayService:
         self.reset_playback_state()
         self.playing_file = playing_file
         self._load_target = playing_file
+        self._playback_block_reason = ""
         self.playback_started_at = time.monotonic()
 
         self._load_thread = threading.Thread(
@@ -486,6 +517,13 @@ class TrickplayService:
             _debug(f"No trickplay lookup for {target_second}s")
             return False
 
+        if (
+            seeking
+            and target_second == self.last_preview_second
+            and lookup.thumb_index == self._last_preview_thumb_index
+        ):
+            return self.preview_visible
+
         self.last_preview_second = target_second
         sync_trickplay_property(PROP_SEEKING, "true" if seeking else "false")
         self._publish_sprite_properties(lookup)
@@ -508,14 +546,17 @@ class TrickplayService:
         )
         prefetch_settings = read_prefetch_settings()
         runtime = read_runtime_settings()
-        self.prefetch.schedule_neighbors(
-            self.resolution,
-            lookup,
-            interval_ms,
-            scrub_direction=scrub_direction,
-            settings=prefetch_settings,
-            debug=runtime.debug_logging,
-        )
+        if seeking and self.preview.fast_scrub_active:
+            self.prefetch.cancel()
+        elif prefetch_settings.enabled:
+            self.prefetch.schedule_neighbors(
+                self.resolution,
+                lookup,
+                interval_ms,
+                scrub_direction=scrub_direction,
+                settings=prefetch_settings,
+                debug=runtime.debug_logging,
+            )
         return True
 
     def _maybe_idle_prefetch(self, play_seconds: int) -> None:
@@ -762,6 +803,8 @@ class TrickplayService:
         self.generator.pause_for_playback()
 
         if not self._preview_allowed():
+            if self.player.isPlayingVideo() and self._seek_ui_visible():
+                self._log_playback_block_once()
             self._next_poll_ms = self.poll_ms
             return
 
@@ -853,6 +896,12 @@ class TrickplayService:
         self._next_poll_ms = self._adaptive_poll_ms()
 
     def run(self) -> None:
+        try:
+            from thumb_cropper import invalidate_playback_ffmpeg_cache
+
+            invalidate_playback_ffmpeg_cache()
+        except ImportError:
+            pass
         _log(
             f"Service initialized (display=skin v{ADDON.getAddonInfo('version')})"
         )

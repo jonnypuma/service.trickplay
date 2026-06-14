@@ -16,6 +16,7 @@ if _ADDON_PATH and _ADDON_PATH not in sys.path:
     sys.path.insert(0, _ADDON_PATH)
 
 from generator_settings import GeneratorSettings, read_generator_settings, save_generator_library_path
+from vfs_paths import vfs_is_dir
 from hdr_ffmpeg_installer import prompt_and_install_generator_tools
 from library_path_browse import browse_library_folder
 from trickplay_generator import collect_generation_candidates, generate_trickplay_for_media
@@ -29,7 +30,7 @@ def _is_valid_library_root(path: str) -> bool:
     if not path or path.startswith(("special://", "plugin://", "http://", "https://")):
         return False
     try:
-        return xbmcvfs.exists(path) and xbmcvfs.isdir(path)
+        return vfs_is_dir(path)
     except (OSError, RuntimeError, ValueError):
         return False
 

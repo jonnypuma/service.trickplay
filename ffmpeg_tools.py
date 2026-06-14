@@ -11,6 +11,8 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
+from vfs_paths import local_path as _vfs_local_path, vfs_is_file
+
 # Windows: hide console window when spawning ffmpeg/ffprobe/dovi_tool (Python 3.7+).
 _WIN_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
@@ -40,9 +42,7 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 
 
 def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
+    return _vfs_local_path(path)
 
 
 def _exe_name(stem: str) -> str:
@@ -160,7 +160,7 @@ def _path_is_executable_file(path: str) -> bool:
     if local and os.path.isfile(local):
         return os.access(local, os.X_OK) or os.access(local, os.R_OK)
     try:
-        return xbmcvfs.exists(path) and not xbmcvfs.isdir(path)
+        return vfs_is_file(path)
     except (OSError, RuntimeError, ValueError):
         return False
 

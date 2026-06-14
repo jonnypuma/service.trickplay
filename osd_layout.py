@@ -11,6 +11,8 @@ PREVIEW_WIDTH = 320
 LABEL_HEIGHT = 40
 PREVIEW_SLOTS = 51
 PREVIEW_X_OFFSET = 30
+LAYOUT_SEEKBAR = "seekbar"
+LAYOUT_CENTER = "center"
 
 # Back-compat aliases (Estuary Mod v2 defaults).
 SEEKBAR_DEFAULT = DEFAULT_PROFILE.seekbar
@@ -86,11 +88,20 @@ def preview_slot(seek_second: int, duration_second: int, slots: int = PREVIEW_SL
     return min(int(ratio * (slots - 1) + 0.5), slots - 1)
 
 
+def preview_layout_mode() -> str:
+    """Seekbar-tracked preview, or centered above the bar when AF3 full OSD is open."""
+    profile = active_profile()
+    if profile.key == "arctic_fuse_3" and profile.full_osd_visible():
+        return LAYOUT_CENTER
+    return LAYOUT_SEEKBAR
+
+
 def preview_placement(
     seek_second: int,
     duration_second: int,
     aspect_ratio: float,
     show_timestamp: bool | None = None,
+    layout: str | None = None,
 ) -> PreviewPlacement:
     profile = active_profile()
     screen_w, screen_h = gui_size()
@@ -104,14 +115,28 @@ def preview_placement(
     preview_w, preview_h, label_h = preview_dimensions(
         screen_w, screen_h, aspect_ratio, show_timestamp=show_timestamp
     )
-    slot = preview_slot(seek_second, duration_second)
+    if layout is None:
+        layout = preview_layout_mode()
 
     bar = SeekBarLayout(*profile.seekbar)
     wide = profile.seekbar_wide or profile.seekbar
     bar_wide = SeekBarLayout(*wide)
-    ratio = _slot_ratio(slot)
     total_h = preview_h + label_h + PREVIEW_GAP
     top = max(8, bar.top - total_h - PREVIEW_GAP)
+
+    if layout == LAYOUT_CENTER:
+        return PreviewPlacement(
+            PREVIEW_SLOTS // 2,
+            _absolute_left(bar, 0.5, preview_w),
+            top,
+            _absolute_left(bar_wide, 0.5, preview_w),
+            preview_w,
+            preview_h,
+            label_h,
+        )
+
+    slot = preview_slot(seek_second, duration_second)
+    ratio = _slot_ratio(slot)
 
     return PreviewPlacement(
         slot,

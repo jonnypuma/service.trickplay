@@ -61,11 +61,11 @@
         </control>
 
         <!-- Trickplay preview overlay (service.trickplay). Copy group 94090 into skin DialogSeekBar.xml. -->
-        <!-- Geometry: view_osd_l=240, bar width 1440, anchor (270,670). -->
+        <!-- Compact seek bar: group 94100 (anchor 270,670, slot slides). Full OSD: group 94103 (800,670, centered above bar). -->
         <!-- Matched automatically when skin.arctic.fuse.3 is active (see skin_profiles.py). -->
         <control type="group" id="94090">
             <control type="group" id="94100">
-                <visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
+                <visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage)) + !String.IsEqual(Window.Property(Trickplay.PreviewLayout),center)</visible>
                 <left>270</left>
                 <top>670</top>
                 <width>320</width>
@@ -145,6 +145,48 @@
                     <texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
                 </control>
                 <control type="label" id="94102">
+                    <visible>String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)</visible>
+                    <left>0</left>
+                    <top>180</top>
+                    <width>320</width>
+                    <height>40</height>
+                    <font>font_main</font>
+                    <align>center</align>
+                    <aligny>center</aligny>
+                    <label>$INFO[Window.Property(Trickplay.PreviewTime)]</label>
+                    <textcolor>panel_fg_100</textcolor>
+                </control>
+            </control>
+            <control type="group" id="94103">
+                <visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage)) + String.IsEqual(Window.Property(Trickplay.PreviewLayout),center)</visible>
+                <left>800</left>
+                <top>670</top>
+                <width>320</width>
+                <height condition="String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">224</height>
+                <height condition="!String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)">180</height>
+                <zorder>10</zorder>
+                <colordiffuse>$INFO[Window.Property(Trickplay.PreviewColorDiffuse)]</colordiffuse>
+                <animation effect="fade" start="0" end="100" time="100">Visible</animation>
+                <animation effect="fade" start="100" end="0" time="100">Hidden</animation>
+                <control type="image" id="94116">
+                    <left>0</left>
+                    <top>0</top>
+                    <width>320</width>
+                    <height>180</height>
+                    <aspectratio scalediffuse="false">keep</aspectratio>
+                    <bordertexture border="2" infill="false">common/white.png</bordertexture>
+                    <bordersize>2</bordersize>
+                    <colordiffuse>panel_fg_70</colordiffuse>
+                </control>
+                <control type="image" id="94111">
+                    <left>0</left>
+                    <top>0</top>
+                    <width>320</width>
+                    <height>180</height>
+                    <aspectratio scalediffuse="false">keep</aspectratio>
+                    <texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
+                </control>
+                <control type="label" id="94112">
                     <visible>String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)</visible>
                     <left>0</left>
                     <top>180</top>

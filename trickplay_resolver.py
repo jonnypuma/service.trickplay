@@ -10,6 +10,14 @@ import xbmc
 import xbmcvfs
 
 from thumb_cropper import probe_image_dimensions
+from vfs_paths import (
+    local_path as _local_path,
+    network_url_to_local,
+    path_variants,
+    vfs_is_dir as _path_is_dir,
+    vfs_list_file_names,
+    vfs_list_subdir_names,
+)
 
 # Jellyfin stores tiles under:
 # {basename}.trickplay/{width} - {tileW}x{tileH}/{index}.jpg
@@ -78,77 +86,18 @@ def _vfs_join(base: str, *parts: str) -> str:
     return path
 
 
-def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
-
-
-def _path_is_dir(path: str) -> bool:
-    if not path:
-        return False
-    local = _local_path(path)
-    if local and os.path.isdir(local):
-        return True
-    try:
-        return xbmcvfs.exists(path) and xbmcvfs.isdir(path)
-    except (OSError, RuntimeError, ValueError):
-        return False
-
-
 def _list_immediate_subdir_names(directory: str) -> list[str]:
-    """List child directory names; prefer os.listdir for NFS/OS mounts."""
-    names: list[str] = []
-    local = _local_path(directory)
-    if local and os.path.isdir(local):
-        try:
-            for entry in os.listdir(local):
-                full = os.path.join(local, entry)
-                if os.path.isdir(full):
-                    names.append(str(entry))
-        except OSError:
-            pass
-    if names:
-        return names
-
-    try:
-        entries = xbmcvfs.listdir(directory)
-    except OSError:
-        return []
-
-    if isinstance(entries, (list, tuple)) and len(entries) == 2:
-        return [str(name) for name in entries[0]]
-    return []
+    """List child directory names; NFS/SMB VFS URLs and OS mounts."""
+    return vfs_list_subdir_names(directory)
 
 
 def _list_tile_jpg_names(tiles_dir: str) -> list[str]:
-    """List numbered tile JPG names; prefer os.listdir for NFS/OS mounts."""
-    names: list[str] = []
-    local = _local_path(tiles_dir)
-    if local and os.path.isdir(local):
-        try:
-            for entry in os.listdir(local):
-                if _TILE_FILE_RE.match(str(entry)):
-                    names.append(str(entry))
-        except OSError:
-            pass
-    if names:
-        return names
-
-    try:
-        entries = xbmcvfs.listdir(tiles_dir)
-    except OSError:
-        return []
-
-    dirs, files = (
-        entries
-        if isinstance(entries, (list, tuple)) and len(entries) == 2
-        else ([], entries)
-    )
-    for name in list(files) + list(dirs):
-        if _TILE_FILE_RE.match(str(name)):
-            names.append(str(name))
-    return names
+    """List numbered tile JPG names; NFS/SMB VFS URLs and OS mounts."""
+    return [
+        name
+        for name in vfs_list_file_names(tiles_dir)
+        if _TILE_FILE_RE.match(str(name))
+    ]
 
 
 def _sidecar_lookup_media_paths(media_path: str) -> tuple[str, ...]:
@@ -160,9 +109,14 @@ def _sidecar_lookup_media_paths(media_path: str) -> tuple[str, ...]:
 
     def add(path: str) -> None:
         cleaned = (path or "").strip()
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            ordered.append(cleaned)
+        if not cleaned or cleaned in seen:
+            return
+        seen.add(cleaned)
+        ordered.append(cleaned)
+        for variant in path_variants(cleaned):
+            if variant not in seen:
+                seen.add(variant)
+                ordered.append(variant)
 
     add(media_path)
     resolved = resolve_media_path(media_path)
@@ -178,7 +132,7 @@ def _sidecar_lookup_media_paths(media_path: str) -> tuple[str, ...]:
 
 
 def resolve_media_path(playing_file: str) -> str | None:
-    """Return a local filesystem path for the currently playing item."""
+    """Return a path Kodi can use for the playing item (prefers OS mount when mapped)."""
     if not playing_file:
         return None
 
@@ -199,10 +153,21 @@ def resolve_media_path(playing_file: str) -> str | None:
     if path.startswith("special://"):
         path = xbmcvfs.translatePath(path)
 
-    if not xbmcvfs.exists(path):
-        return None
+    for candidate in path_variants(path):
+        if "://" not in candidate and os.path.isfile(candidate):
+            return candidate
 
-    return path
+    mapped = network_url_to_local(path)
+    if mapped and os.path.isfile(mapped):
+        return mapped
+
+    if xbmcvfs.exists(path):
+        return path
+
+    if mapped and xbmcvfs.exists(mapped):
+        return mapped
+
+    return None
 
 
 def trickplay_root_for_media(media_path: str) -> str:
@@ -650,28 +615,45 @@ def load_trickplay_for_file(
     interval_preference: str = INTERVAL_PREF_PREFERRED,
     debug: bool = False,
 ) -> TrickplayResolution | None:
-    media_path = resolve_media_path(playing_file)
-    if not media_path:
-        _log_debug(debug, f"Could not resolve local media path from {playing_file!r}")
+    candidates = _sidecar_lookup_media_paths(playing_file)
+    if not candidates:
+        _log_debug(debug, f"Could not resolve media path from {playing_file!r}")
         return None
 
-    trickplay_root = trickplay_root_for_media(media_path)
-    resolution = select_resolution(
-        trickplay_root,
-        preferred_width,
-        preferred_interval_ms=interval_ms,
-        interval_preference=interval_preference,
-        debug=debug,
-    )
-    if resolution is None:
-        return None
+    for media_path in candidates:
+        trickplay_root = trickplay_root_for_media(media_path)
+        if not _path_is_dir(trickplay_root):
+            _log_debug(debug, f"No trickplay root at {trickplay_root}")
+            continue
 
-    folder_interval_ms = resolution.interval_ms
-    return enrich_resolution(
-        resolution,
-        duration_seconds,
-        folder_interval_ms,
-        auto_tile_grid=auto_tile_grid,
-        manual_tile_grid=manual_tile_grid,
-        debug=debug,
+        resolution = select_resolution(
+            trickplay_root,
+            preferred_width,
+            preferred_interval_ms=interval_ms,
+            interval_preference=interval_preference,
+            debug=debug,
+        )
+        if resolution is None:
+            continue
+
+        folder_interval_ms = resolution.interval_ms
+        if debug and media_path != playing_file:
+            _log(
+                f"Loaded trickplay via path variant {media_path!r} "
+                f"(playing file {playing_file!r})"
+            )
+        return enrich_resolution(
+            resolution,
+            duration_seconds,
+            folder_interval_ms,
+            auto_tile_grid=auto_tile_grid,
+            manual_tile_grid=manual_tile_grid,
+            debug=debug,
+        )
+
+    _log_debug(
+        debug,
+        f"No trickplay sidecar for {playing_file!r} "
+        f"(tried {len(candidates)} media path variant(s))",
     )
+    return None

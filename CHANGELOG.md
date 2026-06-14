@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.6] - 2026-05-22
+
+### Fixed
+
+- **Arctic Fuse 3 full OSD preview placement:** full OSD now uses `Trickplay.PreviewLayout=center` — same height as minimal seek-bar mode (just above the bar at **670**), horizontally centered on the seek bar (**800**), without slot tracking. Replaces the previous top-of-screen placement (which could appear stuck at the top-left when dynamic `$INFO` coordinates did not apply).
+
+## [4.0.5] - 2026-05-22
+
+### Fixed
+
+- **Arctic Fuse 3 full OSD:** preview moves to a dedicated group when the full video OSD is open (plot, end time, etc.), via `Trickplay.PreviewLayout` and group **94103** in the AF3 `DialogSeekBar` snippet. Compact seek-bar mode keeps group **94100** with slot slide animations.
+- **Scrub lag / stale preview queue:** a single coalesced crop worker now drops intermediate frames during fast scrubbing (updates faster than ~120 ms or thumb index jumps ≥3). Synchronous eager crops are skipped while scrubbing is backed up; prefetch is cancelled during fast scrub so foreground crops are not starved. The latest seek target wins when you stop scrubbing.
+
+## [4.0.4] - 2026-05-22
+
+### Fixed
+
+- **Sidecar loading on SMB and OS-mounted shares:** playback preview now tries every usable path form for the playing file — Kodi VFS URL (`nfs://`, `smb://`), `translatePath` result, and OS bind mount (e.g. `/storage/remote-shares/…` on CoreELEC). Directory and tile listing prefer the OS mount when available, then fall back to `xbmcvfs.listdir`. Fixes preview when Jellyfin sidecars are visible on disk but not via the VFS URL alone.
+
+## [4.0.3] - 2026-05-22
+
+### Fixed
+
+- **Playback preview broken on Kodi/CoreELEC (NFS):** removed all uses of **`xbmcvfs.isdir`** / **`xbmcvfs.isfile`** — they do not exist on Kodi's Python API and caused `Trickplay load failed: module 'xbmcvfs' has no attribute 'isdir'`. New **`vfs_paths.py`** uses `os.path` on translated paths and **`xbmcvfs.listdir`** for `nfs://` directories.
+
+## [4.0.2] - 2026-05-22
+
+### Removed
+
+- **tools.ffmpeg-tools** — all code paths that searched the legacy Kodi add-on are gone. Generation and playback use **Generator ffmpeg path**, auto-installed **BtbN / Gyan** builds, or system `PATH` only (same as 3.3.0).
+
+## [4.0.1] - 2026-05-22
+
+### Fixed
+
+- **Playback preview regression (3.3.0+):** thumb cropping called non-existent `load_generator_settings()` so **Generator ffmpeg path** was never applied during scrubbing. Restored **`read_generator_settings()`**.
+- **Diagnostics:** log **`Preview unavailable during playback: …`** once per cause when the seek bar is open but trickplay cannot run; warn at load time if ffmpeg is missing for cropping.
+
 ## [4.0.0] - 2026-05-22
 
 ### Added

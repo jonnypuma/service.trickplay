@@ -13,6 +13,7 @@ import xbmc
 import xbmcvfs
 
 from ffmpeg_tools import subprocess_hide_window_kwargs
+from vfs_paths import vfs_is_file
 
 _NETWORK_URL_RE = re.compile(r"^(nfs|smb|smb2|smb3)://([^/]+)/(.+)$", re.IGNORECASE)
 _MOUNT_CACHE_TTL_SEC = 60.0
@@ -42,7 +43,7 @@ def _is_local_filesystem_path(path: str) -> bool:
         return True
     # NFS/CIFS mounts may not always pass os.path.isfile on embedded Linux.
     try:
-        return xbmcvfs.exists(path) and not xbmcvfs.isdir(path)
+        return vfs_is_file(path)
     except (OSError, RuntimeError, ValueError):
         return False
 

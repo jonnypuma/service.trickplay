@@ -555,9 +555,9 @@ def _resolve_ffmpeg_tools() -> tuple[str | None, str | None, dict[str, str]]:
 
     custom_path = ""
     try:
-        from generator_settings import load_generator_settings
+        from generator_settings import read_generator_settings
 
-        custom_path = load_generator_settings().ffmpeg_path
+        custom_path = read_generator_settings().ffmpeg_path
     except ImportError:
         pass
 

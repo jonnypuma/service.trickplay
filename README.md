@@ -30,6 +30,8 @@ The service detects your active Kodi skin (`xbmc.gui` addon id) and selects seek
 | Estuary Mod v2 | `skin.estuary.modv2`, `skin.estuary.mod`, … | 460, 990, 1430 (+ wide 30, 990, 1860) |
 | Arctic Fuse 3 | `skin.arctic.fuse.3`, … | 240, 772, 1440 |
 
+For **Arctic Fuse 3**, the snippet includes two preview groups: **94100** (seek-bar aligned, slot slides) and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-merge group **94090** from `DialogSeekBar-skin.arctic.fuse.3.xml` if you installed an older snippet.
+
 Unknown skins fall back to Estuary Mod v2 geometry and log a warning. Override manually under **Add-on settings → Skin profile** if auto-detect is wrong.
 
 You still must merge the matching XML snippet so slide animations align with the profile geometry.
@@ -133,7 +135,7 @@ Off by default. When disabled, all generator options are hidden.
 - **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
 - **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
 - **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default), or **Experimental**
-- **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Same ffmpeg is used for generation and playback preview cropping. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
+- **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Same ffmpeg is used for **generation and playback preview cropping**. Run batch **Run** once with **HDR tone mapping** to install a pinned build if needed. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
 - **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires **zscale** or **libplacebo** in the generator ffmpeg. With tone mapping on, **Run** can prompt to download a pinned build if none is installed.
 - **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in generator ffmpeg `bin/` or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the generator tools folder.
 - **Skip Dolby Vision Profile 5** — optional when tone mapping is on; skips web-style DV P5 files in batch (full dovi_tool convert is very slow on CoreELEC).
@@ -250,7 +252,7 @@ Generator subprocesses inherit the Kodi process environment (`VK_*` vars are not
 ## Supported paths
 
 - Direct local video files (`.mkv`, `.mp4`, …)
-- NFS/SMB paths (`nfs://`, `smb://`) — playback and sidecar lookup use Kodi VFS; **generation** prefers an OS-mounted path when the share is mounted on the device, otherwise streams the file through VFS into ffmpeg (slower, one full read per file)
+- NFS/SMB paths (`nfs://`, `smb://`) and OS mount paths (e.g. `/storage/remote-shares/…`) — playback sidecar lookup tries all path forms; listing prefers the OS mount when available, then Kodi VFS. **Generation** also prefers an OS-mounted path when the share is mounted on the device, otherwise streams the file through VFS into ffmpeg (slower, one full read per file)
 - `.strm` files that point to a local or network path
 
 Plugin / HTTP streams are skipped because Jellyfin trickplay sidecars are stored on disk next to the source file.

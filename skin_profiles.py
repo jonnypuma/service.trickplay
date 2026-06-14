@@ -36,12 +36,7 @@ class SkinProfile:
     full_osd_window_ids: tuple[int, ...] = ()
     full_osd_extra_visibility: str = ""
 
-    def full_osd_visible(self) -> bool:
-        try:
-            import xbmc
-        except ImportError:  # pragma: no cover
-            return False
-
+    def full_osd_visibility_parts(self) -> list[str]:
         parts = [
             "Window.IsVisible(videoosd)",
             "Window.IsActive(videoosd)",
@@ -54,7 +49,19 @@ class SkinProfile:
             parts.append(f"Window.IsVisible({window_id})")
         if self.full_osd_extra_visibility:
             parts.append(self.full_osd_extra_visibility)
-        return xbmc.getCondVisibility("[" + " | ".join(parts) + "]")
+        return parts
+
+    def full_osd_skin_visibility(self) -> str:
+        """Kodi skin visibility expression for full video OSD (not compact seek bar)."""
+        return "[" + " | ".join(self.full_osd_visibility_parts()) + "]"
+
+    def full_osd_visible(self) -> bool:
+        try:
+            import xbmc
+        except ImportError:  # pragma: no cover
+            return False
+
+        return xbmc.getCondVisibility(self.full_osd_skin_visibility())
 
     def osd_play_controls_focused(self) -> bool:
         try:
