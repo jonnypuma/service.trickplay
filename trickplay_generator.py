@@ -9,7 +9,7 @@ import subprocess
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import xbmc
 import xbmcvfs
@@ -38,6 +38,7 @@ from hdr_tone_map import (
     build_fps_batch_filter,
     is_dv_profile_5,
     prepare_dovi_zscale_media,
+    probe_windows_hw_decode_eligible,
     resolve_thumb_filter_context,
 )
 from trickplay_resolver import (
@@ -71,6 +72,47 @@ _ACCURATE_FRAME_TIMEOUT_BASE_SEC = 600.0
 _ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC = 0.2
 _FAST_FRAME_TIMEOUT_SEC = 120.0
 _FAST_BATCH_FPS_MAX_INTERVAL_SEC = 5.0
+
+
+@dataclass
+class WindowsHwExtractState:
+    """Per-file Windows D3D11VA extract state; disabled after first HW failure."""
+
+    hw_thumb_vf: str
+    hw_input_args: tuple[str, ...]
+    sw_thumb_vf: str
+    sw_input_args: tuple[str, ...]
+    hw_enabled: bool = True
+    debug: bool = False
+    _logged_disable: bool = field(default=False, repr=False)
+
+    def current(
+        self,
+    ) -> tuple[str, tuple[str, ...], tuple[str, tuple[str, ...]] | None]:
+        if self.hw_enabled:
+            return (
+                self.hw_thumb_vf,
+                self.hw_input_args,
+                (self.sw_thumb_vf, self.sw_input_args),
+            )
+        return self.sw_thumb_vf, self.sw_input_args, None
+
+    def disable_after_failure(self, detail: str, *, context: str) -> None:
+        if not self.hw_enabled:
+            return
+        self.hw_enabled = False
+        if self.debug and detail:
+            _log(
+                f"Hardware decode failed ({context}): {detail[:500]}",
+                xbmc.LOGINFO,
+            )
+        if not self._logged_disable:
+            _log(
+                "Windows hardware decode disabled for remainder of this file; "
+                "using software decode",
+                xbmc.LOGINFO,
+            )
+            self._logged_disable = True
 
 
 def _accurate_frame_timeout_sec(thumb_index: int) -> float:
@@ -469,6 +511,64 @@ def _sw_extract_fallback(
     return thumb_vf, input_args
 
 
+def _active_extract_args(
+    thumb_vf: str,
+    ffmpeg_input_args: tuple[str, ...],
+    hw_state: WindowsHwExtractState | None,
+) -> tuple[str, tuple[str, ...]]:
+    if hw_state is not None:
+        vf, args, _ = hw_state.current()
+        return vf, args
+    return thumb_vf, ffmpeg_input_args
+
+
+def _sw_retry_after_hw_failure(
+    hw_state: WindowsHwExtractState | None,
+    sw_fallback: tuple[str, tuple[str, ...]] | None,
+    detail: str,
+    *,
+    context: str,
+    retry_log: str,
+) -> tuple[str, tuple[str, ...]] | None:
+    if hw_state is not None and hw_state.hw_enabled:
+        hw_state.disable_after_failure(detail, context=context)
+        _log(retry_log, xbmc.LOGINFO)
+        return hw_state.sw_thumb_vf, hw_state.sw_input_args
+    fallback = _sw_extract_fallback(sw_fallback)
+    if fallback:
+        _log(retry_log, xbmc.LOGINFO)
+    return fallback
+
+
+def _should_use_fps_batch(
+    interval_sec: float,
+    *,
+    apply_tonemap: bool,
+    hw_state: WindowsHwExtractState | None,
+) -> bool:
+    if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
+        return True
+    if apply_tonemap:
+        return False
+    if hw_state is not None and hw_state.hw_enabled:
+        return False
+    return True
+
+
+def _active_batch_extract(
+    batch_vf: str,
+    ffmpeg_input_args: tuple[str, ...],
+    hw_state: WindowsHwExtractState | None,
+) -> tuple[str, tuple[str, ...]]:
+    if hw_state is None:
+        return batch_vf, ffmpeg_input_args
+    active_thumb, active_args, _ = hw_state.current()
+    comma = batch_vf.find(",")
+    if batch_vf.startswith("fps=") and comma >= 0:
+        return f"{batch_vf[: comma + 1]}{active_thumb}", active_args
+    return active_thumb, active_args
+
+
 def _ffmpeg_cmd_prefix(ffmpeg: str, ffmpeg_input_args: tuple[str, ...] = ()) -> list[str]:
     return [ffmpeg, "-y", "-loglevel", "error", *ffmpeg_input_args]
 
@@ -487,10 +587,15 @@ def _extract_frame_accurate(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
+    hw_state: WindowsHwExtractState | None = None,
 ) -> bool:
     """Extract one thumbnail with seek after input (frame-accurate, slower)."""
     if _is_cancelled(should_cancel):
         return False
+
+    thumb_vf, ffmpeg_input_args = _active_extract_args(
+        thumb_vf, ffmpeg_input_args, hw_state
+    )
 
     local_out = _local_path(output_path)
     _ensure_local_dir(os.path.dirname(local_out))
@@ -517,13 +622,17 @@ def _extract_frame_accurate(
     if returncode is None:
         return False
     if returncode != 0:
-        fallback = _sw_extract_fallback(sw_fallback)
-        if fallback:
-            _log(
+        sw = _sw_retry_after_hw_failure(
+            hw_state,
+            sw_fallback,
+            detail,
+            context=f"accurate seek {timestamp:.1f}s",
+            retry_log=(
                 f"Frame extract failed at {timestamp:.1f}s with hardware decode; "
-                "retrying with software decode",
-                xbmc.LOGINFO,
-            )
+                "retrying with software decode"
+            ),
+        )
+        if sw:
             return _extract_frame_accurate(
                 ffmpeg,
                 env,
@@ -531,13 +640,13 @@ def _extract_frame_accurate(
                 timestamp,
                 tile_width,
                 output_path,
-                fallback[0],
+                sw[0],
                 thumb_index=thumb_index,
                 debug=debug,
                 should_cancel=should_cancel,
                 output_color_args=output_color_args,
-                ffmpeg_input_args=fallback[1],
-                sw_fallback=None,
+                ffmpeg_input_args=sw[1],
+                hw_state=hw_state,
             )
         _log(f"Frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
         return False
@@ -560,10 +669,15 @@ def _extract_frame_fast(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
+    hw_state: WindowsHwExtractState | None = None,
 ) -> bool:
     """Extract one thumbnail with fast seek before input (keyframe-aligned)."""
     if _is_cancelled(should_cancel):
         return False
+
+    thumb_vf, ffmpeg_input_args = _active_extract_args(
+        thumb_vf, ffmpeg_input_args, hw_state
+    )
 
     local_out = _local_path(output_path)
     _ensure_local_dir(os.path.dirname(local_out))
@@ -591,13 +705,17 @@ def _extract_frame_fast(
     if returncode is None:
         return False
     if returncode != 0:
-        fallback = _sw_extract_fallback(sw_fallback)
-        if fallback:
-            _log(
+        sw = _sw_retry_after_hw_failure(
+            hw_state,
+            sw_fallback,
+            detail,
+            context=f"fast seek {timestamp:.1f}s",
+            retry_log=(
                 f"Fast frame extract failed at {timestamp:.1f}s with hardware decode; "
-                "retrying with software decode",
-                xbmc.LOGINFO,
-            )
+                "retrying with software decode"
+            ),
+        )
+        if sw:
             return _extract_frame_fast(
                 ffmpeg,
                 env,
@@ -605,12 +723,12 @@ def _extract_frame_fast(
                 timestamp,
                 tile_width,
                 output_path,
-                fallback[0],
+                sw[0],
                 debug=debug,
                 should_cancel=should_cancel,
                 output_color_args=output_color_args,
-                ffmpeg_input_args=fallback[1],
-                sw_fallback=None,
+                ffmpeg_input_args=sw[1],
+                hw_state=hw_state,
             )
         _log(f"Fast frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
         return False
@@ -645,9 +763,17 @@ def _extract_tile_batch_fps(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
+    hw_state: WindowsHwExtractState | None = None,
 ) -> list[str]:
     if _is_cancelled(should_cancel) or frame_count <= 0:
         return []
+
+    active_batch_vf, ffmpeg_input_args = _active_batch_extract(
+        batch_vf, ffmpeg_input_args, hw_state
+    )
+    sw_fallback_for_batch = sw_fallback
+    if hw_state is not None and hw_state.hw_enabled:
+        sw_fallback_for_batch = (hw_state.sw_thumb_vf, hw_state.sw_input_args)
 
     _ensure_local_dir(output_dir)
     local_dir = _local_path(output_dir)
@@ -673,7 +799,7 @@ def _extract_tile_batch_fps(
         "-sn",
         "-dn",
         "-vf",
-        batch_vf,
+        active_batch_vf,
         "-frames:v",
         str(frame_count),
         "-q:v",
@@ -685,18 +811,22 @@ def _extract_tile_batch_fps(
     if returncode is None:
         return []
     if returncode != 0:
-        fallback = _sw_extract_fallback(sw_fallback)
-        if fallback:
-            _log(
+        sw = _sw_retry_after_hw_failure(
+            hw_state,
+            sw_fallback_for_batch,
+            detail,
+            context=f"fps batch {tile_start:.1f}s",
+            retry_log=(
                 f"Tile fps batch failed at {tile_start:.1f}s with hardware decode; "
-                "retrying with software decode",
-                xbmc.LOGINFO,
-            )
+                "retrying with software decode"
+            ),
+        )
+        if sw:
             comma = batch_vf.find(",")
             if batch_vf.startswith("fps=") and comma >= 0:
-                sw_batch_vf = f"{batch_vf[: comma + 1]}{fallback[0]}"
+                sw_batch_vf = f"{batch_vf[: comma + 1]}{sw[0]}"
             else:
-                sw_batch_vf = fallback[0]
+                sw_batch_vf = sw[0]
             return _extract_tile_batch_fps(
                 ffmpeg,
                 env,
@@ -712,8 +842,8 @@ def _extract_tile_batch_fps(
                 debug=debug,
                 should_cancel=should_cancel,
                 output_color_args=output_color_args,
-                ffmpeg_input_args=fallback[1],
-                sw_fallback=None,
+                ffmpeg_input_args=sw[1],
+                hw_state=hw_state,
             )
         _log(
             f"Tile fps batch failed at {tile_start:.1f}s "
@@ -757,6 +887,7 @@ def _extract_tile_fast_seek(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
+    hw_state: WindowsHwExtractState | None = None,
 ) -> list[str]:
     """Extract one frame per interval via fast seek (-ss before -i)."""
     if _is_cancelled(should_cancel) or frame_count <= 0:
@@ -789,6 +920,7 @@ def _extract_tile_fast_seek(
             output_color_args=output_color_args,
             ffmpeg_input_args=ffmpeg_input_args,
             sw_fallback=sw_fallback,
+            hw_state=hw_state,
         ):
             return frame_paths
         frame_paths.append(frame_path)
@@ -822,9 +954,13 @@ def _extract_tile_fast(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
+    hw_state: WindowsHwExtractState | None = None,
+    apply_tonemap: bool = False,
 ) -> list[str]:
     tile_start = start_index * interval_sec
-    if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
+    if _should_use_fps_batch(
+        interval_sec, apply_tonemap=apply_tonemap, hw_state=hw_state
+    ):
         return _extract_tile_batch_fps(
             ffmpeg,
             env,
@@ -842,6 +978,7 @@ def _extract_tile_fast(
             output_color_args=output_color_args,
             ffmpeg_input_args=ffmpeg_input_args,
             sw_fallback=sw_fallback,
+            hw_state=hw_state,
         )
     return _extract_tile_fast_seek(
         ffmpeg,
@@ -860,6 +997,7 @@ def _extract_tile_fast(
         output_color_args=output_color_args,
         ffmpeg_input_args=ffmpeg_input_args,
         sw_fallback=sw_fallback,
+        hw_state=hw_state,
     )
 
 
@@ -1047,16 +1185,37 @@ def generate_trickplay_for_media(
 
     sw_extract_fallback: tuple[str, tuple[str, ...]] | None = None
     sw_ffmpeg_input_args = ffmpeg_input_args
+    hw_decode_requested = settings.hw_decode and not use_vfs_stream
+    hw_decode_eligible = False
+    hw_eligible_reason = ""
+    if hw_decode_requested:
+        hw_decode_eligible, hw_eligible_reason = probe_windows_hw_decode_eligible(
+            media_path,
+            ffprobe or "",
+            env,
+            debug=settings.debug,
+        )
+        if not hw_decode_eligible:
+            _log(f"Windows hardware decode skipped: {hw_eligible_reason}")
+
     thumb_vf, ffmpeg_input_args, hw_decode_active = (
         augment_thumb_extract_for_windows_hw_decode(
             filter_ctx.thumb_vf,
             ffmpeg_input_args,
-            enabled=settings.hw_decode and not use_vfs_stream,
+            enabled=hw_decode_requested and hw_decode_eligible,
         )
     )
+    hw_state: WindowsHwExtractState | None = None
     if hw_decode_active:
+        hw_state = WindowsHwExtractState(
+            hw_thumb_vf=thumb_vf,
+            hw_input_args=ffmpeg_input_args,
+            sw_thumb_vf=filter_ctx.thumb_vf,
+            sw_input_args=sw_ffmpeg_input_args,
+            debug=settings.debug,
+        )
         sw_extract_fallback = (filter_ctx.thumb_vf, sw_ffmpeg_input_args)
-        _log("Windows hardware decode enabled (D3D11VA, 10-bit HEVC)")
+        _log(f"Windows hardware decode enabled (D3D11VA): {hw_eligible_reason}")
     elif settings.hw_decode and use_vfs_stream:
         _debug(settings, "Hardware decode skipped for VFS stream input")
 
@@ -1171,7 +1330,34 @@ def generate_trickplay_for_media(
                 output_color_args=output_color_args,
                 ffmpeg_input_args=ffmpeg_input_args,
             )
-            if not hevc_extract_ok and sw_extract_fallback:
+            if not hevc_extract_ok and hw_state is not None and hw_state.hw_enabled:
+                _sw_retry_after_hw_failure(
+                    hw_state,
+                    sw_extract_fallback,
+                    "",
+                    context="Dolby Vision HEVC sequential extract",
+                    retry_log=(
+                        "Dolby Vision HEVC sequential extract failed with hardware "
+                        "decode; retrying with software decode"
+                    ),
+                )
+                sw_batch, sw_input_args = _active_batch_extract(
+                    batch_vf, ffmpeg_input_args, hw_state
+                )
+                hevc_extract_ok = extract_frames_from_local_file(
+                    _local_path(ffmpeg_input) or ffmpeg_input,
+                    ffmpeg,
+                    env,
+                    frame_pattern,
+                    sw_batch,
+                    thumb_count,
+                    timeout_sec=hevc_timeout,
+                    debug=settings.debug,
+                    should_cancel=should_cancel,
+                    output_color_args=output_color_args,
+                    ffmpeg_input_args=sw_input_args,
+                )
+            elif not hevc_extract_ok and sw_extract_fallback:
                 _log(
                     "Dolby Vision HEVC sequential extract failed with hardware "
                     "decode; retrying with software decode",
@@ -1289,6 +1475,8 @@ def generate_trickplay_for_media(
                         output_color_args=output_color_args,
                         ffmpeg_input_args=ffmpeg_input_args,
                         sw_fallback=sw_extract_fallback,
+                        hw_state=hw_state,
+                        apply_tonemap=filter_ctx.apply_tonemap,
                     )
                 elif settings.extract_mode == EXTRACT_MODE_ACCURATE:
                     frame_paths = []
@@ -1314,6 +1502,7 @@ def generate_trickplay_for_media(
                             output_color_args=output_color_args,
                             ffmpeg_input_args=ffmpeg_input_args,
                             sw_fallback=sw_extract_fallback,
+                            hw_state=hw_state,
                         ):
                             if _is_cancelled(should_cancel):
                                 cancelled = True
@@ -1345,6 +1534,8 @@ def generate_trickplay_for_media(
                         output_color_args=output_color_args,
                         ffmpeg_input_args=ffmpeg_input_args,
                         sw_fallback=sw_extract_fallback,
+                        hw_state=hw_state,
+                        apply_tonemap=filter_ctx.apply_tonemap,
                     )
 
                 if cancelled or _is_cancelled(should_cancel):

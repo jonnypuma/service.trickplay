@@ -157,6 +157,87 @@ def windows_hw_decode_available() -> bool:
     return sys.platform == "win32"
 
 
+def _primary_video_stream_from_ffprobe(payload: str) -> dict | None:
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    for stream in data.get("streams") or []:
+        if (stream.get("codec_type") or "").lower() != "video":
+            continue
+        if _video_stream_is_enhancement_layer(stream):
+            continue
+        return stream
+    return None
+
+
+def probe_windows_hw_decode_eligible(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    *,
+    debug: bool = False,
+) -> tuple[bool, str]:
+    """
+    True when the Windows D3D11VA path applies: HEVC with 10-bit and/or HDR/DV.
+
+    AVC and 8-bit SDR HEVC should use software decode only (p010le hwdownload path).
+    """
+    if not ffprobe or not media_path:
+        return False, "ffprobe or media path unavailable"
+
+    ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
+    if use_vfs_stream:
+        return False, "VFS stream input"
+    if not ffmpeg_input:
+        return False, "no local input path"
+    if not os.path.isfile(ffmpeg_input) and not xbmcvfs.exists(ffmpeg_input):
+        return False, "file not found"
+
+    stream_args = [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        _stream_probe_entries(),
+        "-of",
+        "json",
+        ffmpeg_input,
+    ]
+    payload = _ffprobe_json(ffprobe, stream_args, env, 120.0)
+    if not payload:
+        return False, "ffprobe failed"
+
+    video = _primary_video_stream_from_ffprobe(payload)
+    if video is None:
+        return False, "no video stream"
+
+    codec = (video.get("codec_name") or "").lower()
+    if codec not in ("hevc", "h265"):
+        reason = f"codec={codec or 'unknown'} (D3D11VA path is HEVC only)"
+        if debug:
+            _log(f"Windows HW decode skipped: {reason}")
+        return False, reason
+
+    pix_fmt = (video.get("pix_fmt") or "").strip()
+    is_hdr, hdr_reason = _stream_entry_looks_hdr(video)
+    is_10bit = _looks_10bit_pix_fmt(pix_fmt)
+    profile = (video.get("profile") or "").lower()
+    main10 = "main 10" in profile
+
+    if is_hdr or is_10bit or main10:
+        detail = f"HEVC {pix_fmt or 'unknown'}"
+        if is_hdr:
+            detail = f"{detail}, {hdr_reason}"
+        return True, detail
+
+    reason = f"HEVC SDR 8-bit ({pix_fmt or 'unknown'}); software decode"
+    if debug:
+        _log(f"Windows HW decode skipped: {reason}")
+    return False, reason
+
+
 def augment_thumb_extract_for_windows_hw_decode(
     thumb_vf: str,
     ffmpeg_input_args: tuple[str, ...],

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.7] - 2026-05-22
+
+### Fixed
+
+- **Windows hardware decode on non-HEVC / SDR:** D3D11VA is now enabled only when ffprobe reports **HEVC** with 10-bit and/or HDR/DV signals. AVC and 8-bit SDR HEVC skip HW decode entirely (no per-frame failed HW attempt + software retry).
+- **Windows HW decode per-file fallback:** after the first hardware decode failure on a file, HW decode is disabled for the remainder of that job (logged once; ffmpeg stderr included when debug logging is on).
+- **Fast extract on long-interval SDR:** intervals above 5 s now use a single **fps batch** decode per tile on SDR software-only paths (no tonemap, no active HW decode), instead of one ffmpeg seek per thumb — much faster on large Blu-ray remuxes.
+
+### Changed
+
+- **Docs:** Windows hardware decode help/README clarify it targets **4K HDR/DV HEVC**, not general HW acceleration — 1080p H.264 SDR is faster on software decode (+ fps-batch) in testing.
+
 ## [4.0.6] - 2026-05-22
 
 ### Fixed
