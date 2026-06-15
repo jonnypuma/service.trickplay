@@ -409,6 +409,14 @@ def install_root_is_fully_hdr_capable(install_root: str | None = None) -> bool:
     return ffmpeg_has_libplacebo(local_ffmpeg, env)
 
 
+def should_offer_ffmpeg_download(custom_ffmpeg_path: str = "") -> bool:
+    """True when no ffmpeg/ffprobe can be resolved for generation or playback cropping."""
+    from ffmpeg_tools import resolve_generator_ffmpeg_tools
+
+    ffmpeg, _, _ = resolve_generator_ffmpeg_tools(custom_ffmpeg_path)
+    return ffmpeg is None
+
+
 def should_offer_hdr_ffmpeg_download(
     hdr_tone_map_enabled: bool,
     custom_ffmpeg_path: str = "",
@@ -416,11 +424,35 @@ def should_offer_hdr_ffmpeg_download(
     """Offer download only when the resolved generator ffmpeg lacks zscale (and libplacebo on Vulkan hosts)."""
     if not hdr_tone_map_enabled:
         return False
+    if should_offer_ffmpeg_download(custom_ffmpeg_path):
+        return False
     if generator_ffmpeg_is_fully_hdr_capable(custom_ffmpeg_path):
         return False
     if not (custom_ffmpeg_path or "").strip() and install_root_is_fully_hdr_capable():
         return False
     return True
+
+
+def install_tools_needed(
+    *,
+    hdr_tone_map_enabled: bool,
+    hdr_dovi_tool_fallback_enabled: bool,
+    custom_ffmpeg_path: str = "",
+) -> bool:
+    """True when any auto-install step may still be required."""
+    if should_offer_ffmpeg_download(custom_ffmpeg_path):
+        return True
+    if should_offer_hdr_ffmpeg_download(hdr_tone_map_enabled, custom_ffmpeg_path):
+        return True
+    if should_offer_vulkan_loader_download(hdr_tone_map_enabled, custom_ffmpeg_path):
+        return True
+    if should_offer_dovi_tool_download(
+        hdr_dovi_tool_fallback_enabled,
+        hdr_tone_map_enabled=hdr_tone_map_enabled,
+        custom_ffmpeg_path=custom_ffmpeg_path,
+    ):
+        return True
+    return False
 
 
 def dovi_tool_is_installed() -> bool:
@@ -791,6 +823,104 @@ def install_dovi_tool(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def _prompt_and_install_ffmpeg_build(
+    *,
+    title: str,
+    prompt_yes: str,
+    prompt_no: str,
+    download_yes: str,
+    progress_title: str,
+    unsupported_message: str,
+    failed_message: str,
+    success_message: str,
+    declined_log: str,
+    cancelled_log: str,
+    failed_log: str,
+) -> bool:
+    """Download and install the platform ffmpeg build. Returns True when the caller may continue."""
+    if not _ffmpeg_download_url_for_platform():
+        xbmcgui = __import__("xbmcgui")
+        xbmcgui.Dialog().ok(title, unsupported_message)
+        _log(f"ffmpeg auto-install unsupported on {sys.platform}/{platform.machine()}")
+        return True
+
+    xbmcgui = __import__("xbmcgui")
+    install_root = default_install_root()
+    if not xbmcgui.Dialog().yesno(
+        title,
+        prompt_yes % install_root,
+        nolabel=prompt_no,
+        yeslabel=download_yes,
+    ):
+        _log(declined_log, xbmc.LOGWARNING)
+        return True
+
+    monitor = xbmc.Monitor()
+    progress = xbmcgui.DialogProgress()
+    progress.create(progress_title, "Starting…")
+    cancelled = False
+
+    def _should_cancel() -> bool:
+        nonlocal cancelled
+        if monitor.abortRequested() or progress.iscanceled():
+            cancelled = True
+            return True
+        return False
+
+    def _progress(percent: int, line: str) -> None:
+        if _should_cancel():
+            return
+        progress.update(percent, line)
+
+    try:
+        ok, detail = install_hdr_ffmpeg(progress=_progress, should_cancel=_should_cancel)
+    finally:
+        progress.close()
+
+    if cancelled:
+        _log(cancelled_log)
+        return True
+
+    if ok:
+        _persist_generator_ffmpeg_path(default_install_root())
+        xbmcgui.Dialog().notification(title, success_message % detail, xbmcgui.NOTIFICATION_INFO, 5000)
+        return True
+
+    xbmcgui.Dialog().ok(title, failed_message % detail)
+    _log(f"{failed_log}: {detail}", xbmc.LOGWARNING)
+    return True
+
+
+def prompt_and_install_base_ffmpeg(
+    *,
+    custom_ffmpeg_path: str = "",
+    title: str,
+    prompt_yes: str,
+    prompt_no: str,
+    download_yes: str,
+    progress_title: str,
+    unsupported_message: str,
+    failed_message: str,
+    success_message: str,
+) -> bool:
+    """Offer ffmpeg download when none is resolved (preview cropping or generation)."""
+    if not should_offer_ffmpeg_download(custom_ffmpeg_path):
+        return True
+    return _prompt_and_install_ffmpeg_build(
+        title=title,
+        prompt_yes=prompt_yes,
+        prompt_no=prompt_no,
+        download_yes=download_yes,
+        progress_title=progress_title,
+        unsupported_message=unsupported_message,
+        failed_message=failed_message,
+        success_message=success_message,
+        declined_log="ffmpeg download declined; continuing without bundled ffmpeg",
+        cancelled_log="ffmpeg install cancelled by user",
+        failed_log="ffmpeg install failed",
+    )
+
+
 def prompt_and_install_hdr_ffmpeg(
     *,
     hdr_tone_map_enabled: bool,
@@ -829,57 +959,19 @@ def prompt_and_install_hdr_ffmpeg(
                 )
         return True
 
-    if not _ffmpeg_download_url_for_platform():
-        xbmcgui = __import__("xbmcgui")
-        xbmcgui.Dialog().ok(title, unsupported_message)
-        _log(f"HDR ffmpeg auto-install unsupported on {sys.platform}/{platform.machine()}")
-        return True
-
-    xbmcgui = __import__("xbmcgui")
-    install_root = default_install_root()
-    if not xbmcgui.Dialog().yesno(
-        title,
-        prompt_yes % install_root,
-        nolabel=prompt_no,
-        yeslabel=download_yes,
-    ):
-        _log("HDR ffmpeg download declined; continuing with available ffmpeg", xbmc.LOGWARNING)
-        return True
-
-    monitor = xbmc.Monitor()
-    progress = xbmcgui.DialogProgress()
-    progress.create(progress_title, "Starting…")
-    cancelled = False
-
-    def _should_cancel() -> bool:
-        nonlocal cancelled
-        if monitor.abortRequested() or progress.iscanceled():
-            cancelled = True
-            return True
-        return False
-
-    def _progress(percent: int, line: str) -> None:
-        if _should_cancel():
-            return
-        progress.update(percent, line)
-
-    try:
-        ok, detail = install_hdr_ffmpeg(progress=_progress, should_cancel=_should_cancel)
-    finally:
-        progress.close()
-
-    if cancelled:
-        _log("HDR ffmpeg install cancelled by user")
-        return True
-
-    if ok:
-        _persist_generator_ffmpeg_path(default_install_root())
-        xbmcgui.Dialog().notification(title, success_message % detail, xbmcgui.NOTIFICATION_INFO, 5000)
-        return True
-
-    xbmcgui.Dialog().ok(title, failed_message % detail)
-    _log(f"HDR ffmpeg install failed: {detail}", xbmc.LOGWARNING)
-    return True
+    return _prompt_and_install_ffmpeg_build(
+        title=title,
+        prompt_yes=prompt_yes,
+        prompt_no=prompt_no,
+        download_yes=download_yes,
+        progress_title=progress_title,
+        unsupported_message=unsupported_message,
+        failed_message=failed_message,
+        success_message=success_message,
+        declined_log="HDR ffmpeg download declined; continuing with available ffmpeg",
+        cancelled_log="HDR ffmpeg install cancelled by user",
+        failed_log="HDR ffmpeg install failed",
+    )
 
 
 def prompt_and_install_dovi_tool(
@@ -968,22 +1060,37 @@ def prompt_and_install_generator_tools(
     hdr_dovi_tool_fallback_enabled: bool,
     custom_ffmpeg_path: str = "",
     title: str,
-    ffmpeg_prompt_yes: str,
+    base_ffmpeg_prompt_yes: str,
+    hdr_ffmpeg_prompt_yes: str,
     dovi_prompt_yes: str,
     prompt_no: str,
     download_yes: str,
-    ffmpeg_progress_title: str,
+    base_ffmpeg_progress_title: str,
+    hdr_ffmpeg_progress_title: str,
     dovi_progress_title: str,
     ffmpeg_unsupported_message: str,
     dovi_unsupported_message: str,
-    ffmpeg_failed_message: str,
+    base_ffmpeg_failed_message: str,
+    hdr_ffmpeg_failed_message: str,
     dovi_failed_message: str,
-    ffmpeg_success_message: str,
+    base_ffmpeg_success_message: str,
+    hdr_ffmpeg_success_message: str,
     dovi_success_message: str,
     vulkan_prompt_yes: str = "",
     vulkan_success_message: str = "",
 ) -> bool:
-    """Offer HDR ffmpeg, Vulkan loader (Windows), and dovi_tool downloads before batch generation."""
+    """Offer ffmpeg, HDR extras, Vulkan loader (Windows), and dovi_tool downloads."""
+    prompt_and_install_base_ffmpeg(
+        custom_ffmpeg_path=custom_ffmpeg_path,
+        title=title,
+        prompt_yes=base_ffmpeg_prompt_yes,
+        prompt_no=prompt_no,
+        download_yes=download_yes,
+        progress_title=base_ffmpeg_progress_title,
+        unsupported_message=ffmpeg_unsupported_message,
+        failed_message=base_ffmpeg_failed_message,
+        success_message=base_ffmpeg_success_message,
+    )
     vulkan_prompt = vulkan_prompt_yes or (
         "Vulkan (vulkan-1.dll) is missing. Install the Vulkan loader next to ffmpeg?\n\n"
         "Install location: %s"
@@ -993,13 +1100,13 @@ def prompt_and_install_generator_tools(
         hdr_tone_map_enabled=hdr_tone_map_enabled,
         custom_ffmpeg_path=custom_ffmpeg_path,
         title=title,
-        prompt_yes=ffmpeg_prompt_yes,
+        prompt_yes=hdr_ffmpeg_prompt_yes,
         prompt_no=prompt_no,
         download_yes=download_yes,
-        progress_title=ffmpeg_progress_title,
+        progress_title=hdr_ffmpeg_progress_title,
         unsupported_message=ffmpeg_unsupported_message,
-        failed_message=ffmpeg_failed_message,
-        success_message=ffmpeg_success_message,
+        failed_message=hdr_ffmpeg_failed_message,
+        success_message=hdr_ffmpeg_success_message,
     )
     prompt_and_install_vulkan_loader(
         hdr_tone_map_enabled=hdr_tone_map_enabled,
@@ -1008,8 +1115,8 @@ def prompt_and_install_generator_tools(
         prompt_yes=vulkan_prompt,
         prompt_no=prompt_no,
         download_yes=download_yes,
-        progress_title=ffmpeg_progress_title,
-        failed_message=ffmpeg_failed_message,
+        progress_title=hdr_ffmpeg_progress_title,
+        failed_message=hdr_ffmpeg_failed_message,
         success_message=vulkan_success,
     )
     prompt_and_install_dovi_tool(

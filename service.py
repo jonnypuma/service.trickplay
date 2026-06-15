@@ -172,6 +172,8 @@ class TrickplayService:
         self._load_settled_for = ""
         self._load_thread: threading.Thread | None = None
         self._playback_block_reason = ""
+        self._ffmpeg_install_prompt_pending = False
+        self._ffmpeg_install_prompt_done = False
         self._log_skin_profile(force=True)
 
     def _preview_hold_seconds(self) -> int:
@@ -430,10 +432,11 @@ class TrickplayService:
             ffmpeg, _, _ = resolve_ffmpeg_tools()
             if not ffmpeg:
                 _log(
-                    "Preview cropping needs ffmpeg; install via batch Run "
-                    "(HDR tone mapping) or set Generator ffmpeg path",
+                    "Preview cropping needs ffmpeg; use Install preview tools in add-on "
+                    "settings or set Generator ffmpeg path",
                     xbmc.LOGWARNING,
                 )
+                self._ffmpeg_install_prompt_pending = True
 
             play_seconds = _player_time_seconds(self.player)
             runtime = read_runtime_settings()
@@ -770,6 +773,37 @@ class TrickplayService:
 
         return False, play_seconds
 
+    def _maybe_prompt_ffmpeg_install(self) -> None:
+        if self._ffmpeg_install_prompt_done or not self._ffmpeg_install_prompt_pending:
+            return
+        if not self.player.isPlayingVideo() or not self._preview_allowed():
+            return
+
+        self._ffmpeg_install_prompt_done = True
+        self._ffmpeg_install_prompt_pending = False
+
+        try:
+            from hdr_ffmpeg_installer import should_offer_ffmpeg_download
+
+            settings = read_generator_settings()
+            if not should_offer_ffmpeg_download(settings.ffmpeg_path):
+                return
+        except ImportError:
+            return
+
+        title = ADDON.getLocalizedString(32131)
+        message = ADDON.getLocalizedString(32130)
+        if xbmcgui.Dialog().yesno(
+            title,
+            message,
+            yeslabel=ADDON.getLocalizedString(32105),
+            nolabel=ADDON.getLocalizedString(32100),
+        ):
+            _log("First-playback ffmpeg install accepted; launching install_tools")
+            xbmc.executebuiltin("RunScript(service.trickplay,install_tools,playback)")
+        else:
+            _log("First-playback ffmpeg install declined")
+
     def _adaptive_poll_ms(self) -> int:
         if not self.player.isPlayingVideo():
             generator = read_generator_settings()
@@ -807,6 +841,8 @@ class TrickplayService:
                 self._log_playback_block_once()
             self._next_poll_ms = self.poll_ms
             return
+
+        self._maybe_prompt_ffmpeg_install()
 
         play_seconds = _player_time_seconds(self.player)
         if not xbmc.getCondVisibility("Player.Paused"):

@@ -390,8 +390,8 @@ msgid "Generator ffmpeg path"
 msgstr "Generator ffmpeg path"
 
 msgctxt "#32098"
-msgid "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows)."
-msgstr "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. When HDR tone mapping is on, Run can offer to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows)."
+msgid "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. Use Install preview tools in add-on settings to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows), or batch Run when generating."
+msgstr "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. Use Install preview tools in add-on settings to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows), or batch Run when generating."
 
 msgctxt "#32099"
 msgid "HDR tone mapping needs a capable ffmpeg build. Download and install now?\n\nLinux: BtbN gpl-8.1 (zscale). Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nOn devices without Vulkan (e.g. CoreELEC), Profile 5 Dolby Vision uses dovi_tool instead of libplacebo.\n\nInstall location: %s"
@@ -484,3 +484,43 @@ msgstr "Windows hardware decode"
 msgctxt "#32121"
 msgid "On Windows only: D3D11VA (GPU) for 10-bit / HDR / Dolby Vision HEVC (~25–30% faster on 4K HDR/DV). Not for general use — 1080p H.264 SDR should use software decode (often faster, especially on deep seeks); long-interval SDR uses fps-batch per tile. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). No effect on Linux or CoreELEC."
 msgstr "On Windows only: D3D11VA (GPU) for 10-bit / HDR / Dolby Vision HEVC (~25–30% faster on 4K HDR/DV). Not for general use — 1080p H.264 SDR should use software decode (often faster, especially on deep seeks); long-interval SDR uses fps-batch per tile. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). No effect on Linux or CoreELEC."
+
+msgctxt "#32122"
+msgid "Preview tools"
+msgstr "Preview tools"
+
+msgctxt "#32123"
+msgid "Install preview tools"
+msgstr "Install preview tools"
+
+msgctxt "#32124"
+msgid "Download ffmpeg/ffprobe (and optional HDR extras: zscale/libplacebo, Vulkan loader on Windows, dovi_tool) into the add-on tools folder. Same binaries are used for playback preview cropping and trickplay generation. You can also run batch Run for generation-only installs when HDR tone mapping is enabled."
+msgstr "Download ffmpeg/ffprobe (and optional HDR extras: zscale/libplacebo, Vulkan loader on Windows, dovi_tool) into the add-on tools folder. Same binaries are used for playback preview cropping and trickplay generation. You can also run batch Run for generation-only installs when HDR tone mapping is enabled."
+
+msgctxt "#32125"
+msgid "Preview cropping and trickplay generation need ffmpeg and ffprobe. Download and install a pinned build now?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nInstall location: %s"
+msgstr "Preview cropping and trickplay generation need ffmpeg and ffprobe. Download and install a pinned build now?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nInstall location: %s"
+
+msgctxt "#32126"
+msgid "Installing ffmpeg…"
+msgstr "Installing ffmpeg…"
+
+msgctxt "#32127"
+msgid "ffmpeg install failed:\n%s\n\nYou can install manually or set Generator ffmpeg path in add-on settings."
+msgstr "ffmpeg install failed:\n%s\n\nYou can install manually or set Generator ffmpeg path in add-on settings."
+
+msgctxt "#32128"
+msgid "ffmpeg installed (%s)."
+msgstr "ffmpeg installed (%s)."
+
+msgctxt "#32129"
+msgid "Preview tools are already installed."
+msgstr "Preview tools are already installed."
+
+msgctxt "#32130"
+msgid "This file has trickplay sidecars but preview thumbnails need ffmpeg to crop tiles from sprite sheets.\n\nDownload and install ffmpeg now? You can also use Install preview tools in add-on settings anytime."
+msgstr "This file has trickplay sidecars but preview thumbnails need ffmpeg to crop tiles from sprite sheets.\n\nDownload and install ffmpeg now? You can also use Install preview tools in add-on settings anytime."
+
+msgctxt "#32131"
+msgid "Install preview tools"
+msgstr "Install preview tools"

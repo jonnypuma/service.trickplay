@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.8] - 2026-05-22
+
+### Added
+
+- **Install preview tools** — new action at the top of add-on settings downloads ffmpeg/ffprobe (and optional HDR extras: zscale/libplacebo, Vulkan loader on Windows, dovi_tool) without enabling the generator or batch **Run**. Uses the same install location as batch auto-install.
+- **First-playback ffmpeg prompt** — when trickplay sidecars load but no ffmpeg is found for preview cropping, the service offers a one-time yes/no install dialog per Kodi session (decline with “Continue without” to skip until restart).
+
+### Changed
+
+- **Generator ffmpeg path** is always visible in settings (not hidden when the generator is off) so preview-only users can point at a custom install.
+- **Batch Run** now offers base ffmpeg download when missing even if HDR tone mapping is off (same pinned BtbN/Gyan builds as Install preview tools).
+- Log messages for missing ffmpeg mention **Install preview tools** instead of batch Run only.
+
 ## [4.0.7] - 2026-05-22
 
 ### Fixed

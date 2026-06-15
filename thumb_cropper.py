@@ -799,7 +799,8 @@ def get_cropped_thumb_path(
                 )
             else:
                 _log(
-                    "No ffmpeg binary found; install via batch Run or set Generator ffmpeg path",
+                    "No ffmpeg binary found; use Install preview tools in add-on "
+                    "settings or set Generator ffmpeg path",
                     xbmc.LOGWARNING,
                 )
     finally:

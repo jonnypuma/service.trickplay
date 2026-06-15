@@ -17,7 +17,7 @@ if _ADDON_PATH and _ADDON_PATH not in sys.path:
 
 from generator_settings import GeneratorSettings, read_generator_settings, save_generator_library_path
 from vfs_paths import vfs_is_dir
-from hdr_ffmpeg_installer import prompt_and_install_generator_tools
+from hdr_ffmpeg_installer import install_tools_needed, prompt_and_install_generator_tools
 from library_path_browse import browse_library_folder
 from trickplay_generator import collect_generation_candidates, generate_trickplay_for_media
 
@@ -187,17 +187,21 @@ def run_batch_dialog() -> None:
         hdr_dovi_tool_fallback_enabled=settings.hdr_dovi_tool_fallback,
         custom_ffmpeg_path=settings.ffmpeg_path,
         title=_ADDON.getLocalizedString(32063),
-        ffmpeg_prompt_yes=_ADDON.getLocalizedString(32099),
+        base_ffmpeg_prompt_yes=_ADDON.getLocalizedString(32125),
+        hdr_ffmpeg_prompt_yes=_ADDON.getLocalizedString(32099),
         dovi_prompt_yes=_ADDON.getLocalizedString(32106),
         prompt_no=_ADDON.getLocalizedString(32100),
         download_yes=_ADDON.getLocalizedString(32105),
-        ffmpeg_progress_title=_ADDON.getLocalizedString(32101),
+        base_ffmpeg_progress_title=_ADDON.getLocalizedString(32126),
+        hdr_ffmpeg_progress_title=_ADDON.getLocalizedString(32101),
         dovi_progress_title=_ADDON.getLocalizedString(32107),
         ffmpeg_unsupported_message=_ADDON.getLocalizedString(32102),
         dovi_unsupported_message=_ADDON.getLocalizedString(32108),
-        ffmpeg_failed_message=_ADDON.getLocalizedString(32103),
+        base_ffmpeg_failed_message=_ADDON.getLocalizedString(32127),
+        hdr_ffmpeg_failed_message=_ADDON.getLocalizedString(32103),
         dovi_failed_message=_ADDON.getLocalizedString(32109),
-        ffmpeg_success_message=_ADDON.getLocalizedString(32104),
+        base_ffmpeg_success_message=_ADDON.getLocalizedString(32128),
+        hdr_ffmpeg_success_message=_ADDON.getLocalizedString(32104),
         dovi_success_message=_ADDON.getLocalizedString(32110),
         vulkan_prompt_yes=_ADDON.getLocalizedString(32118),
         vulkan_success_message=_ADDON.getLocalizedString(32119),
@@ -287,12 +291,93 @@ def run_batch_dialog() -> None:
     )
 
 
+def _install_tools_strings(settings: GeneratorSettings) -> dict[str, str]:
+    return {
+        "title": _ADDON.getLocalizedString(32131),
+        "base_ffmpeg_prompt_yes": _ADDON.getLocalizedString(32125),
+        "hdr_ffmpeg_prompt_yes": _ADDON.getLocalizedString(32099),
+        "dovi_prompt_yes": _ADDON.getLocalizedString(32106),
+        "prompt_no": _ADDON.getLocalizedString(32100),
+        "download_yes": _ADDON.getLocalizedString(32105),
+        "base_ffmpeg_progress_title": _ADDON.getLocalizedString(32126),
+        "hdr_ffmpeg_progress_title": _ADDON.getLocalizedString(32101),
+        "dovi_progress_title": _ADDON.getLocalizedString(32107),
+        "ffmpeg_unsupported_message": _ADDON.getLocalizedString(32102),
+        "dovi_unsupported_message": _ADDON.getLocalizedString(32108),
+        "base_ffmpeg_failed_message": _ADDON.getLocalizedString(32127),
+        "hdr_ffmpeg_failed_message": _ADDON.getLocalizedString(32103),
+        "dovi_failed_message": _ADDON.getLocalizedString(32109),
+        "base_ffmpeg_success_message": _ADDON.getLocalizedString(32128),
+        "hdr_ffmpeg_success_message": _ADDON.getLocalizedString(32104),
+        "dovi_success_message": _ADDON.getLocalizedString(32110),
+        "vulkan_prompt_yes": _ADDON.getLocalizedString(32118),
+        "vulkan_success_message": _ADDON.getLocalizedString(32119),
+        "already_installed": _ADDON.getLocalizedString(32129),
+    }
+
+
+def run_install_tools_dialog(*, from_playback_prompt: bool = False) -> None:
+    _log(
+        "run_install_tools_dialog started "
+        f"(from_playback_prompt={from_playback_prompt})"
+    )
+    settings = read_generator_settings()
+    strings = _install_tools_strings(settings)
+    if not install_tools_needed(
+        hdr_tone_map_enabled=settings.hdr_tone_map,
+        hdr_dovi_tool_fallback_enabled=settings.hdr_dovi_tool_fallback,
+        custom_ffmpeg_path=settings.ffmpeg_path,
+    ):
+        _log("Install tools: nothing needed")
+        if not from_playback_prompt:
+            xbmcgui.Dialog().notification(
+                strings["title"],
+                strings["already_installed"],
+                xbmcgui.NOTIFICATION_INFO,
+                4000,
+            )
+        return
+
+    prompt_and_install_generator_tools(
+        hdr_tone_map_enabled=settings.hdr_tone_map,
+        hdr_dovi_tool_fallback_enabled=settings.hdr_dovi_tool_fallback,
+        custom_ffmpeg_path=settings.ffmpeg_path,
+        title=strings["title"],
+        base_ffmpeg_prompt_yes=strings["base_ffmpeg_prompt_yes"],
+        hdr_ffmpeg_prompt_yes=strings["hdr_ffmpeg_prompt_yes"],
+        dovi_prompt_yes=strings["dovi_prompt_yes"],
+        prompt_no=strings["prompt_no"],
+        download_yes=strings["download_yes"],
+        base_ffmpeg_progress_title=strings["base_ffmpeg_progress_title"],
+        hdr_ffmpeg_progress_title=strings["hdr_ffmpeg_progress_title"],
+        dovi_progress_title=strings["dovi_progress_title"],
+        ffmpeg_unsupported_message=strings["ffmpeg_unsupported_message"],
+        dovi_unsupported_message=strings["dovi_unsupported_message"],
+        base_ffmpeg_failed_message=strings["base_ffmpeg_failed_message"],
+        hdr_ffmpeg_failed_message=strings["hdr_ffmpeg_failed_message"],
+        dovi_failed_message=strings["dovi_failed_message"],
+        base_ffmpeg_success_message=strings["base_ffmpeg_success_message"],
+        hdr_ffmpeg_success_message=strings["hdr_ffmpeg_success_message"],
+        dovi_success_message=strings["dovi_success_message"],
+        vulkan_prompt_yes=strings["vulkan_prompt_yes"],
+        vulkan_success_message=strings["vulkan_success_message"],
+    )
+    try:
+        from thumb_cropper import invalidate_playback_ffmpeg_cache
+
+        invalidate_playback_ffmpeg_cache()
+    except ImportError:
+        pass
+
+
 def _resolve_mode(argv: list[str]) -> str:
     """Return script mode from RunScript argv (addon id + optional args)."""
     for arg in argv[1:]:
         normalized = (arg or "").strip().lower()
         if normalized in ("batch", "run_batch"):
             return "batch"
+        if normalized in ("install_tools", "install"):
+            return "install_tools"
         if normalized.endswith(".py"):
             continue
         if normalized:
@@ -301,11 +386,21 @@ def _resolve_mode(argv: list[str]) -> str:
     return "batch"
 
 
+def _from_playback_prompt(argv: list[str]) -> bool:
+    for arg in argv[1:]:
+        normalized = (arg or "").strip().lower()
+        if normalized in ("playback", "from_playback"):
+            return True
+    return False
+
+
 if __name__ == "__main__":
     _log(f"script_generator invoked argv={sys.argv!r}")
     mode = _resolve_mode(sys.argv)
     _log(f"Resolved mode={mode!r}")
     if mode == "batch":
         run_batch_dialog()
+    elif mode == "install_tools":
+        run_install_tools_dialog(from_playback_prompt=_from_playback_prompt(sys.argv))
     else:
         _log(f"Unsupported mode {mode!r}; no action taken", xbmc.LOGERROR)

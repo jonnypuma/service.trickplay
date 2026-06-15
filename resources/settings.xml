@@ -6,6 +6,22 @@
 
         <category id="general" label="32000">
 
+            <group id="g0" label="32122">
+
+                <setting id="install_tools" type="action" label="32123" help="32124">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript($ID,install_tools)</data>
+
+                    </control>
+
+                </setting>
+
+            </group>
+
             <group id="g1" label="32001">
 
                 <setting id="preferred_width" type="integer" label="32002" help="32003">
@@ -627,16 +643,6 @@
                         <heading>32097</heading>
 
                     </control>
-
-                    <dependencies>
-
-                        <dependency type="visible">
-
-                            <condition setting="generator_enabled">true</condition>
-
-                        </dependency>
-
-                    </dependencies>
 
                 </setting>
 
