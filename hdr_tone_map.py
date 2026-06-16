@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import xbmc
 import xbmcvfs
 
+from temp_cleanup import DOVI_TEMP_ROOT
 from ffmpeg_media import _stream_to_pipe, resolve_ffmpeg_media_path
 from ffmpeg_tools import (
     _local_path,
@@ -61,9 +62,8 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 
 def _dovi_prep_temp_root() -> str:
     """Large-temp root on special://temp (not OS /tmp — often too small on CoreELEC)."""
-    root = xbmcvfs.translatePath("special://temp/service.trickplay/dovi")
-    os.makedirs(root, exist_ok=True)
-    return root
+    os.makedirs(DOVI_TEMP_ROOT, exist_ok=True)
+    return DOVI_TEMP_ROOT
 
 
 def _create_dovi_prep_work_dir() -> str:

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.1] - 2026-05-22
+
+### Added
+
+- **Batch Run scan progress** — after confirming the library folder, a cancellable progress dialog shows while the tree is scanned and sidecars are checked (“Calculating number of videos…”), instead of a long UI freeze before the start-generation prompt.
+
+## [4.1.0] - 2026-05-22
+
+### Added
+
+- **Orphaned generator temp cleanup** — on service start and at the beginning of each generation job, removes leftover files under `special://temp/service.trickplay/generate/` and `.../dovi/` from crashes or hard kills (normal completion already deletes these in `finally`). Playback sprite copies in the parent temp folder are kept.
+
 ## [4.0.8] - 2026-05-22
 
 ### Added

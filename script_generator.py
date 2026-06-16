@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 
 import xbmc
 import xbmcaddon
@@ -19,7 +20,11 @@ from generator_settings import GeneratorSettings, read_generator_settings, save_
 from vfs_paths import vfs_is_dir
 from hdr_ffmpeg_installer import install_tools_needed, prompt_and_install_generator_tools
 from library_path_browse import browse_library_folder
-from trickplay_generator import collect_generation_candidates, generate_trickplay_for_media
+from trickplay_generator import (
+    GenerationBatchPlan,
+    collect_generation_candidates,
+    generate_trickplay_for_media,
+)
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -118,6 +123,98 @@ def _run_batch_generation(
     return ok_count, fail_count, cancelled
 
 
+def _collect_candidates_with_progress(
+    folder: str,
+    settings: GeneratorSettings,
+) -> GenerationBatchPlan | None:
+    """Scan library for generation candidates with a cancellable progress dialog."""
+    monitor = xbmc.Monitor()
+    progress = xbmcgui.DialogProgress()
+    progress.create(
+        _ADDON.getLocalizedString(32132),
+        _ADDON.getLocalizedString(32133),
+    )
+
+    scan_line = _ADDON.getLocalizedString(32135)
+    check_line = _ADDON.getLocalizedString(32134)
+    state_lock = threading.Lock()
+    state = {"phase": "scan", "checked": 0, "total": 0, "found": 0, "done": False}
+    result: GenerationBatchPlan | None = None
+    worker_error: BaseException | None = None
+
+    def should_cancel() -> bool:
+        return monitor.abortRequested() or progress.iscanceled()
+
+    def on_progress(checked: int, total: int) -> None:
+        with state_lock:
+            if total <= 0:
+                state["phase"] = "scan"
+                state["found"] = checked
+            else:
+                state["phase"] = "check"
+                state["checked"] = checked
+                state["total"] = total
+
+    def worker() -> None:
+        nonlocal result, worker_error
+        try:
+            result = collect_generation_candidates(
+                folder,
+                settings,
+                should_cancel=should_cancel,
+                on_progress=on_progress,
+            )
+        except BaseException as exc:
+            worker_error = exc
+        finally:
+            with state_lock:
+                state["done"] = True
+
+    thread = threading.Thread(target=worker, daemon=True, name="trickplay-batch-scan")
+    thread.start()
+
+    try:
+        while thread.is_alive():
+            with state_lock:
+                phase = state["phase"]
+                checked = state["checked"]
+                total = state["total"]
+                found = state["found"]
+
+            if phase == "check" and total > 0:
+                progress.update(
+                    int((checked * 100) / total),
+                    check_line % (checked, total),
+                )
+            elif found > 0:
+                progress.update(0, scan_line % found)
+            else:
+                progress.update(0, scan_line % 0)
+
+            if should_cancel():
+                break
+            if monitor.waitForAbort(0.1):
+                break
+
+        thread.join(timeout=30.0)
+    finally:
+        progress.close()
+
+    if worker_error is not None:
+        _log(f"Candidate scan failed: {worker_error}", xbmc.LOGERROR)
+        raise worker_error
+
+    if result is None:
+        _log("Candidate scan produced no result", xbmc.LOGWARNING)
+        return None
+
+    if should_cancel() or result.cancelled:
+        _log("Candidate scan cancelled by user")
+        return None
+
+    return result
+
+
 def run_batch_dialog() -> None:
     _log("run_batch_dialog started")
     settings = read_generator_settings()
@@ -164,7 +261,9 @@ def run_batch_dialog() -> None:
                 return
 
     _log(f"Collecting generation candidates under {folder}")
-    plan = collect_generation_candidates(folder, settings)
+    plan = _collect_candidates_with_progress(folder, settings)
+    if plan is None:
+        return
     candidates = plan.candidates
     _log(
         f"Found {len(candidates)} candidate(s) "

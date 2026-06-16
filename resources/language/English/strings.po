@@ -524,3 +524,19 @@ msgstr "This file has trickplay sidecars but preview thumbnails need ffmpeg to c
 msgctxt "#32131"
 msgid "Install preview tools"
 msgstr "Install preview tools"
+
+msgctxt "#32132"
+msgid "Calculating number of videos…"
+msgstr "Calculating number of videos…"
+
+msgctxt "#32133"
+msgid "Please wait while the folder is scanned for videos missing trickplay preview files based on your current settings."
+msgstr "Please wait while the folder is scanned for videos missing trickplay preview files based on your current settings."
+
+msgctxt "#32134"
+msgid "Checking %d of %d videos…"
+msgstr "Checking %d of %d videos…"
+
+msgctxt "#32135"
+msgid "Scanning for video files… (%d found)"
+msgstr "Scanning for video files… (%d found)"

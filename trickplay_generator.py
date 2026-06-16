@@ -48,8 +48,7 @@ from trickplay_resolver import (
     resolve_media_path,
     trickplay_root_for_media,
 )
-
-GENERATE_TEMP_ROOT = xbmcvfs.translatePath("special://temp/service.trickplay/generate/")
+from temp_cleanup import GENERATE_TEMP_ROOT, cleanup_orphaned_generator_temp
 
 _VIDEO_EXTENSIONS = frozenset(
     {
@@ -361,6 +360,7 @@ class GenerationBatchPlan:
     skipped_existing: int
     skipped_dv_profile_5: int
     total_videos: int
+    cancelled: bool = False
 
 
 def probe_video_duration_seconds(
@@ -1085,6 +1085,7 @@ def generate_trickplay_for_media(
     should_cancel: Callable[[], bool] | None = None,
 ) -> bool:
     """Write Jellyfin-format trickplay sprites next to media_path."""
+    cleanup_orphaned_generator_temp()
     if _is_cancelled(should_cancel):
         return False
 
@@ -1605,7 +1606,12 @@ def generate_trickplay_for_media(
     return success
 
 
-def iter_library_videos(root: str) -> list[str]:
+def iter_library_videos(
+    root: str,
+    *,
+    should_cancel: Callable[[], bool] | None = None,
+    on_progress: Callable[[int], None] | None = None,
+) -> list[str]:
     """Recursively list local video files under root."""
     root = (root or "").strip()
     if not root or not xbmcvfs.exists(root):
@@ -1613,9 +1619,17 @@ def iter_library_videos(root: str) -> list[str]:
 
     results: list[str] = []
     stack = [_local_path(root) if root.startswith("special://") else root]
+    dirs_seen = 0
 
     while stack:
+        if should_cancel and should_cancel():
+            return results
+
         current = stack.pop()
+        dirs_seen += 1
+        if on_progress and dirs_seen % 25 == 0:
+            on_progress(len(results))
+
         try:
             entries = xbmcvfs.listdir(current)
         except OSError:
@@ -1631,6 +1645,8 @@ def iter_library_videos(root: str) -> list[str]:
             if ext not in _VIDEO_EXTENSIONS:
                 continue
             results.append(os.path.join(current, name))
+            if on_progress and len(results) % 100 == 0:
+                on_progress(len(results))
 
         for name in dirs:
             if str(name) in (".", ".."):
@@ -1643,9 +1659,24 @@ def iter_library_videos(root: str) -> list[str]:
 def collect_generation_candidates(
     root: str,
     settings: GeneratorSettings,
+    *,
+    should_cancel: Callable[[], bool] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> GenerationBatchPlan:
     """Return media paths under root that still need trickplay sidecars."""
-    videos = iter_library_videos(root)
+    def _scan_progress(found: int) -> None:
+        if on_progress:
+            on_progress(0, found)
+
+    videos = iter_library_videos(
+        root,
+        should_cancel=should_cancel,
+        on_progress=_scan_progress,
+    )
+    if should_cancel and should_cancel():
+        _log(f"Candidate scan cancelled during folder walk under {root!r}")
+        return GenerationBatchPlan([], 0, 0, 0, cancelled=True)
+
     _log(f"Scanned {len(videos)} video(s) under {root!r}")
     candidates: list[str] = []
     skipped = 0
@@ -1662,7 +1693,17 @@ def collect_generation_candidates(
                 xbmc.LOGWARNING,
             )
             skip_dv_p5 = False
-    for media_path in videos:
+    total = len(videos)
+    for index, media_path in enumerate(videos):
+        if should_cancel and should_cancel():
+            _log(
+                f"Candidate scan cancelled at {index + 1}/{total} under {root!r}"
+            )
+            return GenerationBatchPlan([], 0, 0, total, cancelled=True)
+
+        if on_progress and (index == 0 or (index + 1) % 10 == 0 or index + 1 == total):
+            on_progress(index + 1, total)
+
         if (
             not settings.overwrite_existing
             and has_generated_sidecar(
@@ -1674,7 +1715,8 @@ def collect_generation_candidates(
             )
         ):
             skipped += 1
-            _log(f"Skipping existing sidecar: {os.path.basename(media_path)}")
+            if settings.debug:
+                _log(f"Skipping existing sidecar: {os.path.basename(media_path)}")
             continue
         if skip_dv_p5 and is_dv_profile_5(
             media_path,
@@ -1696,5 +1738,5 @@ def collect_generation_candidates(
         candidates=candidates,
         skipped_existing=skipped,
         skipped_dv_profile_5=skipped_dv_p5,
-        total_videos=len(videos),
+        total_videos=total,
     )

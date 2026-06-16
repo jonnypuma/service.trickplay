@@ -938,6 +938,12 @@ class TrickplayService:
             invalidate_playback_ffmpeg_cache()
         except ImportError:
             pass
+        try:
+            from temp_cleanup import cleanup_orphaned_generator_temp
+
+            cleanup_orphaned_generator_temp()
+        except ImportError:
+            pass
         _log(
             f"Service initialized (display=skin v{ADDON.getAddonInfo('version')})"
         )
