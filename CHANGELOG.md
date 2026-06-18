@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-05-22
+
+### Fixed
+
+- **Duration probe for generation** — thumb count now uses the shorter of container `format=duration` and the primary video stream (stream `duration`, `DURATION` tag, or `NUMBER_OF_FRAMES` / frame rate). Fixes NF WEB-DL and similar files where the container is longer than decodable video (e.g. hybrid DV/HDR with ~45 s audio tail).
+- **Tail tile tolerance** — an empty or failed **last** tile no longer fails the whole job when at least one prior tile was written; empty tiles in the middle still fail. Partial last tiles are kept.
+
 ## [4.1.1] - 2026-05-22
 
 ### Added

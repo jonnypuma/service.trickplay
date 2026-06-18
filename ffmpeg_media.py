@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -240,12 +241,176 @@ def _stream_to_pipe(
                 pass
 
 
-def probe_duration_via_pipe(
+_DURATION_RE = re.compile(
+    r"Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+
+
+def parse_duration_from_ffmpeg_stderr(stderr: str) -> float:
+    match = _DURATION_RE.search(stderr or "")
+    if not match:
+        return 0.0
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _parse_hms_duration(tag: str) -> float:
+    tag = (tag or "").strip()
+    if not tag:
+        return 0.0
+    parts = tag.split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        return float(tag)
+    except ValueError:
+        return 0.0
+
+
+def _parse_r_frame_rate(rate: str) -> float:
+    rate = (rate or "").strip()
+    if not rate or rate == "0/0":
+        return 0.0
+    if "/" in rate:
+        num, den = rate.split("/", 1)
+        try:
+            n, d = float(num), float(den)
+            return n / d if d else 0.0
+        except ValueError:
+            return 0.0
+    try:
+        return float(rate)
+    except ValueError:
+        return 0.0
+
+
+def _video_duration_from_stream(stream: dict) -> float:
+    try:
+        duration = float(stream.get("duration") or 0)
+        if duration > 0:
+            return duration
+    except (TypeError, ValueError):
+        pass
+
+    tags = stream.get("tags") or {}
+    tag_duration = _parse_hms_duration(str(tags.get("DURATION") or ""))
+    if tag_duration > 0:
+        return tag_duration
+
+    try:
+        frames = float(tags.get("NUMBER_OF_FRAMES") or 0)
+        fps = _parse_r_frame_rate(
+            str(stream.get("r_frame_rate") or stream.get("avg_frame_rate") or "")
+        )
+        if frames > 0 and fps > 0:
+            return frames / fps
+    except (TypeError, ValueError):
+        pass
+    return 0.0
+
+
+def _parse_ffprobe_json_durations(payload: dict) -> tuple[float, float]:
+    format_duration = 0.0
+    try:
+        format_duration = float((payload.get("format") or {}).get("duration") or 0)
+    except (TypeError, ValueError):
+        pass
+    if format_duration <= 0:
+        format_duration = 0.0
+
+    video_duration = 0.0
+    for stream in payload.get("streams") or []:
+        if stream.get("codec_type") == "video":
+            video_duration = _video_duration_from_stream(stream)
+            if video_duration > 0:
+                break
+    return format_duration, video_duration
+
+
+def _run_ffprobe_json(
+    cmd: list[str],
+    env: dict[str, str] | None,
+    *,
+    timeout: float,
+    media_label: str,
+) -> dict | None:
+    try:
+        completed = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+            **subprocess_hide_window_kwargs(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        _log(
+            f"ffprobe duration failed for {media_label}: {exc}",
+            xbmc.LOGWARNING,
+        )
+        return None
+
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        _log(
+            f"ffprobe duration failed for {media_label} (rc={completed.returncode}): "
+            f"{detail[:300]}",
+            xbmc.LOGWARNING,
+        )
+        return None
+
+    try:
+        return json.loads(completed.stdout or "{}")
+    except json.JSONDecodeError:
+        _log(f"ffprobe duration JSON parse failed for {media_label}", xbmc.LOGWARNING)
+        return None
+
+
+def probe_media_durations_local(
+    local: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    *,
+    debug: bool = False,
+    media_label: str = "",
+) -> tuple[float, float]:
+    label = media_label or local
+    cmd = [
+        ffprobe,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-show_entries",
+        "stream=duration:stream_tags=DURATION:stream_tags=NUMBER_OF_FRAMES:"
+        "stream=r_frame_rate:stream=avg_frame_rate:stream=codec_type",
+        "-select_streams",
+        "v:0",
+        "-of",
+        "json",
+        local,
+    ]
+    payload = _run_ffprobe_json(cmd, env, timeout=60, media_label=label)
+    if payload is None:
+        return 0.0, 0.0
+    format_duration, video_duration = _parse_ffprobe_json_durations(payload)
+    if debug and (format_duration > 0 or video_duration > 0):
+        _log(
+            f"Duration probe for {label}: container={format_duration:.2f}s "
+            f"video={video_duration:.2f}s"
+        )
+    return format_duration, video_duration
+
+
+def _run_ffprobe_json_via_pipe(
     media_path: str,
     ffprobe: str,
     env: dict[str, str] | None,
-    debug: bool = False,
-) -> int:
+) -> dict | None:
     cmd = [
         ffprobe,
         "-v",
@@ -256,8 +421,13 @@ def probe_duration_via_pipe(
         "50M",
         "-show_entries",
         "format=duration",
+        "-show_entries",
+        "stream=duration:stream_tags=DURATION:stream_tags=NUMBER_OF_FRAMES:"
+        "stream=r_frame_rate:stream=avg_frame_rate:stream=codec_type",
+        "-select_streams",
+        "v:0",
         "-of",
-        "default=noprint_wrappers=1:nokey=1",
+        "json",
         "pipe:0",
     ]
     try:
@@ -266,11 +436,12 @@ def probe_duration_via_pipe(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env, **subprocess_hide_window_kwargs(),
+            env=env,
+            **subprocess_hide_window_kwargs(),
         )
     except OSError as exc:
         _log(f"ffprobe pipe probe failed to start for {media_path}: {exc}", xbmc.LOGWARNING)
-        return 0
+        return None
 
     feeder = threading.Thread(
         target=_stream_to_pipe,
@@ -284,8 +455,11 @@ def probe_duration_via_pipe(
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.communicate()
-        _log(f"ffprobe pipe probe timed out after {timeout}s for {media_path}", xbmc.LOGWARNING)
-        return 0
+        _log(
+            f"ffprobe pipe probe timed out after {timeout}s for {media_path}",
+            xbmc.LOGWARNING,
+        )
+        return None
     finally:
         feeder.join(timeout=1)
 
@@ -295,19 +469,70 @@ def probe_duration_via_pipe(
             f"ffprobe pipe probe failed for {media_path} (rc={proc.returncode}): {detail}",
             xbmc.LOGWARNING,
         )
-        return 0
+        return None
 
     try:
-        duration = float((stdout or b"").decode("utf-8", errors="replace").strip())
-    except ValueError:
-        return 0
+        return json.loads((stdout or b"").decode("utf-8", errors="replace") or "{}")
+    except json.JSONDecodeError:
+        _log(f"ffprobe pipe duration JSON parse failed for {media_path}", xbmc.LOGWARNING)
+        return None
 
-    if duration <= 0:
-        return 0
 
-    if debug:
-        _log(f"Duration {int(duration)}s for {media_path} via ffprobe pipe")
+def probe_durations_via_pipe(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    debug: bool = False,
+) -> tuple[float, float]:
+    payload = _run_ffprobe_json_via_pipe(media_path, ffprobe, env)
+    if payload is None:
+        return 0.0, 0.0
+    format_duration, video_duration = _parse_ffprobe_json_durations(payload)
+    if debug and (format_duration > 0 or video_duration > 0):
+        _log(
+            f"Duration probe for {media_path}: container={format_duration:.2f}s "
+            f"video={video_duration:.2f}s (pipe)"
+        )
+    return format_duration, video_duration
+
+
+def effective_generation_duration_seconds(
+    format_duration: float,
+    video_duration: float,
+    *,
+    media_path: str = "",
+    debug: bool = False,
+) -> int:
+    candidates = [d for d in (format_duration, video_duration) if d > 0]
+    if not candidates:
+        return 0
+    duration = min(candidates) if len(candidates) > 1 else candidates[0]
+    if format_duration > 0 and video_duration > 0 and format_duration - video_duration > 1.0:
+        _log(
+            f"Using video duration {int(duration)}s for {media_path} "
+            f"(container reports {int(format_duration)}s)",
+            xbmc.LOGINFO,
+        )
+    elif debug:
+        _log(f"Duration {int(duration)}s for {media_path}")
     return max(int(duration), 1)
+
+
+def probe_duration_via_pipe(
+    media_path: str,
+    ffprobe: str,
+    env: dict[str, str] | None,
+    debug: bool = False,
+) -> int:
+    format_duration, video_duration = probe_durations_via_pipe(
+        media_path, ffprobe, env, debug=debug
+    )
+    return effective_generation_duration_seconds(
+        format_duration,
+        video_duration,
+        media_path=media_path,
+        debug=debug,
+    )
 
 
 def extract_frames_via_pipe(

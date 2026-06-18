@@ -25,11 +25,14 @@ from generator_extract_modes import (
 from generator_settings import GeneratorSettings
 from experimental_extract import extract_tile_experimental
 from ffmpeg_media import (
+    effective_generation_duration_seconds,
     elementary_hevc_input_args,
     extract_frames_from_local_file,
     extract_frames_via_pipe,
     is_elementary_hevc_path,
-    probe_duration_via_pipe,
+    parse_duration_from_ffmpeg_stderr,
+    probe_durations_via_pipe,
+    probe_media_durations_local,
     resolve_ffmpeg_media_path,
 )
 from grid_settings import grid_tuple
@@ -363,6 +366,11 @@ class GenerationBatchPlan:
     cancelled: bool = False
 
 
+def _is_tail_eof_tile(tile_index: int, tile_count: int, tiles_written: int) -> bool:
+    """True when the last tile has no decodable video left but prior tiles exist."""
+    return tile_index == tile_count - 1 and tiles_written > 0
+
+
 def probe_video_duration_seconds(
     media_path: str,
     debug: bool = False,
@@ -376,7 +384,15 @@ def probe_video_duration_seconds(
         if not ffprobe:
             _log(f"ffprobe unavailable for VFS duration probe: {media_path}", xbmc.LOGWARNING)
             return 0
-        return probe_duration_via_pipe(media_path, ffprobe, env, debug=debug)
+        format_duration, video_duration = probe_durations_via_pipe(
+            media_path, ffprobe, env, debug=debug
+        )
+        return effective_generation_duration_seconds(
+            format_duration,
+            video_duration,
+            media_path=media_path,
+            debug=debug,
+        )
 
     local = ffmpeg_input
     if not ffprobe or not xbmcvfs.exists(media_path):
@@ -386,38 +402,21 @@ def probe_video_duration_seconds(
         )
         return 0
 
-    cmd = [
-        ffprobe,
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
+    format_duration, video_duration = probe_media_durations_local(
         local,
-    ]
-    try:
-        completed = subprocess.run(
-            cmd,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            env=env, **subprocess_hide_window_kwargs(),
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        _log(f"ffprobe duration failed for {media_path} (path={local!r}): {exc}", xbmc.LOGWARNING)
-        return 0
-
-    if completed.returncode == 0:
-        try:
-            duration = float((completed.stdout or "").strip())
-            if duration > 0:
-                if debug:
-                    _log(f"Duration {int(duration)}s for {media_path} via ffprobe")
-                return max(int(duration), 1)
-        except ValueError:
-            pass
+        ffprobe,
+        env,
+        debug=debug,
+        media_label=media_path,
+    )
+    duration = effective_generation_duration_seconds(
+        format_duration,
+        video_duration,
+        media_path=media_path,
+        debug=debug,
+    )
+    if duration > 0:
+        return duration
 
     ffmpeg, _, env = resolve_generator_ffmpeg_tools(ffmpeg_path)
     if not ffmpeg:
@@ -435,19 +434,17 @@ def probe_video_duration_seconds(
         _log(f"ffmpeg duration fallback failed for {media_path} (path={local!r}): {exc}", xbmc.LOGWARNING)
         return 0
 
-    match = _DURATION_RE.search(completed.stderr or "")
-    if not match:
+    fallback = parse_duration_from_ffmpeg_stderr(completed.stderr or "")
+    if fallback <= 0:
         detail = (completed.stderr or completed.stdout or "").strip()
         _log(
             f"Could not parse duration for {media_path} (path={local!r}): {detail[:300]}",
             xbmc.LOGWARNING,
         )
         return 0
-    hours, minutes, seconds = match.groups()
-    duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
     if debug:
-        _log(f"Duration {int(duration)}s for {media_path} via ffmpeg stderr")
-    return max(int(duration), 1)
+        _log(f"Duration {int(fallback)}s for {media_path} via ffmpeg stderr")
+    return max(int(fallback), 1)
 
 
 def _is_cancelled(should_cancel: Callable[[], bool] | None) -> bool:
@@ -1264,6 +1261,7 @@ def generate_trickplay_for_media(
 
     success = True
     cancelled = False
+    tiles_written = 0
     try:
         if use_vfs_stream:
             frame_pattern = os.path.join(work_dir, "thumb_%06d.jpg")
@@ -1294,6 +1292,14 @@ def generate_trickplay_for_media(
                         start_index = tile_index * thumbs_per_tile
                         chunk = frame_paths[start_index : start_index + thumbs_per_tile]
                         if not chunk:
+                            if _is_tail_eof_tile(tile_index, tile_count, tiles_written):
+                                _log(
+                                    f"Tile {tile_index + 1}/{tile_count}: no frames "
+                                    f"(end of video); skipping last tile",
+                                    xbmc.LOGINFO,
+                                )
+                            else:
+                                success = False
                             break
                         tile_path = os.path.join(output_dir, f"{tile_index}.jpg")
                         if not _tile_frames(
@@ -1308,9 +1314,17 @@ def generate_trickplay_for_media(
                         ):
                             if _is_cancelled(should_cancel):
                                 cancelled = True
+                            elif _is_tail_eof_tile(tile_index, tile_count, tiles_written):
+                                _log(
+                                    f"Tile {tile_index + 1}/{tile_count}: assembly failed "
+                                    f"at end of video; keeping prior tile(s)",
+                                    xbmc.LOGINFO,
+                                )
+                                break
                             else:
                                 success = False
                             break
+                        tiles_written += 1
         elif is_elementary_hevc:
             hevc_timeout = max(3600.0, duration * 2.0 + 300.0)
             frame_pattern = os.path.join(_local_path(work_dir), "thumb_%06d.jpg")
@@ -1406,6 +1420,14 @@ def generate_trickplay_for_media(
                         start_index = tile_index * thumbs_per_tile
                         chunk = frame_paths[start_index : start_index + thumbs_per_tile]
                         if not chunk:
+                            if _is_tail_eof_tile(tile_index, tile_count, tiles_written):
+                                _log(
+                                    f"Tile {tile_index + 1}/{tile_count}: no frames "
+                                    f"(end of video); skipping last tile",
+                                    xbmc.LOGINFO,
+                                )
+                            else:
+                                success = False
                             break
                         tile_path = os.path.join(output_dir, f"{tile_index}.jpg")
                         if not _tile_frames(
@@ -1420,9 +1442,17 @@ def generate_trickplay_for_media(
                         ):
                             if _is_cancelled(should_cancel):
                                 cancelled = True
+                            elif _is_tail_eof_tile(tile_index, tile_count, tiles_written):
+                                _log(
+                                    f"Tile {tile_index + 1}/{tile_count}: assembly failed "
+                                    f"at end of video; keeping prior tile(s)",
+                                    xbmc.LOGINFO,
+                                )
+                                break
                             else:
                                 success = False
                             break
+                        tiles_written += 1
         else:
             for tile_index in range(tile_count):
                 if _is_cancelled(should_cancel):
@@ -1542,14 +1572,29 @@ def generate_trickplay_for_media(
                 if cancelled or _is_cancelled(should_cancel):
                     cancelled = True
                     break
-                if not success or not frame_paths:
-                    if not cancelled and not frame_paths:
+                if not frame_paths:
+                    if _is_tail_eof_tile(tile_index, tile_count, tiles_written):
                         _log(
-                            f"Tile {tile_index + 1}/{tile_count}: no frames extracted",
-                            xbmc.LOGWARNING,
+                            f"Tile {tile_index + 1}/{tile_count}: no frames extracted "
+                            f"(end of video); skipping last tile",
+                            xbmc.LOGINFO,
                         )
-                        success = False
+                        break
+                    _log(
+                        f"Tile {tile_index + 1}/{tile_count}: no frames extracted",
+                        xbmc.LOGWARNING,
+                    )
+                    success = False
                     break
+                if not success and not _is_tail_eof_tile(tile_index, tile_count, tiles_written):
+                    break
+                if not success and _is_tail_eof_tile(tile_index, tile_count, tiles_written):
+                    _log(
+                        f"Tile {tile_index + 1}/{tile_count}: partial extract at end of "
+                        f"video (using {len(frame_paths)} frame(s))",
+                        xbmc.LOGINFO,
+                    )
+                    success = True
                 if len(frame_paths) < chunk_count:
                     _log(
                         f"Tile {tile_index + 1}: expected {chunk_count} frame(s), "
@@ -1570,11 +1615,19 @@ def generate_trickplay_for_media(
                 ):
                     if _is_cancelled(should_cancel):
                         cancelled = True
+                    elif _is_tail_eof_tile(tile_index, tile_count, tiles_written):
+                        _log(
+                            f"Tile {tile_index + 1}/{tile_count}: assembly failed at "
+                            f"end of video; keeping prior tile(s)",
+                            xbmc.LOGINFO,
+                        )
+                        break
                     else:
                         success = False
                     break
 
                 _log(f"Tile {tile_index + 1}/{tile_count}: wrote {tile_path}")
+                tiles_written += 1
                 _remove_tree(tile_work_dir)
 
         was_cancelled = cancelled or _is_cancelled(should_cancel)
@@ -1584,9 +1637,15 @@ def generate_trickplay_for_media(
                 xbmc.LOGINFO,
             )
         elif success:
-            _log(
-                f"Generated {tile_count} tile(s) for {os.path.basename(media_path)}"
-            )
+            if tiles_written < tile_count:
+                _log(
+                    f"Generated {tiles_written}/{tile_count} tile(s) for "
+                    f"{os.path.basename(media_path)} (tail thumbs skipped)"
+                )
+            else:
+                _log(
+                    f"Generated {tile_count} tile(s) for {os.path.basename(media_path)}"
+                )
         else:
             _log(
                 f"Generation failed for {os.path.basename(media_path)}",
