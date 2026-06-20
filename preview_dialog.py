@@ -68,6 +68,7 @@ _seekbar_visible_last = False
 _last_resync_snapshot: tuple[tuple[str, str], ...] | None = None
 
 SCRUB_COALESCE_SEC = 0.12
+SCRUB_GAP_SEC = 0.25
 SCRUB_JUMP_THUMBS = 3
 
 DEFAULT_ASPECT_RATIO = 16 / 9
@@ -331,6 +332,7 @@ class PreviewDialogController:
         self._last_placement_key: tuple[int, int, float, bool, str] | None = None
         self._last_scrub_at = 0.0
         self._last_scrub_thumb_index = -1
+        self._scrub_burst_until = 0.0
         self._fast_scrub_active = False
 
     @property
@@ -352,20 +354,29 @@ class PreviewDialogController:
         self._last_placement_key = None
         self._last_scrub_at = 0.0
         self._last_scrub_thumb_index = -1
+        self._scrub_burst_until = 0.0
         self._fast_scrub_active = False
         _clear_preview_properties()
 
     def _scrub_churn_active(self, lookup: TrickplayLookup, *, seeking: bool) -> bool:
         if not seeking:
+            self._scrub_burst_until = 0.0
             return False
         now = time.monotonic()
+        fast = False
+        if now < self._scrub_burst_until:
+            fast = True
+        if self._last_scrub_at > 0.0 and now - self._last_scrub_at < SCRUB_GAP_SEC:
+            fast = True
         if self._last_scrub_at > 0.0 and now - self._last_scrub_at < SCRUB_COALESCE_SEC:
-            return True
+            fast = True
         if self._last_scrub_thumb_index >= 0:
             jump = abs(lookup.thumb_index - self._last_scrub_thumb_index)
             if jump >= SCRUB_JUMP_THUMBS:
-                return True
-        return False
+                fast = True
+        if fast:
+            self._scrub_burst_until = now + SCRUB_COALESCE_SEC
+        return fast
 
     def _placement_key(
         self,
@@ -467,7 +478,7 @@ class PreviewDialogController:
             lookup.thumb_height,
         )
 
-        if cached:
+        if cached and not fast_scrub:
             self._shown_thumb_index = lookup.thumb_index
             self._last_thumb_path = cached
             self._publish_preview_state(lookup, duration_seconds, cached, player)
@@ -580,7 +591,7 @@ class PreviewDialogController:
         ):
             xbmc.log(
                 "[service.trickplay] Could not crop preview thumb; "
-                "install ffmpeg via batch Run or set Generator ffmpeg path",
+                "use Install preview tools in add-on settings",
                 xbmc.LOGWARNING,
             )
             self._crop_failed = False
