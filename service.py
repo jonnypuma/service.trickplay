@@ -172,8 +172,8 @@ class TrickplayService:
         self._load_settled_for = ""
         self._load_thread: threading.Thread | None = None
         self._playback_block_reason = ""
-        self._ffmpeg_install_prompt_pending = False
-        self._ffmpeg_install_prompt_done = False
+        self._preview_tools_install_prompt_pending = False
+        self._preview_tools_install_prompt_done = False
         self._log_skin_profile(force=True)
 
     def _preview_hold_seconds(self) -> int:
@@ -427,16 +427,14 @@ class TrickplayService:
                 f"{len(self.resolution.tile_paths)} tile file(s))"
             )
 
-            from thumb_cropper import resolve_ffmpeg_tools
+            from pillow_installer import pillow_is_available
 
-            ffmpeg, _, _ = resolve_ffmpeg_tools()
-            if not ffmpeg:
+            if not pillow_is_available():
                 _log(
-                    "Preview cropping needs ffmpeg; use Install preview tools in add-on "
-                    "settings or set Generator ffmpeg path",
+                    "Preview cropping needs Pillow; use Install preview tools in add-on settings",
                     xbmc.LOGWARNING,
                 )
-                self._ffmpeg_install_prompt_pending = True
+                self._preview_tools_install_prompt_pending = True
 
             play_seconds = _player_time_seconds(self.player)
             runtime = read_runtime_settings()
@@ -729,7 +727,13 @@ class TrickplayService:
         if not self._seek_ui_visible():
             return False
         if self._osd_play_controls_focused():
-            return False
+            try:
+                from preview_settings import read_preview_adjustment_settings
+
+                if not read_preview_adjustment_settings().show_during_play_controls:
+                    return False
+            except ImportError:  # pragma: no cover
+                return False
         if scrubbing or self._seek_hold_active():
             return True
         if self._preview_follows_playhead() and not xbmc.getCondVisibility(
@@ -773,20 +777,22 @@ class TrickplayService:
 
         return False, play_seconds
 
-    def _maybe_prompt_ffmpeg_install(self) -> None:
-        if self._ffmpeg_install_prompt_done or not self._ffmpeg_install_prompt_pending:
+    def _maybe_prompt_preview_tools_install(self) -> None:
+        if (
+            self._preview_tools_install_prompt_done
+            or not self._preview_tools_install_prompt_pending
+        ):
             return
         if not self.player.isPlayingVideo() or not self._preview_allowed():
             return
 
-        self._ffmpeg_install_prompt_done = True
-        self._ffmpeg_install_prompt_pending = False
+        self._preview_tools_install_prompt_done = True
+        self._preview_tools_install_prompt_pending = False
 
         try:
-            from hdr_ffmpeg_installer import should_offer_ffmpeg_download
+            from pillow_installer import should_offer_pillow_download
 
-            settings = read_generator_settings()
-            if not should_offer_ffmpeg_download(settings.ffmpeg_path):
+            if not should_offer_pillow_download():
                 return
         except ImportError:
             return
@@ -799,10 +805,10 @@ class TrickplayService:
             yeslabel=ADDON.getLocalizedString(32105),
             nolabel=ADDON.getLocalizedString(32100),
         ):
-            _log("First-playback ffmpeg install accepted; launching install_tools")
+            _log("First-playback Pillow install accepted; launching install_tools")
             xbmc.executebuiltin("RunScript(service.trickplay,install_tools,playback)")
         else:
-            _log("First-playback ffmpeg install declined")
+            _log("First-playback Pillow install declined")
 
     def _adaptive_poll_ms(self) -> int:
         if not self.player.isPlayingVideo():
@@ -842,7 +848,7 @@ class TrickplayService:
             self._next_poll_ms = self.poll_ms
             return
 
-        self._maybe_prompt_ffmpeg_install()
+        self._maybe_prompt_preview_tools_install()
 
         play_seconds = _player_time_seconds(self.player)
         if not xbmc.getCondVisibility("Player.Paused"):
@@ -933,8 +939,10 @@ class TrickplayService:
 
     def run(self) -> None:
         try:
+            from pillow_installer import invalidate_pillow_cache
             from thumb_cropper import invalidate_playback_ffmpeg_cache
 
+            invalidate_pillow_cache()
             invalidate_playback_ffmpeg_cache()
         except ImportError:
             pass

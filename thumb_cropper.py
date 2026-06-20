@@ -15,6 +15,7 @@ import xbmcaddon
 import xbmcvfs
 
 from ffmpeg_tools import subprocess_hide_window_kwargs
+from pillow_installer import ensure_pillow_loaded
 
 ADDON = xbmcaddon.Addon()
 CACHE_VERSION = "v4"
@@ -402,7 +403,7 @@ def get_cached_thumb_path(
 
 
 def temp_tile_copy(tile_path: str) -> str | None:
-    """Copy a sprite JPG to local temp storage for reliable probing and ffmpeg."""
+    """Copy a sprite JPG to local temp storage for reliable probing and cropping."""
     if not tile_path:
         return None
 
@@ -663,7 +664,7 @@ def probe_image_dimensions(tile_path: str, debug: bool = False) -> tuple[int, in
     return 0, 0
 
 
-def _crop_with_ffmpeg(
+def _crop_with_pillow(
     tile_path: str,
     col: int,
     row: int,
@@ -672,17 +673,20 @@ def _crop_with_ffmpeg(
     output_path: str,
     debug: bool = False,
 ) -> bool:
-    ffmpeg, _, env = _resolve_ffmpeg_tools()
-    if not ffmpeg:
+    if not ensure_pillow_loaded():
         return False
+
+    from PIL import Image
 
     source = temp_tile_copy(tile_path)
     if not source:
-        _log(f"Could not copy sprite tile locally for ffmpeg: {tile_path}", xbmc.LOGWARNING)
+        _log(f"Could not copy sprite tile locally for Pillow: {tile_path}", xbmc.LOGWARNING)
         return False
 
     output_local = _local_path(output_path)
-    _ensure_dir(os.path.dirname(output_local))
+    if not output_local:
+        return False
+    os.makedirs(os.path.dirname(output_local), exist_ok=True)
 
     left, top, crop_w, crop_h = cell_crop_rect(col, row, thumb_w, thumb_h)
     if debug:
@@ -691,35 +695,12 @@ def _crop_with_ffmpeg(
             f"cell ({col},{row})"
         )
 
-    cmd = [
-        ffmpeg,
-        "-y",
-        "-loglevel",
-        "error",
-        "-i",
-        source,
-        "-vf",
-        f"crop={crop_w}:{crop_h}:{left}:{top}",
-        "-frames:v",
-        "1",
-        output_local,
-    ]
     try:
-        completed = subprocess.run(
-            cmd,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            env=env, **subprocess_hide_window_kwargs(),
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        _log(f"ffmpeg crop subprocess failed: {exc}", xbmc.LOGWARNING)
-        return False
-
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout or "").strip()
-        _log(f"ffmpeg crop failed ({completed.returncode}): {detail}", xbmc.LOGWARNING)
+        with Image.open(source) as img:
+            cropped = img.crop((left, top, left + crop_w, top + crop_h))
+            cropped.save(output_local, "JPEG", quality=90)
+    except (OSError, ValueError) as exc:
+        _log(f"Pillow crop failed for {tile_path} cell ({col},{row}): {exc}", xbmc.LOGWARNING)
         return False
 
     return _has_file_content(output_path)
@@ -740,7 +721,7 @@ def _crop_thumb_to_cache(
             f"Crop {crop_w}x{crop_h}:{left}:{top} from {os.path.basename(tile_path)} "
             f"cell ({col},{row})"
         )
-    return _crop_with_ffmpeg(tile_path, col, row, thumb_w, thumb_h, cached, debug=debug)
+    return _crop_with_pillow(tile_path, col, row, thumb_w, thumb_h, cached, debug=debug)
 
 
 def get_cropped_thumb_path(
@@ -791,16 +772,14 @@ def get_cropped_thumb_path(
                 pass
             result = cached
         else:
-            ffmpeg, _, _ = _resolve_ffmpeg_tools()
-            if ffmpeg:
+            if ensure_pillow_loaded():
                 _log(
-                    f"ffmpeg present but crop failed for {tile_path} cell ({col},{row})",
+                    f"Pillow present but crop failed for {tile_path} cell ({col},{row})",
                     xbmc.LOGWARNING,
                 )
             else:
                 _log(
-                    "No ffmpeg binary found; use Install preview tools in add-on "
-                    "settings or set Generator ffmpeg path",
+                    "Pillow is not available; use Install preview tools in add-on settings",
                     xbmc.LOGWARNING,
                 )
     finally:

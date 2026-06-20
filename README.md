@@ -12,10 +12,15 @@ For each skin you use, you must merge trickplay preview controls from this repo 
 
 The reference snippets in this addon are:
 
-| Skin | Snippet file |
-|---|---|
-| Estuary Mod v2 | `resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml` |
-| Arctic Fuse 3 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.3.xml` |
+| Skin | Snippet file | Profile / notes |
+|---|---|---|
+| Estuary Mod v2 | `resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml` | Slot slides |
+| Arctic Fuse 3 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.3.xml` | Slot slides + full OSD center group |
+| Estuary (stock) | `resources/skin-snippet/DialogSeekBar-skin.estuary.xml` | Dynamic `$INFO` placement |
+| Aeon Nox SiLVO | `resources/skin-snippet/DialogSeekBar-skin.aeon.nox.silvo.xml` | Dynamic placement |
+| Arctic Zephyr | `resources/skin-snippet/DialogSeekBar-skin.arctic.zephyr.xml` | Dynamic placement |
+| Arctic Horizon | `resources/skin-snippet/DialogSeekBar-skin.arctic.horizon.xml` | Dynamic placement |
+| Any other skin | `resources/skin-snippet/DialogSeekBar-universal-dynamic.xml` | Pick closest skin profile in settings |
 
 Those filenames are deliberate: they are **not** dropped into Kodi as-is. Either: Copy the preview block from the matching file into your skin’s real **`DialogSeekBar.xml`** or copy the entire snippet xml into your skin's xml folder and rename it DialogSeekBar.xml (rembember to backup original one first). 
 
@@ -29,12 +34,16 @@ The service detects your active Kodi skin (`xbmc.gui` addon id) and selects seek
 |---|---|---|
 | Estuary Mod v2 | `skin.estuary.modv2`, `skin.estuary.mod`, … | 460, 990, 1430 (+ wide 30, 990, 1860) |
 | Arctic Fuse 3 | `skin.arctic.fuse.3`, … | 240, 772, 1440 |
+| Estuary (stock) | `skin.estuary` | 480, 990, 960 |
+| Aeon Nox SiLVO | `skin.aeon.nox.silvo`, `skin.aeon.nox`, … | 0, 1039, 1920 |
+| Arctic Zephyr | `skin.arctic.zephyr`, … | 60, 1060, 1800 |
+| Arctic Horizon | `skin.arctic.horizon`, … | 40, 920, 1840 |
 
 For **Arctic Fuse 3**, the snippet includes two preview groups: **94100** (seek-bar aligned, slot slides) and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-merge group **94090** from `DialogSeekBar-skin.arctic.fuse.3.xml` if you installed an older snippet.
 
 Unknown skins fall back to Estuary Mod v2 geometry and log a warning. Override manually under **Add-on settings → Skin profile** if auto-detect is wrong.
 
-You still must merge the matching XML snippet so slide animations align with the profile geometry.
+You still must merge the matching XML snippet. For **dynamic** snippets, set the correct **Skin profile** in add-on settings; the service publishes `Trickplay.PreviewLeft/Top/Width/Height`. For **slot-slide** snippets (Estuary Mod v2, AF3), profile geometry must match the slide table in the XML.
 
 ### What to read in your skin
 
@@ -101,7 +110,8 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 
 - Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin), **or** use the built-in generator (see below)
 - **Skin edit** to `DialogSeekBar.xml` (see above)
-- **ffmpeg** and **ffprobe** — auto-installed via **Install preview tools** in add-on settings (or batch **Run**), or manual install under `/storage/.kodi/system/ffmpeg/` (CoreELEC) / `addon_data/.../system/ffmpeg/` (Windows); used for generation and playback preview cropping
+- **Pillow** — auto-installed via **Install preview tools** in add-on settings (into `addon_data/.../system/python/site-packages/`), or bundled with some Kodi builds; used for playback preview cropping from sprite JPEGs
+- **ffmpeg** and **ffprobe** — required only for trickplay **generation** (and HDR tone mapping); auto-installed via **Install preview tools** when the generator or HDR tone mapping is enabled, batch **Run**, or manual install under `/storage/.kodi/system/ffmpeg/` (CoreELEC) / `addon_data/.../system/ffmpeg/` (Windows)
 
 ## Settings
 
@@ -110,11 +120,17 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 - **Thumbnail interval (ms)** — used to select a matching sidecar folder and as fallback when the folder name has no interval (default `10000`)
 - **Interval selection** — when several sidecar folders share the same tile width (e.g. `320 - 10x10 - 5000` and `320 - 10x10 - 10000`), **Preferred interval** uses the thumbnail interval setting; **Shortest interval** picks the finest-grained previews available
 - **Seek poll interval (ms)** — refresh rate while scrubbing (default `100`)
-- **Skin profile** — auto-detect active skin, or force Estuary Mod v2 / Arctic Fuse 3
-- **Preview hold time (seconds)** — how long the preview stays after seeking stops (0 = until OSD closes, thumbnail follows playback; default 4)
-- **Show timestamp** — show or hide the seek position label under the thumbnail
-- **Preview opacity (%)** — overall preview transparency (0–100, default 100 = fully opaque)
+- **Skin profile** — auto-detect active skin, or force a listed profile (Estuary Mod v2, Arctic Fuse 3, Estuary stock, Aeon Nox SiLVO, Arctic Zephyr, Arctic Horizon)
 - **Enable debug logging** — logs seek targets, preview slots, visibility toggles, and active skin profile
+
+### Preview adjustment (Settings → Preview adjustment)
+
+- **Preview scale (%)** — thumbnail size relative to default (100 = normal)
+- **Preview horizontal / vertical offset (px)** — nudge placement @ 1080p
+- **Preview hold time (seconds)** — how long the preview stays after seeking stops (0 = follow playhead until OSD closes; default 4)
+- **Show timestamp** — seek position label under the thumbnail
+- **Preview opacity (%)** — overall transparency (0–100)
+- **Show preview when play controls focused** — keep preview visible while the OSD play/pause row has focus (default on)
 
 ### Prefetch (Settings → Prefetch)
 
@@ -135,7 +151,7 @@ Off by default. When disabled, all generator options are hidden.
 - **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
 - **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
 - **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default), or **Experimental**
-- **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Always visible in settings (even when the generator is off). Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Same ffmpeg is used for **generation and playback preview cropping**. Use **Install preview tools** at the top of add-on settings to download a pinned build, or batch **Run** when generating. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
+- **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Always visible in settings (even when the generator is off). Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Used for **generation only** (preview cropping uses Pillow). Use **Install preview tools** when the generator or HDR tone mapping is enabled, or batch **Run** when generating. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
 - **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires **zscale** or **libplacebo** in the generator ffmpeg. With tone mapping on, **Run** can prompt to download a pinned build if none is installed.
 - **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in generator ffmpeg `bin/` or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the generator tools folder.
 - **Skip Dolby Vision Profile 5** — optional when tone mapping is on; skips web-style DV P5 files in batch (full dovi_tool convert is very slow on CoreELEC).
@@ -166,14 +182,15 @@ On **Linux / CoreELEC**, prefer **`-gpl-8.1`** static (not `-gpl-shared`). The s
 
 #### Automatic install (Install preview tools / batch Run)
 
-When no ffmpeg is found, **Install preview tools** (top of add-on settings) offers to download and install a pinned build. Batch **Run** uses the same flow before generation (base ffmpeg even when HDR tone mapping is off; HDR upgrade, Vulkan loader, and dovi_tool when those settings require them).
+**Install preview tools** (top of add-on settings) downloads **Pillow** for preview cropping when it is not already available. When the **generator** is enabled or **HDR tone mapping** is on, it also offers ffmpeg/ffprobe (and optional HDR extras). Batch **Run** prompts for generator ffmpeg before generation (base ffmpeg even when HDR tone mapping is off; HDR upgrade, Vulkan loader, and dovi_tool when those settings require them).
 
-On first playback with trickplay sidecars but no ffmpeg, the service may prompt once per Kodi session to install (decline with **Continue without** to skip until restart).
+On first playback with trickplay sidecars but no Pillow, the service may prompt once per Kodi session to install (decline with **Continue without** to skip until restart).
 
-| Platform | Auto-install source | Install location |
+| Component | Auto-install source | Install location |
 |---|---|---|
-| CoreELEC / LibreELEC / Linux Kodi | BtbN **gpl-8.1** | `/storage/.kodi/system/ffmpeg/` (ffmpeg, ffprobe, **dovi_tool** in `bin/`) |
-| Windows Kodi (x64) | Gyan **full build** zip (GitHub) | `special://profile/addon_data/service.trickplay/system/ffmpeg/` (`bin/` includes **dovi_tool.exe** when installed) |
+| **Pillow** (preview) | PyPI wheel (pinned) | `special://profile/addon_data/service.trickplay/system/python/site-packages/` |
+| **ffmpeg** (generation) — CoreELEC / LibreELEC / Linux Kodi | BtbN **gpl-8.1** | `/storage/.kodi/system/ffmpeg/` (ffmpeg, ffprobe, **dovi_tool** in `bin/`) |
+| **ffmpeg** (generation) — Windows Kodi (x64) | Gyan **full build** zip (GitHub) | `special://profile/addon_data/service.trickplay/system/ffmpeg/` (`bin/` includes **dovi_tool.exe** when installed) |
 
 You can decline and continue without a capable ffmpeg (HDR previews may look washed out), or install manually using the steps below.
 
@@ -248,7 +265,7 @@ Generator subprocesses inherit the Kodi process environment (`VK_*` vars are not
 2. In Kodi: **Settings → Add-ons → Install from zip file**.
 3. **Merge the skin snippet** into your active skin’s `DialogSeekBar.xml` (required).
 4. Enable the service if needed (**Settings → Add-ons → My add-ons → Services**).
-5. For generation or preview cropping: use **Install preview tools** in add-on settings, or run batch **Run** — see [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation).
+5. For preview cropping: use **Install preview tools** in add-on settings (Pillow). For generation: enable the generator and use **Install preview tools** or batch **Run** — see [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation).
 6. Tail `kodi.log` for `[service.trickplay]` messages when debugging.
 
 ## Supported paths

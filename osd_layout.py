@@ -54,11 +54,22 @@ def preview_dimensions(
     screen_h: int,
     aspect_ratio: float,
     show_timestamp: bool = True,
+    *,
+    scale_percent: int | None = None,
 ) -> tuple[int, int, int]:
+    if scale_percent is None:
+        try:
+            from preview_settings import read_preview_adjustment_settings
+
+            scale_percent = read_preview_adjustment_settings().scale_percent
+        except ImportError:  # pragma: no cover
+            scale_percent = 100
+
     aspect_ratio = max(min(aspect_ratio, 3.0), 0.5)
     scale = min(screen_w / 1920.0, screen_h / 1080.0, 1.0)
     scale = max(scale, 0.55)
-    preview_w = max(int(PREVIEW_WIDTH * scale), 160)
+    base_width = PREVIEW_WIDTH * max(scale_percent, 50) / 100.0
+    preview_w = max(int(base_width * scale), 160)
     preview_h = max(int(preview_w / aspect_ratio), 60)
     if show_timestamp:
         label_h = max(int(LABEL_HEIGHT * scale), 28)
@@ -125,11 +136,21 @@ def preview_placement(
     top = max(8, bar.top - total_h - PREVIEW_GAP)
 
     if layout == LAYOUT_CENTER:
+        try:
+            from preview_settings import read_preview_adjustment_settings
+
+            adjustment = read_preview_adjustment_settings()
+            offset_x = adjustment.offset_x
+            offset_y = adjustment.offset_y
+        except ImportError:  # pragma: no cover
+            offset_x = 0
+            offset_y = 0
+        center_top = max(8, top + offset_y)
         return PreviewPlacement(
             PREVIEW_SLOTS // 2,
-            _absolute_left(bar, 0.5, preview_w),
-            top,
-            _absolute_left(bar_wide, 0.5, preview_w),
+            _absolute_left(bar, 0.5, preview_w) + offset_x,
+            center_top,
+            _absolute_left(bar_wide, 0.5, preview_w) + offset_x,
             preview_w,
             preview_h,
             label_h,
@@ -138,11 +159,25 @@ def preview_placement(
     slot = preview_slot(seek_second, duration_second)
     ratio = _slot_ratio(slot)
 
+    try:
+        from preview_settings import read_preview_adjustment_settings
+
+        adjustment = read_preview_adjustment_settings()
+        offset_x = adjustment.offset_x
+        offset_y = adjustment.offset_y
+    except ImportError:  # pragma: no cover
+        offset_x = 0
+        offset_y = 0
+
+    left = _absolute_left(bar, ratio, preview_w) + offset_x
+    left_wide = _absolute_left(bar_wide, ratio, preview_w) + offset_x
+    top = max(8, top + offset_y)
+
     return PreviewPlacement(
         slot,
-        _absolute_left(bar, ratio, preview_w),
+        left,
         top,
-        _absolute_left(bar_wide, ratio, preview_w),
+        left_wide,
         preview_w,
         preview_h,
         label_h,

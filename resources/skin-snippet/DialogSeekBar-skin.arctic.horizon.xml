@@ -1,0 +1,55 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Arctic Horizon (skin.arctic.horizon). Skin profile: Arctic Horizon.
+  Source: github.com/jurialmunkey/skin.arctic.horizon Includes_OSD.xml (OSD_Progress_Bar)
+
+  Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
+-->
+<window>
+	<controls>
+		<control type="group" id="94090">
+			<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
+			<left>$INFO[Window.Property(Trickplay.PreviewLeft)]</left>
+			<top>$INFO[Window.Property(Trickplay.PreviewTop)]</top>
+			<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
+			<height>$INFO[Window.Property(Trickplay.PreviewTotalHeight)]</height>
+			<zorder>10</zorder>
+			<colordiffuse>$INFO[Window.Property(Trickplay.PreviewColorDiffuse)]</colordiffuse>
+			<animation effect="fade" start="0" end="100" time="100">Visible</animation>
+			<animation effect="fade" start="100" end="0" time="100">Hidden</animation>
+			<control type="image" id="94106">
+				<left>0</left>
+				<top>0</top>
+				<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
+				<height>$INFO[Window.Property(Trickplay.PreviewHeight)]</height>
+				<aspectratio scalediffuse="false">keep</aspectratio>
+				<bordertexture border="2" infill="false">colors/white.png</bordertexture>
+				<bordersize>2</bordersize>
+				<colordiffuse>B3FFFFFF</colordiffuse>
+			</control>
+			<control type="image" id="94101">
+				<left>0</left>
+				<top>0</top>
+				<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
+				<height>$INFO[Window.Property(Trickplay.PreviewHeight)]</height>
+				<aspectratio scalediffuse="false">keep</aspectratio>
+				<texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
+			</control>
+			<control type="label" id="94102">
+				<visible>String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)</visible>
+				<left>0</left>
+				<top>$INFO[Window.Property(Trickplay.PreviewHeight)]</top>
+				<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
+				<height>$INFO[Window.Property(Trickplay.PreviewLabelHeight)]</height>
+				<font>font13</font>
+				<align>center</align>
+				<aligny>center</aligny>
+				<label>$INFO[Window.Property(Trickplay.PreviewTime)]</label>
+				<textcolor>FFFFFFFF</textcolor>
+				<shadowcolor>FF000000</shadowcolor>
+				<shadowoffsetx>2</shadowoffsetx>
+				<shadowoffsety>2</shadowoffsety>
+			</control>
+		</control>
+	</controls>
+</window>

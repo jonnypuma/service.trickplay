@@ -2,7 +2,7 @@
 
 <addon id="service.trickplay"
        name="Trickplay Preview"
-       version="4.2.0"
+       version="5.0.0"
        provider-name="Skippy-McSkipface">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
@@ -15,7 +15,7 @@
         <platform>all</platform>
         <license>GPL-2.0-or-later</license>
         <summary lang="en">Shows Jellyfin trickplay seek thumbnails during video scrubbing.</summary>
-        <description lang="en">Reads or generates Jellyfin trickplay sprite tiles alongside your media, crops preview frames while you scrub, and shows them via DialogSeekBar skin properties. Optional ffmpeg generator writes .trickplay sidecars; use Install preview tools in add-on settings (or batch Run) to download ffmpeg. Copy resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml into your active skin and rename it DialogSeekBar.xml (take backup of old xml first!). Requires ffmpeg, ffprobe, dovi_tool for generation/HDR.</description>
+        <description lang="en">Reads or generates Jellyfin trickplay sprite tiles alongside your media, crops preview frames with Pillow while you scrub, and shows them via DialogSeekBar skin properties. Optional ffmpeg generator writes .trickplay sidecars; use Install preview tools for Pillow (preview) and ffmpeg (generation). Copy resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml into your active skin and rename it DialogSeekBar.xml (take backup of old xml first!). Generation/HDR requires ffmpeg, ffprobe, and optionally dovi_tool.</description>
         <assets>
             <icon>icon.png</icon>
             <fanart>fanart.jpg</fanart>

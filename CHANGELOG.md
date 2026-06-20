@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - 2026-05-22
+
+### Fixed
+
+- **Install preview tools** settings action used `RunScript($ID,install_tools)`; Kodi did not expand `$ID`, so the button did nothing (`ExecuteAsync - Not executing non-existing script $ID`). Now uses `RunScript(service.trickplay,install_tools)`.
+- **Install preview tools** crashed with `'GeneratorSettings' object has no attribute 'generator_enabled'` — use `settings.enabled` instead.
+
+### Changed
+
+- **Preview cropping uses Pillow** — playback/scrub preview tiles are cropped with Pillow (JPEG sprite cells). ffmpeg/ffprobe are no longer required for preview display.
+- **Install preview tools** — downloads Pillow into add-on site-packages for preview. ffmpeg/HDR/dovi_tool installs run only when the generator is enabled or HDR tone mapping is on (batch **Run** still prompts for generator ffmpeg as before).
+
+## [4.3.0] - 2026-05-22
+
+### Added
+
+- **Skin profiles** — auto-detect and manual override for **Estuary (stock)**, **Aeon Nox SiLVO**, **Arctic Zephyr**, and **Arctic Horizon** (geometry from upstream skin repos on GitHub).
+- **Universal skin snippet** — `DialogSeekBar-universal-dynamic.xml` positions the preview via `Trickplay.PreviewLeft/Top/Width/Height` (no per-slot slide table). Per-skin copies with merge notes for Estuary, Aeon Nox SiLVO, Arctic Zephyr, and Arctic Horizon.
+- **Preview adjustment** settings category — preview scale (%), horizontal/vertical offset (px), hold time, timestamp, opacity, and **Show preview when play controls focused** (keeps preview visible while the OSD play/pause row has focus).
+
+### Removed
+
+- Legacy unused `TrickplayPreview.xml` overlay window under `resources/skins/Default/` (preview is skin-snippet + window properties only).
+
 ## [4.2.0] - 2026-05-22
 
 ### Fixed

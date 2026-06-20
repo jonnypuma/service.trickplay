@@ -390,8 +390,8 @@ msgid "Generator ffmpeg path"
 msgstr "Generator ffmpeg path"
 
 msgctxt "#32098"
-msgid "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. Use Install preview tools in add-on settings to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows), or batch Run when generating."
-msgstr "Optional folder or ffmpeg binary for trickplay generation and playback cropping (needs zscale or libplacebo for HDR tone mapping). Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. Use Install preview tools in add-on settings to download a pinned build (BtbN gpl-8.1 on Linux, Gyan full on Windows), or batch Run when generating."
+msgid "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Preview cropping uses Pillow separately. Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. Use Install preview tools when the generator or HDR tone mapping is enabled, or batch Run when generating."
+msgstr "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Preview cropping uses Pillow separately. Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. Use Install preview tools when the generator or HDR tone mapping is enabled, or batch Run when generating."
 
 msgctxt "#32099"
 msgid "HDR tone mapping needs a capable ffmpeg build. Download and install now?\n\nLinux: BtbN gpl-8.1 (zscale). Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nOn devices without Vulkan (e.g. CoreELEC), Profile 5 Dolby Vision uses dovi_tool instead of libplacebo.\n\nInstall location: %s"
@@ -494,12 +494,12 @@ msgid "Install preview tools"
 msgstr "Install preview tools"
 
 msgctxt "#32124"
-msgid "Download ffmpeg/ffprobe (and optional HDR extras: zscale/libplacebo, Vulkan loader on Windows, dovi_tool) into the add-on tools folder. Same binaries are used for playback preview cropping and trickplay generation. You can also run batch Run for generation-only installs when HDR tone mapping is enabled."
-msgstr "Download ffmpeg/ffprobe (and optional HDR extras: zscale/libplacebo, Vulkan loader on Windows, dovi_tool) into the add-on tools folder. Same binaries are used for playback preview cropping and trickplay generation. You can also run batch Run for generation-only installs when HDR tone mapping is enabled."
+msgid "Download Pillow for preview cropping (into add-on site-packages). When the generator is enabled or HDR tone mapping is on, also offers ffmpeg/ffprobe and optional HDR extras (zscale/libplacebo, Vulkan loader on Windows, dovi_tool). Batch Run installs generator ffmpeg separately when generating sidecars."
+msgstr "Download Pillow for preview cropping (into add-on site-packages). When the generator is enabled or HDR tone mapping is on, also offers ffmpeg/ffprobe and optional HDR extras (zscale/libplacebo, Vulkan loader on Windows, dovi_tool). Batch Run installs generator ffmpeg separately when generating sidecars."
 
 msgctxt "#32125"
-msgid "Preview cropping and trickplay generation need ffmpeg and ffprobe. Download and install a pinned build now?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nInstall location: %s"
-msgstr "Preview cropping and trickplay generation need ffmpeg and ffprobe. Download and install a pinned build now?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nInstall location: %s"
+msgid "Trickplay generation needs ffmpeg and ffprobe. Download and install a pinned build now?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nInstall location: %s"
+msgstr "Trickplay generation needs ffmpeg and ffprobe. Download and install a pinned build now?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nInstall location: %s"
 
 msgctxt "#32126"
 msgid "Installing ffmpeg…"
@@ -518,8 +518,8 @@ msgid "Preview tools are already installed."
 msgstr "Preview tools are already installed."
 
 msgctxt "#32130"
-msgid "This file has trickplay sidecars but preview thumbnails need ffmpeg to crop tiles from sprite sheets.\n\nDownload and install ffmpeg now? You can also use Install preview tools in add-on settings anytime."
-msgstr "This file has trickplay sidecars but preview thumbnails need ffmpeg to crop tiles from sprite sheets.\n\nDownload and install ffmpeg now? You can also use Install preview tools in add-on settings anytime."
+msgid "This file has trickplay sidecars but preview thumbnails need Pillow to crop tiles from sprite sheets.\n\nDownload and install Pillow now? You can also use Install preview tools in add-on settings anytime."
+msgstr "This file has trickplay sidecars but preview thumbnails need Pillow to crop tiles from sprite sheets.\n\nDownload and install Pillow now? You can also use Install preview tools in add-on settings anytime."
 
 msgctxt "#32131"
 msgid "Install preview tools"
@@ -540,3 +540,75 @@ msgstr "Checking %d of %d videos…"
 msgctxt "#32135"
 msgid "Scanning for video files… (%d found)"
 msgstr "Scanning for video files… (%d found)"
+
+msgctxt "#32136"
+msgid "Preview adjustment"
+msgstr "Preview adjustment"
+
+msgctxt "#32137"
+msgid "Preview scale (%)"
+msgstr "Preview scale (%)"
+
+msgctxt "#32138"
+msgid "Scale the scrub preview thumbnail relative to the default size (100 = normal). Useful on 4K displays or with custom skin layouts."
+msgstr "Scale the scrub preview thumbnail relative to the default size (100 = normal). Useful on 4K displays or with custom skin layouts."
+
+msgctxt "#32139"
+msgid "Preview horizontal offset (px)"
+msgstr "Preview horizontal offset (px)"
+
+msgctxt "#32140"
+msgid "Estuary (stock)"
+msgstr "Estuary (stock)"
+
+msgctxt "#32141"
+msgid "Aeon Nox SiLVO"
+msgstr "Aeon Nox SiLVO"
+
+msgctxt "#32142"
+msgid "Arctic Zephyr"
+msgstr "Arctic Zephyr"
+
+msgctxt "#32143"
+msgid "Arctic Horizon"
+msgstr "Arctic Horizon"
+
+msgctxt "#32144"
+msgid "Shift the preview left (negative) or right (positive) in pixels @ 1080p."
+msgstr "Shift the preview left (negative) or right (positive) in pixels @ 1080p."
+
+msgctxt "#32145"
+msgid "Preview vertical offset (px)"
+msgstr "Preview vertical offset (px)"
+
+msgctxt "#32146"
+msgid "Shift the preview up (negative) or down (positive) in pixels @ 1080p."
+msgstr "Shift the preview up (negative) or down (positive) in pixels @ 1080p."
+
+msgctxt "#32147"
+msgid "Show preview when play controls focused"
+msgstr "Show preview when play controls focused"
+
+msgctxt "#32148"
+msgid "Keep the trickplay preview visible while the video OSD play/pause button row has focus (not only when the seek bar is focused)."
+msgstr "Keep the trickplay preview visible while the video OSD play/pause button row has focus (not only when the seek bar is focused)."
+
+msgctxt "#32149"
+msgid "Preview cropping needs Pillow (Python imaging library). Download and install a pinned wheel now?\n\nInstall location: %s"
+msgstr "Preview cropping needs Pillow (Python imaging library). Download and install a pinned wheel now?\n\nInstall location: %s"
+
+msgctxt "#32150"
+msgid "Installing Pillow…"
+msgstr "Installing Pillow…"
+
+msgctxt "#32151"
+msgid "Automatic Pillow install is not available on this Kodi platform/Python version.\n\nInstall Pillow manually into the add-on site-packages folder or use a Kodi build that includes Pillow."
+msgstr "Automatic Pillow install is not available on this Kodi platform/Python version.\n\nInstall Pillow manually into the add-on site-packages folder or use a Kodi build that includes Pillow."
+
+msgctxt "#32152"
+msgid "Pillow install failed:\n%s\n\nYou can install manually into the add-on site-packages folder shown in the prompt."
+msgstr "Pillow install failed:\n%s\n\nYou can install manually into the add-on site-packages folder shown in the prompt."
+
+msgctxt "#32153"
+msgid "Pillow installed (%s)."
+msgstr "Pillow installed (%s)."

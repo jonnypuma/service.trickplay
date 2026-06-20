@@ -105,27 +105,78 @@ ARCTIC_FUSE_3 = SkinProfile(
     ),
 )
 
+# Stock Kodi Estuary — centered 50% seek bar @ bottom (xbmc/xbmc skin.estuary).
+ESTUARY = SkinProfile(
+    key="estuary",
+    label="Estuary (stock)",
+    seekbar=(480, 990, 960),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(11, 18)),
+)
+
+# Doctor-Eggs/Aeon-Nox-SiLVO — full-width bottom bar (16x9/DialogSeekBar.xml).
+AEON_NOX_SILVO = SkinProfile(
+    key="aeon_nox_silvo",
+    label="Aeon Nox SiLVO",
+    seekbar=(0, 1039, 1920),
+    seekbar_focus_id=401,
+    osd_button_group_id=202,
+)
+
+# jurialmunkey/skin.arctic.zephyr — SidePad ~60, bar near bottom (110r panel).
+ARCTIC_ZEPHYR = SkinProfile(
+    key="arctic_zephyr",
+    label="Arctic Zephyr",
+    seekbar=(60, 1060, 1800),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(11, 20)),
+)
+
+# jurialmunkey/skin.arctic.horizon — view_pad ~40, progress bar bottom 148.
+ARCTIC_HORIZON = SkinProfile(
+    key="arctic_horizon",
+    label="Arctic Horizon",
+    seekbar=(40, 920, 1840),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(11, 20)),
+)
+
 DEFAULT_PROFILE = ESTUARY_MODV2
 
 PROFILES_BY_KEY: dict[str, SkinProfile] = {
     ESTUARY_MODV2.key: ESTUARY_MODV2,
     ARCTIC_FUSE_3.key: ARCTIC_FUSE_3,
+    ESTUARY.key: ESTUARY,
+    AEON_NOX_SILVO.key: AEON_NOX_SILVO,
+    ARCTIC_ZEPHYR.key: ARCTIC_ZEPHYR,
+    ARCTIC_HORIZON.key: ARCTIC_HORIZON,
 }
 
 PROFILES_BY_SKIN_ID: dict[str, SkinProfile] = {
     "skin.estuary.modv2": ESTUARY_MODV2,
     "skin.estuary.mod": ESTUARY_MODV2,
-    "skin.estuary": ESTUARY_MODV2,
+    "skin.estuary": ESTUARY,
     "skin.arctic.fuse.3": ARCTIC_FUSE_3,
     "skin.arctic.fuse": ARCTIC_FUSE_3,
+    "skin.aeon.nox.silvo": AEON_NOX_SILVO,
+    "skin.aeon.nox": AEON_NOX_SILVO,
+    "skin.arctic.zephyr": ARCTIC_ZEPHYR,
+    "skin.arctic.zephyr.2": ARCTIC_ZEPHYR,
+    "skin.arctic.horizon": ARCTIC_HORIZON,
+    "skin.arctic.horizon.2": ARCTIC_HORIZON,
 }
 
 # Substrings matched against normalized skin ids (longest wins via ordered list).
 SKIN_ID_MARKERS: tuple[tuple[str, SkinProfile], ...] = (
     ("arctic.fuse.3", ARCTIC_FUSE_3),
     ("arctic.fuse", ARCTIC_FUSE_3),
+    ("arctic.zephyr", ARCTIC_ZEPHYR),
+    ("arctic.horizon", ARCTIC_HORIZON),
+    ("aeon.nox.silvo", AEON_NOX_SILVO),
+    ("aeon.nox", AEON_NOX_SILVO),
     ("estuary.modv2", ESTUARY_MODV2),
     ("estuary.mod", ESTUARY_MODV2),
+    ("estuary", ESTUARY),
 )
 
 _cached_profile: SkinProfile | None = None

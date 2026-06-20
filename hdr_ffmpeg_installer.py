@@ -433,13 +433,13 @@ def should_offer_hdr_ffmpeg_download(
     return True
 
 
-def install_tools_needed(
+def generator_install_tools_needed(
     *,
     hdr_tone_map_enabled: bool,
     hdr_dovi_tool_fallback_enabled: bool,
     custom_ffmpeg_path: str = "",
 ) -> bool:
-    """True when any auto-install step may still be required."""
+    """True when generator ffmpeg/HDR/dovi auto-install may still be required."""
     if should_offer_ffmpeg_download(custom_ffmpeg_path):
         return True
     if should_offer_hdr_ffmpeg_download(hdr_tone_map_enabled, custom_ffmpeg_path):
@@ -452,6 +452,27 @@ def install_tools_needed(
         custom_ffmpeg_path=custom_ffmpeg_path,
     ):
         return True
+    return False
+
+
+def install_tools_needed(
+    *,
+    hdr_tone_map_enabled: bool,
+    hdr_dovi_tool_fallback_enabled: bool,
+    custom_ffmpeg_path: str = "",
+    include_generator_tools: bool = True,
+) -> bool:
+    """True when preview (Pillow) or generator tool auto-install may still be required."""
+    from pillow_installer import should_offer_pillow_download
+
+    if should_offer_pillow_download():
+        return True
+    if include_generator_tools:
+        return generator_install_tools_needed(
+            hdr_tone_map_enabled=hdr_tone_map_enabled,
+            hdr_dovi_tool_fallback_enabled=hdr_dovi_tool_fallback_enabled,
+            custom_ffmpeg_path=custom_ffmpeg_path,
+        )
     return False
 
 
@@ -903,7 +924,7 @@ def prompt_and_install_base_ffmpeg(
     failed_message: str,
     success_message: str,
 ) -> bool:
-    """Offer ffmpeg download when none is resolved (preview cropping or generation)."""
+    """Offer ffmpeg download when none is resolved for trickplay generation."""
     if not should_offer_ffmpeg_download(custom_ffmpeg_path):
         return True
     return _prompt_and_install_ffmpeg_build(
