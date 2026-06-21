@@ -612,3 +612,67 @@ msgstr "Pillow install failed:\n%s\n\nYou can install manually into the add-on s
 msgctxt "#32153"
 msgid "Pillow installed (%s)."
 msgstr "Pillow installed (%s)."
+
+msgctxt "#32154"
+msgid "Install skin snippet (current skin)"
+msgstr "Install skin snippet (current skin)"
+
+msgctxt "#32155"
+msgid "Back up and install the trickplay preview block into the active skin's DialogSeekBar.xml (merge overlay or replace full file for supported skins). Reloads the skin when done."
+msgstr "Back up and install the trickplay preview block into the active skin's DialogSeekBar.xml (merge overlay or replace full file for supported skins). Reloads the skin when done."
+
+msgctxt "#32156"
+msgid "Install skin snippet (all skins)"
+msgstr "Install skin snippet (all skins)"
+
+msgctxt "#32157"
+msgid "Back up and install the trickplay preview block into DialogSeekBar.xml for every installed skin that contains it. Skins without DialogSeekBar.xml are reported as failed."
+msgstr "Back up and install the trickplay preview block into DialogSeekBar.xml for every installed skin that contains it. Skins without DialogSeekBar.xml are reported as failed."
+
+msgctxt "#32158"
+msgid "Install DialogSeekBar snippet"
+msgstr "Install DialogSeekBar snippet"
+
+msgctxt "#32159"
+msgid "Skins identified:\n%s\n\nInstall trickplay preview controls now?"
+msgstr "Skins identified:\n%s\n\nInstall trickplay preview controls now?"
+
+msgctxt "#32161"
+msgid "DialogSeekBar.xml not found"
+msgstr "DialogSeekBar.xml not found"
+
+msgctxt "#32162"
+msgid "Installed: %d path(s) ok, %d failed (%d skin(s) processed)."
+msgstr "Installed: %d path(s) ok, %d failed (%d skin(s) processed)."
+
+msgctxt "#32163"
+msgid "No skin could be identified. Set a skin under Settings → Interface → Skin or install a skin add-on first."
+msgstr "No skin could be identified. Set a skin under Settings → Interface → Skin or install a skin add-on first."
+
+msgctxt "#32164"
+msgid "Install"
+msgstr "Install"
+
+msgctxt "#32165"
+msgid "DialogSeekBar.xml is not writable (check skin folder permissions)"
+msgstr "DialogSeekBar.xml is not writable (check skin folder permissions)"
+
+msgctxt "#32166"
+msgid "Could not resolve skin add-on folder"
+msgstr "Could not resolve skin add-on folder"
+
+msgctxt "#32167"
+msgid "Snippet file missing from add-on package"
+msgstr "Snippet file missing from add-on package"
+
+msgctxt "#32168"
+msgid "Backup failed: %s"
+msgstr "Backup failed: %s"
+
+msgctxt "#32170"
+msgid "OK (existing .bak kept)"
+msgstr "OK (existing .bak kept)"
+
+msgctxt "#32171"
+msgid "OK"
+msgstr "OK"

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-05-22
+
+### Added
+
+- **Install skin snippet** settings actions — **Install skin snippet (current skin)** and **Install skin snippet (all skins)** under Preview tools. Lists installed skins and resolved `DialogSeekBar.xml` paths, backs up each file to `DialogSeekBar.xml.bak`, then merges overlay group 94090 or replaces the full file for Estuary Mod v2 / Arctic Fuse 3. Reloads the active skin after install.
+
 ## [5.0.1] - 2026-05-22
 
 ### Fixed

@@ -24,6 +24,14 @@ from hdr_ffmpeg_installer import (
     prompt_and_install_generator_tools,
 )
 from pillow_installer import prompt_and_install_pillow, should_offer_pillow_download
+from skin_snippet_installer import (
+    InstallScope,
+    build_install_plan,
+    execute_install_plan,
+    format_plan_summary,
+    plan_has_installable_targets,
+    summarize_outcomes,
+)
 from library_path_browse import browse_library_folder
 from trickplay_generator import (
     GenerationBatchPlan,
@@ -500,6 +508,93 @@ def run_install_tools_dialog(*, from_playback_prompt: bool = False) -> None:
         pass
 
 
+def _install_skin_error_message(code: str) -> str:
+    mapping = {
+        "dialog_seekbar_not_found": 32161,
+        "not_writable": 32165,
+        "skin_addon_path_unavailable": 32166,
+        "snippet_file_missing": 32167,
+    }
+    string_id = mapping.get(code, 32161)
+    return _ADDON.getLocalizedString(string_id)
+
+
+def run_install_skin_dialog(scope: InstallScope) -> None:
+    _log(f"run_install_skin_dialog started (scope={scope.value})")
+    plans = build_install_plan(scope, _ADDON_PATH)
+    if not plans:
+        xbmcgui.Dialog().ok(
+            _ADDON.getLocalizedString(32158),
+            _ADDON.getLocalizedString(32163),
+        )
+        return
+
+    summary = format_plan_summary(plans)
+    for plan in plans:
+        if plan.error:
+            err_text = _install_skin_error_message(plan.error)
+            summary = summary.replace(f"[{plan.error}]", f"[{err_text}]")
+
+    if not plan_has_installable_targets(plans):
+        xbmcgui.Dialog().ok(
+            _ADDON.getLocalizedString(32158),
+            _ADDON.getLocalizedString(32159) % summary,
+        )
+        return
+
+    prompt = _ADDON.getLocalizedString(32159) % summary
+    if not xbmcgui.Dialog().yesno(
+        _ADDON.getLocalizedString(32158),
+        prompt,
+        yeslabel=_ADDON.getLocalizedString(32164),
+        nolabel=_ADDON.getLocalizedString(32100),
+    ):
+        _log("Skin snippet install cancelled")
+        return
+
+    outcomes = execute_install_plan(plans, _ADDON_PATH)
+    ok_count, fail_count, skin_count = summarize_outcomes(outcomes)
+    result_lines: list[str] = []
+    for item in outcomes:
+        if item.success:
+            detail = item.message
+            if detail == "ok_backup_kept":
+                detail = _ADDON.getLocalizedString(32170)
+            elif detail == "ok":
+                detail = _ADDON.getLocalizedString(32171)
+            rel = os.path.basename(os.path.dirname(item.seekbar_path))
+            result_lines.append(
+                f"• {item.skin_name}: .../{rel}/{os.path.basename(item.seekbar_path)} — {detail}"
+            )
+        else:
+            msg = _install_skin_error_message(item.message.split(":")[0])
+            if item.message.startswith("backup_failed:"):
+                msg = _ADDON.getLocalizedString(32168) % item.message.split(":", 1)[1]
+            elif not item.seekbar_path:
+                msg = _install_skin_error_message(item.message)
+            result_lines.append(f"• {item.skin_name}: {msg}")
+
+    summary_body = _ADDON.getLocalizedString(32162) % (ok_count, fail_count, skin_count)
+    if result_lines:
+        summary_body = summary_body + "\n\n" + "\n".join(result_lines)
+
+    xbmcgui.Dialog().ok(_ADDON.getLocalizedString(32158), summary_body)
+
+
+def _resolve_install_skin_scope(argv: list[str]) -> InstallScope | None:
+    args = [(arg or "").strip().lower() for arg in argv[1:] if (arg or "").strip()]
+    if "install_skin" in args or "install_skin_snippet" in args:
+        if "all" in args:
+            return InstallScope.ALL
+        return InstallScope.CURRENT
+    for arg in args:
+        if arg in ("install_skin_all", "install_skin_snippet_all"):
+            return InstallScope.ALL
+        if arg in ("install_skin_current", "install_skin_snippet_current"):
+            return InstallScope.CURRENT
+    return None
+
+
 def _resolve_mode(argv: list[str]) -> str:
     """Return script mode from RunScript argv (addon id + optional args)."""
     for arg in argv[1:]:
@@ -508,6 +603,15 @@ def _resolve_mode(argv: list[str]) -> str:
             return "batch"
         if normalized in ("install_tools", "install"):
             return "install_tools"
+        if normalized in ("install_skin", "install_skin_snippet"):
+            return "install_skin"
+        if normalized in (
+            "install_skin_current",
+            "install_skin_all",
+            "install_skin_snippet_current",
+            "install_skin_snippet_all",
+        ):
+            return "install_skin"
         if normalized.endswith(".py"):
             continue
         if normalized:
@@ -532,5 +636,8 @@ if __name__ == "__main__":
         run_batch_dialog()
     elif mode == "install_tools":
         run_install_tools_dialog(from_playback_prompt=_from_playback_prompt(sys.argv))
+    elif mode == "install_skin":
+        scope = _resolve_install_skin_scope(sys.argv) or InstallScope.CURRENT
+        run_install_skin_dialog(scope)
     else:
         _log(f"Unsupported mode {mode!r}; no action taken", xbmc.LOGERROR)

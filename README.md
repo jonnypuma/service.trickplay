@@ -22,9 +22,12 @@ The reference snippets in this addon are:
 | Arctic Horizon | `resources/skin-snippet/DialogSeekBar-skin.arctic.horizon.xml` | Dynamic placement |
 | Any other skin | `resources/skin-snippet/DialogSeekBar-universal-dynamic.xml` | Pick closest skin profile in settings |
 
-Those filenames are deliberate: they are **not** dropped into Kodi as-is. Either: Copy the preview block from the matching file into your skin’s real **`DialogSeekBar.xml`** or copy the entire snippet xml into your skin's xml folder and rename it DialogSeekBar.xml (rembember to backup original one first). 
+Those filenames are deliberate: they are **not** dropped into Kodi as-is. Either:
 
-Other skins need the same approach, but coordinates, control IDs, and visibility conditions will differ.
+- Use **Add-on settings → Preview tools → Install skin snippet (current skin)** or **(all skins)** to back up each skin’s `DialogSeekBar.xml` to `DialogSeekBar.xml.bak` and install the matching snippet (merge overlay group **94090** or full replace for Estuary Mod v2 / Arctic Fuse 3), **or**
+- Manually copy the preview block from the matching file into your skin’s real **`DialogSeekBar.xml`** (backup the original first).
+
+Skins without a discoverable `DialogSeekBar.xml` under their add-on folder are skipped and reported as failed.
 
 ### Skin profiles (auto-detect)
 
@@ -263,7 +266,7 @@ Generator subprocesses inherit the Kodi process environment (`VK_*` vars are not
 
 1. Zip the `service.trickplay` folder so `addon.xml` is at the root of the archive.
 2. In Kodi: **Settings → Add-ons → Install from zip file**.
-3. **Merge the skin snippet** into your active skin’s `DialogSeekBar.xml` (required).
+3. **Install the skin snippet** via **Install skin snippet (current skin)** in add-on settings, or merge manually into `DialogSeekBar.xml` (required).
 4. Enable the service if needed (**Settings → Add-ons → My add-ons → Services**).
 5. For preview cropping: use **Install preview tools** in add-on settings (Pillow). For generation: enable the generator and use **Install preview tools** or batch **Run** — see [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation).
 6. Tail `kodi.log` for `[service.trickplay]` messages when debugging.
