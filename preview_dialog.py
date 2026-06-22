@@ -17,7 +17,7 @@ from settings_cache import get_cached
 from thumb_cropper import get_cached_thumb_path, get_cropped_thumb_path
 from trickplay_resolver import TrickplayLookup
 
-ADDON = xbmcaddon.Addon()
+ADDON = xbmcaddon.Addon("service.trickplay")
 HOME_WINDOW = xbmcgui.Window(10000)
 SEEKBAR_WINDOW_ID = 10115
 

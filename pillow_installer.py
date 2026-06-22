@@ -13,10 +13,7 @@ import zipfile
 from collections.abc import Callable
 
 import xbmc
-import xbmcaddon
 import xbmcvfs
-
-ADDON = xbmcaddon.Addon()
 
 # Pinned release with broad wheel coverage (PyPI).
 PILLOW_VERSION = "10.4.0"

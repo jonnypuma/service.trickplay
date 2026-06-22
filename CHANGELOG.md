@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.1] - 2026-06-21
+
+### Fixed
+
+- **Windows / Kodi install startup** — `pillow_installer` no longer calls `xbmcaddon.Addon()` at import time (unused, and failed with “Unknown addon id” while the add-on was still registering). Service, script, and preview entry points now pass `"service.trickplay"` explicitly.
+- **Python 3.8 compatibility** — `ThumbCacheKey` used a runtime `tuple[...]` alias that fails on Kodi’s embedded Python before 3.9; switched to `typing.Tuple`.
+
 ## [5.1.0] - 2026-05-22
 
 ### Added

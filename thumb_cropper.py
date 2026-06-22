@@ -9,15 +9,14 @@ import shutil
 import subprocess
 import threading
 import time
+from typing import Tuple
 
 import xbmc
-import xbmcaddon
 import xbmcvfs
 
 from ffmpeg_tools import subprocess_hide_window_kwargs
 from pillow_installer import ensure_pillow_loaded
 
-ADDON = xbmcaddon.Addon()
 CACHE_VERSION = "v4"
 CACHE_DIR = xbmcvfs.translatePath(
     "special://profile/addon_data/service.trickplay/thumbs/"
@@ -37,7 +36,7 @@ _last_prune_at = 0.0
 _estimated_cache_bytes = 0
 _estimate_valid = False
 
-ThumbCacheKey = tuple[str, int, int, int, int, float, int]
+ThumbCacheKey = Tuple[str, int, int, int, int, float, int]
 
 # In-memory cache index + in-flight crop deduplication.
 _INFLIGHT_WAIT_SEC = 30.0

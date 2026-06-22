@@ -11,7 +11,7 @@ import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
-_ADDON = xbmcaddon.Addon()
+_ADDON = xbmcaddon.Addon("service.trickplay")
 _ADDON_PATH = _ADDON.getAddonInfo("path")
 if _ADDON_PATH and _ADDON_PATH not in sys.path:
     sys.path.insert(0, _ADDON_PATH)
