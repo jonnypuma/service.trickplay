@@ -315,6 +315,43 @@ def setting_skin_profile_override() -> str:
     return _setting_override()
 
 
+@dataclass(frozen=True)
+class SkinSnippetSpec:
+    """Trickplay DialogSeekBar snippet file and install mode for a skin."""
+
+    filename: str
+    mode: str  # "merge" or "replace"
+    known: bool = True
+
+
+# Longest marker first (substring match against normalized skin id).
+# Only entries listed with replace use full-file replace; unknown skins use universal merge.
+SKIN_SNIPPET_REGISTRY: tuple[tuple[str, str, str], ...] = (
+    ("arctic.fuse.3", "DialogSeekBar-skin.arctic.fuse.3.xml", "replace"),
+    ("arctic.fuse", "DialogSeekBar-skin.arctic.fuse.3.xml", "replace"),
+    ("estuary.modv2", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
+    ("estuary.mod", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
+    ("aeon.nox.silvo", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
+    ("aeon.nox", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
+    ("arctic.zephyr", "DialogSeekBar-skin.arctic.zephyr.xml", "merge"),
+    ("arctic.horizon", "DialogSeekBar-skin.arctic.horizon.xml", "merge"),
+    ("estuary", "DialogSeekBar-skin.estuary.xml", "merge"),
+)
+UNIVERSAL_SNIPPET_FILENAME = "DialogSeekBar-universal-dynamic.xml"
+
+
+def snippet_spec_for_skin_id(skin_id: str) -> SkinSnippetSpec:
+    normalized = normalize_skin_id(skin_id)
+    for marker, filename, mode in SKIN_SNIPPET_REGISTRY:
+        if marker in normalized:
+            return SkinSnippetSpec(filename=filename, mode=mode, known=True)
+    return SkinSnippetSpec(
+        filename=UNIVERSAL_SNIPPET_FILENAME,
+        mode="merge",
+        known=False,
+    )
+
+
 def profile_summary(profile: SkinProfile, skin_id: str, override: str) -> str:
     if override != PROFILE_AUTO:
         source = f"setting:{override}"

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-05-22
+
+### Added
+
+- **Restore skin snippet** — **Restore skin snippet (current skin)** and **(all skins)** under Preview tools. Restores `DialogSeekBar.xml` from `DialogSeekBar.xml.bak` when a backup exists.
+- **Split install actions** — **Install Pillow (preview)**, **Install generator tools (ffmpeg)**, and **Install preview tools (all)** as separate Preview tools buttons.
+- **Skin snippet installer** — skips paths that already contain the trickplay overlay; writable preflight; progress bar for multi-path install/restore; inactive-skin note after install-all; full `DialogSeekBar.xml` paths in debug log; JSON-RPC skin list fallback warning.
+- **Skin snippet registry** — known skins and snippet files centralized in `skin_profiles.py` (`SKIN_SNIPPET_REGISTRY`). Unknown skins use universal merge only (no full-file replace).
+- **Batch retry** — after batch generation completes, offers to retry failed files.
+- **Generator temp cleanup** — generation lock file and minimum age (1 hour) so active or recent jobs are not deleted on service start or add-on update.
+- **Service hint** — one-time warning per session when trickplay loads but the active skin has no preview controls installed.
+- **Unit tests** — pure-text merge/remove helpers in `tests/test_skin_snippet_installer.py`.
+
+### Changed
+
+- **Text-based skin merge** — overlay install preserves original `DialogSeekBar.xml` formatting instead of re-serializing via ElementTree.
+- **Install summary** — reports ok, failed, skipped (already installed), and skin count.
+
+### Fixed
+
+- **Pillow debug log** — when debug logging is on, logs `PIL.__file__` after Pillow loads.
+- **README** — Arctic Fuse 3 snippet documents groups **94090**, **94100**, and **94103**.
+
 ## [5.1.1] - 2026-06-21
 
 ### Fixed

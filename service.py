@@ -174,6 +174,7 @@ class TrickplayService:
         self._playback_block_reason = ""
         self._preview_tools_install_prompt_pending = False
         self._preview_tools_install_prompt_done = False
+        self._skin_snippet_hint_done = False
         self._log_skin_profile(force=True)
 
     def _preview_hold_seconds(self) -> int:
@@ -435,6 +436,22 @@ class TrickplayService:
                     xbmc.LOGWARNING,
                 )
                 self._preview_tools_install_prompt_pending = True
+
+            if not self._skin_snippet_hint_done:
+                self._skin_snippet_hint_done = True
+                try:
+                    from skin_snippet_installer import current_skin_overlay_installed
+
+                    if not current_skin_overlay_installed():
+                        _log(
+                            "Trickplay data loaded but the active skin has no preview "
+                            "controls — use Install skin snippet (current skin) in add-on "
+                            "settings, or merge the matching file from "
+                            "resources/skin-snippet/ into DialogSeekBar.xml",
+                            xbmc.LOGWARNING,
+                        )
+                except ImportError:
+                    pass
 
             play_seconds = _player_time_seconds(self.player)
             runtime = read_runtime_settings()

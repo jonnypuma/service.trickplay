@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+from collections.abc import Callable
 
 import xbmc
 import xbmcaddon
@@ -27,9 +28,14 @@ from pillow_installer import prompt_and_install_pillow, should_offer_pillow_down
 from skin_snippet_installer import (
     InstallScope,
     build_install_plan,
+    build_restore_plan,
     execute_install_plan,
+    execute_restore_plan,
     format_plan_summary,
+    format_restore_plan_summary,
+    inactive_skin_install_note,
     plan_has_installable_targets,
+    plan_has_restore_targets,
     summarize_outcomes,
 )
 from library_path_browse import browse_library_folder
@@ -78,10 +84,11 @@ def _run_batch_generation(
     *,
     progress: xbmcgui.DialogProgress | None = None,
     monitor: xbmc.Monitor | None = None,
-) -> tuple[int, int, bool]:
-    """Generate trickplay for each candidate. Returns (ok_count, fail_count, cancelled)."""
+) -> tuple[int, int, bool, list[str]]:
+    """Generate trickplay for each candidate. Returns (ok, fail, cancelled, failed_paths)."""
     ok_count = 0
     fail_count = 0
+    failed_paths: list[str] = []
     cancelled = False
     total = len(candidates)
 
@@ -128,12 +135,49 @@ def _run_batch_generation(
             break
         else:
             fail_count += 1
+            failed_paths.append(media_path)
             _log(f"Generation failed: {media_path}", xbmc.LOGWARNING)
             if settings.stop_on_failure:
                 _log("Stopping batch (stop on first failure enabled)", xbmc.LOGWARNING)
                 break
 
-    return ok_count, fail_count, cancelled
+    return ok_count, fail_count, cancelled, failed_paths
+
+
+def _offer_batch_retry(failed_paths: list[str], settings: GeneratorSettings) -> None:
+    if not failed_paths:
+        return
+    if not xbmcgui.Dialog().yesno(
+        _ADDON.getLocalizedString(32063),
+        _ADDON.getLocalizedString(32182) % len(failed_paths),
+        yeslabel=_ADDON.getLocalizedString(32164),
+        nolabel=_ADDON.getLocalizedString(32100),
+    ):
+        return
+    _log(f"Retrying {len(failed_paths)} failed file(s)")
+    monitor = xbmc.Monitor()
+    progress = xbmcgui.DialogProgress()
+    progress.create(
+        _ADDON.getLocalizedString(32063),
+        _ADDON.getLocalizedString(32183),
+    )
+    try:
+        ok_count, fail_count, cancelled, still_failed = _run_batch_generation(
+            failed_paths,
+            settings,
+            progress=progress,
+            monitor=monitor,
+        )
+    finally:
+        progress.close()
+    if cancelled:
+        return
+    xbmcgui.Dialog().ok(
+        _ADDON.getLocalizedString(32063),
+        _ADDON.getLocalizedString(32184) % (ok_count, fail_count),
+    )
+    if still_failed:
+        _offer_batch_retry(still_failed, settings)
 
 
 def _collect_candidates_with_progress(
@@ -360,7 +404,7 @@ def run_batch_dialog() -> None:
             xbmcgui.NOTIFICATION_INFO,
             5000,
         )
-        ok_count, fail_count, cancelled = _run_batch_generation(
+        ok_count, fail_count, cancelled, failed_paths = _run_batch_generation(
             candidates,
             settings,
             monitor=monitor,
@@ -375,6 +419,7 @@ def run_batch_dialog() -> None:
             xbmcgui.NOTIFICATION_INFO,
             8000,
         )
+        _offer_batch_retry(failed_paths, settings)
         return
 
     progress = xbmcgui.DialogProgress()
@@ -383,7 +428,7 @@ def run_batch_dialog() -> None:
         _ADDON.getLocalizedString(32069),
     )
     try:
-        ok_count, fail_count, cancelled = _run_batch_generation(
+        ok_count, fail_count, cancelled, failed_paths = _run_batch_generation(
             candidates,
             settings,
             progress=progress,
@@ -401,6 +446,7 @@ def run_batch_dialog() -> None:
         _ADDON.getLocalizedString(32063),
         _ADDON.getLocalizedString(32071) % (ok_count, fail_count),
     )
+    _offer_batch_retry(failed_paths, settings)
 
 
 def _install_tools_strings(settings: GeneratorSettings) -> dict[str, str]:
@@ -431,6 +477,83 @@ def _install_tools_strings(settings: GeneratorSettings) -> dict[str, str]:
         "vulkan_success_message": _ADDON.getLocalizedString(32119),
         "already_installed": _ADDON.getLocalizedString(32129),
     }
+
+
+def run_install_pillow_dialog() -> None:
+    _log("run_install_pillow_dialog started")
+    strings = _install_tools_strings(read_generator_settings())
+    if not should_offer_pillow_download():
+        xbmcgui.Dialog().notification(
+            strings["title"],
+            _ADDON.getLocalizedString(32185),
+            xbmcgui.NOTIFICATION_INFO,
+            4000,
+        )
+        return
+    prompt_and_install_pillow(
+        title=strings["title"],
+        prompt_yes=strings["pillow_prompt_yes"],
+        prompt_no=strings["prompt_no"],
+        download_yes=strings["download_yes"],
+        progress_title=strings["pillow_progress_title"],
+        unsupported_message=strings["pillow_unsupported_message"],
+        failed_message=strings["pillow_failed_message"],
+        success_message=strings["pillow_success_message"],
+    )
+    try:
+        from pillow_installer import invalidate_pillow_cache
+
+        invalidate_pillow_cache()
+    except ImportError:
+        pass
+
+
+def run_install_generator_tools_dialog() -> None:
+    _log("run_install_generator_tools_dialog started")
+    settings = read_generator_settings()
+    strings = _install_tools_strings(settings)
+    if not generator_install_tools_needed(
+        hdr_tone_map_enabled=settings.hdr_tone_map,
+        hdr_dovi_tool_fallback_enabled=settings.hdr_dovi_tool_fallback,
+        custom_ffmpeg_path=settings.ffmpeg_path,
+    ):
+        xbmcgui.Dialog().notification(
+            strings["title"],
+            _ADDON.getLocalizedString(32186),
+            xbmcgui.NOTIFICATION_INFO,
+            4000,
+        )
+        return
+    prompt_and_install_generator_tools(
+        hdr_tone_map_enabled=settings.hdr_tone_map,
+        hdr_dovi_tool_fallback_enabled=settings.hdr_dovi_tool_fallback,
+        custom_ffmpeg_path=settings.ffmpeg_path,
+        title=strings["title"],
+        base_ffmpeg_prompt_yes=strings["base_ffmpeg_prompt_yes"],
+        hdr_ffmpeg_prompt_yes=strings["hdr_ffmpeg_prompt_yes"],
+        dovi_prompt_yes=strings["dovi_prompt_yes"],
+        prompt_no=strings["prompt_no"],
+        download_yes=strings["download_yes"],
+        base_ffmpeg_progress_title=strings["base_ffmpeg_progress_title"],
+        hdr_ffmpeg_progress_title=strings["hdr_ffmpeg_progress_title"],
+        dovi_progress_title=strings["dovi_progress_title"],
+        ffmpeg_unsupported_message=strings["ffmpeg_unsupported_message"],
+        dovi_unsupported_message=strings["dovi_unsupported_message"],
+        base_ffmpeg_failed_message=strings["base_ffmpeg_failed_message"],
+        hdr_ffmpeg_failed_message=strings["hdr_ffmpeg_failed_message"],
+        dovi_failed_message=strings["dovi_failed_message"],
+        base_ffmpeg_success_message=strings["base_ffmpeg_success_message"],
+        hdr_ffmpeg_success_message=strings["hdr_ffmpeg_success_message"],
+        dovi_success_message=strings["dovi_success_message"],
+        vulkan_prompt_yes=strings["vulkan_prompt_yes"],
+        vulkan_success_message=strings["vulkan_success_message"],
+    )
+    try:
+        from thumb_cropper import invalidate_playback_ffmpeg_cache
+
+        invalidate_playback_ffmpeg_cache()
+    except ImportError:
+        pass
 
 
 def run_install_tools_dialog(*, from_playback_prompt: bool = False) -> None:
@@ -514,9 +637,66 @@ def _install_skin_error_message(code: str) -> str:
         "not_writable": 32165,
         "skin_addon_path_unavailable": 32166,
         "snippet_file_missing": 32167,
+        "backup_not_found": 32187,
+        "already_installed": 32188,
     }
     string_id = mapping.get(code, 32161)
     return _ADDON.getLocalizedString(string_id)
+
+
+def _format_skin_outcome_lines(outcomes: list) -> list[str]:
+    result_lines: list[str] = []
+    for item in outcomes:
+        if item.skipped:
+            rel = os.path.basename(os.path.dirname(item.seekbar_path))
+            result_lines.append(
+                f"• {item.skin_name}: .../{rel}/{os.path.basename(item.seekbar_path)} "
+                f"— {_install_skin_error_message('already_installed')}"
+            )
+            continue
+        if item.success:
+            detail = item.message
+            if detail == "ok_backup_kept":
+                detail = _ADDON.getLocalizedString(32170)
+            elif detail == "ok":
+                detail = _ADDON.getLocalizedString(32171)
+            elif detail == "restored":
+                detail = _ADDON.getLocalizedString(32189)
+            rel = os.path.basename(os.path.dirname(item.seekbar_path))
+            result_lines.append(
+                f"• {item.skin_name}: .../{rel}/{os.path.basename(item.seekbar_path)} — {detail}"
+            )
+        else:
+            msg = _install_skin_error_message(item.message.split(":")[0])
+            if item.message.startswith("backup_failed:"):
+                msg = _ADDON.getLocalizedString(32168) % item.message.split(":", 1)[1]
+            elif not item.seekbar_path:
+                msg = _install_skin_error_message(item.message)
+            result_lines.append(f"• {item.skin_name}: {msg}")
+    return result_lines
+
+
+def _execute_skin_plan_with_progress(
+    work_count: int,
+    title: str,
+    execute: Callable[[Callable[[int, str], None] | None], list],
+) -> list:
+    if work_count <= 1:
+        return execute(None)
+
+    monitor = xbmc.Monitor()
+    progress = xbmcgui.DialogProgress()
+    progress.create(title, _ADDON.getLocalizedString(32190))
+
+    def _progress(percent: int, line: str) -> None:
+        if monitor.abortRequested() or progress.iscanceled():
+            return
+        progress.update(percent, line)
+
+    try:
+        return execute(_progress)
+    finally:
+        progress.close()
 
 
 def run_install_skin_dialog(scope: InstallScope) -> None:
@@ -552,47 +732,116 @@ def run_install_skin_dialog(scope: InstallScope) -> None:
         _log("Skin snippet install cancelled")
         return
 
-    outcomes = execute_install_plan(plans, _ADDON_PATH)
-    ok_count, fail_count, skin_count = summarize_outcomes(outcomes)
-    result_lines: list[str] = []
-    for item in outcomes:
-        if item.success:
-            detail = item.message
-            if detail == "ok_backup_kept":
-                detail = _ADDON.getLocalizedString(32170)
-            elif detail == "ok":
-                detail = _ADDON.getLocalizedString(32171)
-            rel = os.path.basename(os.path.dirname(item.seekbar_path))
-            result_lines.append(
-                f"• {item.skin_name}: .../{rel}/{os.path.basename(item.seekbar_path)} — {detail}"
-            )
-        else:
-            msg = _install_skin_error_message(item.message.split(":")[0])
-            if item.message.startswith("backup_failed:"):
-                msg = _ADDON.getLocalizedString(32168) % item.message.split(":", 1)[1]
-            elif not item.seekbar_path:
-                msg = _install_skin_error_message(item.message)
-            result_lines.append(f"• {item.skin_name}: {msg}")
+    work_count = sum(
+        1
+        for plan in plans
+        for path_plan in plan.paths
+        if path_plan.writable and not path_plan.already_installed
+    )
+    title = _ADDON.getLocalizedString(32158)
 
-    summary_body = _ADDON.getLocalizedString(32162) % (ok_count, fail_count, skin_count)
+    def _run(progress):
+        return execute_install_plan(plans, _ADDON_PATH, progress=progress)
+
+    outcomes = _execute_skin_plan_with_progress(work_count, title, _run)
+    ok_count, fail_count, skipped_count, skin_count = summarize_outcomes(outcomes)
+    result_lines = _format_skin_outcome_lines(outcomes)
+
+    summary_body = _ADDON.getLocalizedString(32180) % (
+        ok_count,
+        fail_count,
+        skipped_count,
+        skin_count,
+    )
     if result_lines:
         summary_body = summary_body + "\n\n" + "\n".join(result_lines)
+    note_key = inactive_skin_install_note(outcomes, scope)
+    if note_key:
+        summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
 
-    xbmcgui.Dialog().ok(_ADDON.getLocalizedString(32158), summary_body)
+    xbmcgui.Dialog().ok(title, summary_body)
 
 
-def _resolve_install_skin_scope(argv: list[str]) -> InstallScope | None:
+def run_restore_skin_dialog(scope: InstallScope) -> None:
+    _log(f"run_restore_skin_dialog started (scope={scope.value})")
+    plans = build_restore_plan(scope)
+    if not plans:
+        xbmcgui.Dialog().ok(
+            _ADDON.getLocalizedString(32191),
+            _ADDON.getLocalizedString(32163),
+        )
+        return
+
+    summary = format_restore_plan_summary(plans)
+    for plan in plans:
+        if plan.error:
+            err_text = _install_skin_error_message(plan.error)
+            summary = summary.replace(f"[{plan.error}]", f"[{err_text}]")
+
+    if not plan_has_restore_targets(plans):
+        xbmcgui.Dialog().ok(
+            _ADDON.getLocalizedString(32191),
+            _ADDON.getLocalizedString(32192) % summary,
+        )
+        return
+
+    prompt = _ADDON.getLocalizedString(32193) % summary
+    if not xbmcgui.Dialog().yesno(
+        _ADDON.getLocalizedString(32191),
+        prompt,
+        yeslabel=_ADDON.getLocalizedString(32164),
+        nolabel=_ADDON.getLocalizedString(32100),
+    ):
+        _log("Skin restore cancelled")
+        return
+
+    work_count = sum(
+        1 for plan in plans for path_plan in plan.paths if path_plan.writable
+    )
+    title = _ADDON.getLocalizedString(32191)
+
+    def _run(progress):
+        return execute_restore_plan(plans, progress=progress)
+
+    outcomes = _execute_skin_plan_with_progress(work_count, title, _run)
+    ok_count, fail_count, skipped_count, skin_count = summarize_outcomes(outcomes)
+    result_lines = _format_skin_outcome_lines(outcomes)
+
+    summary_body = _ADDON.getLocalizedString(32180) % (
+        ok_count,
+        fail_count,
+        skipped_count,
+        skin_count,
+    )
+    if result_lines:
+        summary_body = summary_body + "\n\n" + "\n".join(result_lines)
+    note_key = inactive_skin_install_note(outcomes, scope)
+    if note_key:
+        summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
+
+    xbmcgui.Dialog().ok(title, summary_body)
+
+
+def _resolve_skin_scope(argv: list[str], action: str) -> InstallScope | None:
     args = [(arg or "").strip().lower() for arg in argv[1:] if (arg or "").strip()]
-    if "install_skin" in args or "install_skin_snippet" in args:
+    if action in args or f"{action}_snippet" in args:
         if "all" in args:
             return InstallScope.ALL
         return InstallScope.CURRENT
     for arg in args:
-        if arg in ("install_skin_all", "install_skin_snippet_all"):
+        if arg in (f"{action}_all", f"{action}_snippet_all"):
             return InstallScope.ALL
-        if arg in ("install_skin_current", "install_skin_snippet_current"):
+        if arg in (f"{action}_current", f"{action}_snippet_current"):
             return InstallScope.CURRENT
     return None
+
+
+def _resolve_install_skin_scope(argv: list[str]) -> InstallScope | None:
+    return _resolve_skin_scope(argv, "install_skin")
+
+
+def _resolve_restore_skin_scope(argv: list[str]) -> InstallScope | None:
+    return _resolve_skin_scope(argv, "restore_skin")
 
 
 def _resolve_mode(argv: list[str]) -> str:
@@ -612,6 +861,19 @@ def _resolve_mode(argv: list[str]) -> str:
             "install_skin_snippet_all",
         ):
             return "install_skin"
+        if normalized in ("restore_skin", "restore_skin_snippet"):
+            return "restore_skin"
+        if normalized in (
+            "restore_skin_current",
+            "restore_skin_all",
+            "restore_skin_snippet_current",
+            "restore_skin_snippet_all",
+        ):
+            return "restore_skin"
+        if normalized in ("install_pillow",):
+            return "install_pillow"
+        if normalized in ("install_generator_tools", "install_generator"):
+            return "install_generator_tools"
         if normalized.endswith(".py"):
             continue
         if normalized:
@@ -639,5 +901,12 @@ if __name__ == "__main__":
     elif mode == "install_skin":
         scope = _resolve_install_skin_scope(sys.argv) or InstallScope.CURRENT
         run_install_skin_dialog(scope)
+    elif mode == "restore_skin":
+        scope = _resolve_restore_skin_scope(sys.argv) or InstallScope.CURRENT
+        run_restore_skin_dialog(scope)
+    elif mode == "install_pillow":
+        run_install_pillow_dialog()
+    elif mode == "install_generator_tools":
+        run_install_generator_tools_dialog()
     else:
         _log(f"Unsupported mode {mode!r}; no action taken", xbmc.LOGERROR)

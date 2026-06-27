@@ -1,12 +1,14 @@
-"""Install trickplay DialogSeekBar snippets into installed Kodi skins."""
+"""Install or restore trickplay DialogSeekBar snippets in installed Kodi skins."""
 
 from __future__ import annotations
 
 import copy
 import json
 import os
+import re
 import shutil
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -14,27 +16,23 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
-from skin_profiles import current_skin_id, normalize_skin_id
+from skin_profiles import (
+    UNIVERSAL_SNIPPET_FILENAME,
+    current_skin_id,
+    normalize_skin_id,
+    snippet_spec_for_skin_id,
+)
 
 SEEKBAR_FILENAME = "DialogSeekBar.xml"
 BACKUP_SUFFIX = ".bak"
 OVERLAY_CONTROL_ID = "94090"
 MAX_WALK_DEPTH = 4
 SNIPPET_DIR = "resources/skin-snippet"
-
-# Longest marker first (substring match against normalized skin id).
-_SNIPPET_REGISTRY: tuple[tuple[str, str, str], ...] = (
-    ("arctic.fuse.3", "DialogSeekBar-skin.arctic.fuse.3.xml", "replace"),
-    ("arctic.fuse", "DialogSeekBar-skin.arctic.fuse.3.xml", "replace"),
-    ("estuary.modv2", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
-    ("estuary.mod", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
-    ("aeon.nox.silvo", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
-    ("aeon.nox", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
-    ("arctic.zephyr", "DialogSeekBar-skin.arctic.zephyr.xml", "merge"),
-    ("arctic.horizon", "DialogSeekBar-skin.arctic.horizon.xml", "merge"),
-    ("estuary", "DialogSeekBar-skin.estuary.xml", "merge"),
+TRICKPLAY_MARKER = "Trickplay.Preview"
+_CONTROL_OPEN_RE = re.compile(
+    r"<control\b[^>]*\bid=[\"']" + OVERLAY_CONTROL_ID + r"[\"']",
+    re.IGNORECASE,
 )
-_DEFAULT_SNIPPET = ("DialogSeekBar-universal-dynamic.xml", "merge")
 
 
 class InstallScope(str, Enum):
@@ -51,19 +49,20 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay.skin] {message}", level)
 
 
+def _debug_log(message: str) -> None:
+    try:
+        from generator_settings import read_runtime_settings
+
+        if read_runtime_settings().debug_logging:
+            _log(message)
+    except ImportError:
+        pass
+
+
 def _local_path(path: str) -> str:
     if path.startswith(("special://", "vfs://", "zip://")):
         return xbmcvfs.translatePath(path)
     return path
-
-
-def snippet_for_skin_id(skin_id: str) -> tuple[str, InstallMode]:
-    normalized = normalize_skin_id(skin_id)
-    for marker, filename, mode in _SNIPPET_REGISTRY:
-        if marker in normalized:
-            return filename, InstallMode(mode)
-    filename, mode = _DEFAULT_SNIPPET
-    return filename, InstallMode(mode)
 
 
 def _jsonrpc_addons_get_skins() -> list[str]:
@@ -75,21 +74,38 @@ def _jsonrpc_addons_get_skins() -> list[str]:
             "id": 1,
         }
         try:
-            import xbmc
-
-            response = json.loads(xbmc.executeJSONRPC(json.dumps(command)))
+            response = json.loads(
+                xbmc.executeJSONRPC(
+                    json.dumps(command)
+                )
+            )
         except (RuntimeError, TypeError, ValueError, json.JSONDecodeError):
             continue
         addons = response.get("result", {}).get("addons") or []
         if addons:
-            return [normalize_skin_id(str(item.get("addonid", ""))) for item in addons if item]
+            return [
+                normalize_skin_id(str(item.get("addonid", "")))
+                for item in addons
+                if item
+            ]
     return []
 
 
+_skin_list_rpc_warned = False
+
+
 def list_installed_skin_ids() -> list[str]:
+    global _skin_list_rpc_warned
     ids = [sid for sid in _jsonrpc_addons_get_skins() if sid]
     if ids:
         return sorted(set(ids))
+    if not _skin_list_rpc_warned:
+        _skin_list_rpc_warned = True
+        _log(
+            "Could not enumerate installed skins via JSON-RPC; "
+            "falling back to active skin only",
+            xbmc.LOGWARNING,
+        )
     active = current_skin_id()
     return [active] if active else []
 
@@ -127,11 +143,148 @@ def find_dialog_seekbar_paths(skin_root: str) -> list[str]:
     return sorted(found)
 
 
+def _read_text(path: str) -> str:
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        return handle.read()
+
+
+def _write_text(path: str, text: str) -> None:
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+
+
+def find_control_block_span(text: str, control_id: str) -> tuple[int, int] | None:
+    """Return (start, end) span of a <control id="…">…</control> block."""
+    pattern = re.compile(
+        r"<control\b[^>]*\bid=[\"']" + re.escape(control_id) + r"[\"']",
+        re.IGNORECASE,
+    )
+    for match in pattern.finditer(text):
+        start = match.start()
+        depth = 0
+        index = start
+        length = len(text)
+        while index < length:
+            if text.startswith("<control", index):
+                close = text.find(">", index)
+                if close < 0:
+                    break
+                depth += 1
+                index = close + 1
+                continue
+            if text.startswith("</control>", index):
+                depth -= 1
+                index += len("</control>")
+                if depth == 0:
+                    return start, index
+                continue
+            index += 1
+    return None
+
+
+def remove_control_block(text: str, control_id: str) -> str:
+    span = find_control_block_span(text, control_id)
+    if span is None:
+        return text
+    start, end = span
+    return text[:start] + text[end:]
+
+
+def extract_overlay_xml_text(snippet_path: str) -> str:
+    text = _read_text(snippet_path)
+    span = find_control_block_span(text, OVERLAY_CONTROL_ID)
+    if span is None:
+        raise ValueError(f"snippet missing control id={OVERLAY_CONTROL_ID}")
+    return text[span[0] : span[1]]
+
+
+def insert_overlay_before_controls_close(text: str, overlay_xml: str) -> str:
+    """Insert overlay as a direct child of the window <controls> block."""
+    match = re.search(r"<controls\b[^>]*>", text, re.IGNORECASE)
+    if not match:
+        raise ValueError("DialogSeekBar.xml has no <controls> element")
+
+    controls_open = match.end()
+    depth = 1
+    index = controls_open
+    length = len(text)
+    insert_at = None
+    while index < length and depth > 0:
+        if text.startswith("<controls", index):
+            close = text.find(">", index)
+            if close < 0:
+                break
+            depth += 1
+            index = close + 1
+            continue
+        if text.startswith("</controls>", index):
+            depth -= 1
+            if depth == 0:
+                insert_at = index
+                break
+            index += len("</controls>")
+            continue
+        index += 1
+
+    if insert_at is None:
+        raise ValueError("DialogSeekBar.xml has unclosed <controls> element")
+
+    line_start = text.rfind("\n", 0, insert_at) + 1
+    indent = re.match(r"[ \t]*", text[line_start:]).group(0)
+    if not indent:
+        indent = "\t"
+
+    block = overlay_xml.strip()
+    if not block.endswith("\n"):
+        block += "\n"
+    indented = "".join(
+        (indent + line if line.strip() else line) + "\n"
+        for line in block.splitlines()
+    )
+    return text[:insert_at] + indented + text[insert_at:]
+
+
+def overlay_already_installed(seekbar_path: str) -> bool:
+    local = _local_path(seekbar_path)
+    if not local or not os.path.isfile(local):
+        return False
+    try:
+        text = _read_text(local)
+    except OSError:
+        return False
+    if not _CONTROL_OPEN_RE.search(text):
+        return False
+    return TRICKPLAY_MARKER in text
+
+
+def current_skin_overlay_installed() -> bool:
+    """True when the active skin's DialogSeekBar already contains the trickplay overlay."""
+    skin_id = current_skin_id()
+    if not skin_id:
+        return True
+    root = _skin_addon_path(skin_id)
+    if not root:
+        return True
+    paths = find_dialog_seekbar_paths(root)
+    if not paths:
+        return False
+    return any(overlay_already_installed(path) for path in paths)
+
+
+def path_is_writable(seekbar_path: str) -> bool:
+    local = _local_path(seekbar_path)
+    if not local or not os.path.isfile(local):
+        return False
+    return os.access(local, os.W_OK)
+
+
 @dataclass
 class PathInstallPlan:
     seekbar_path: str
     snippet_file: str
     mode: InstallMode
+    writable: bool = True
+    already_installed: bool = False
 
 
 @dataclass
@@ -143,22 +296,43 @@ class SkinInstallPlan:
 
 
 @dataclass
+class PathRestorePlan:
+    seekbar_path: str
+    backup_path: str
+    writable: bool = True
+
+
+@dataclass
+class SkinRestorePlan:
+    skin_id: str
+    skin_name: str
+    paths: list[PathRestorePlan] = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass
 class InstallOutcome:
     skin_id: str
     skin_name: str
     seekbar_path: str
     success: bool
     message: str
+    skipped: bool = False
 
 
 def _snippet_root(addon_path: str) -> str:
     return os.path.join(addon_path, SNIPPET_DIR)
 
 
+def _mode_from_spec(mode: str) -> InstallMode:
+    if mode == "replace":
+        return InstallMode.REPLACE
+    return InstallMode.MERGE
+
+
 def build_install_plan(scope: InstallScope, addon_path: str) -> list[SkinInstallPlan]:
     if scope == InstallScope.CURRENT:
-        skin_ids = [current_skin_id()]
-        skin_ids = [sid for sid in skin_ids if sid]
+        skin_ids = [sid for sid in [current_skin_id()] if sid]
     else:
         skin_ids = list_installed_skin_ids()
 
@@ -187,8 +361,12 @@ def build_install_plan(scope: InstallScope, addon_path: str) -> list[SkinInstall
             )
             continue
 
-        snippet_file, mode = snippet_for_skin_id(skin_id)
-        snippet_path = os.path.join(_snippet_root(addon_path), snippet_file)
+        spec = snippet_spec_for_skin_id(skin_id)
+        mode = _mode_from_spec(spec.mode)
+        if not spec.known and mode == InstallMode.REPLACE:
+            mode = InstallMode.MERGE
+
+        snippet_path = os.path.join(_snippet_root(addon_path), spec.filename)
         if not os.path.isfile(snippet_path):
             plans.append(
                 SkinInstallPlan(
@@ -199,14 +377,20 @@ def build_install_plan(scope: InstallScope, addon_path: str) -> list[SkinInstall
             )
             continue
 
-        path_plans = [
-            PathInstallPlan(
-                seekbar_path=path,
-                snippet_file=snippet_file,
-                mode=mode,
+        path_plans: list[PathInstallPlan] = []
+        for path in seekbar_paths:
+            _debug_log(f"DialogSeekBar path: {path}")
+            writable = path_is_writable(path)
+            installed = overlay_already_installed(path)
+            path_plans.append(
+                PathInstallPlan(
+                    seekbar_path=path,
+                    snippet_file=spec.filename,
+                    mode=mode,
+                    writable=writable,
+                    already_installed=installed,
+                )
             )
-            for path in seekbar_paths
-        ]
         plans.append(
             SkinInstallPlan(
                 skin_id=skin_id,
@@ -217,67 +401,94 @@ def build_install_plan(scope: InstallScope, addon_path: str) -> list[SkinInstall
     return plans
 
 
+def build_restore_plan(scope: InstallScope) -> list[SkinRestorePlan]:
+    if scope == InstallScope.CURRENT:
+        skin_ids = [sid for sid in [current_skin_id()] if sid]
+    else:
+        skin_ids = list_installed_skin_ids()
+
+    plans: list[SkinRestorePlan] = []
+    for skin_id in skin_ids:
+        name = _skin_display_name(skin_id)
+        root = _skin_addon_path(skin_id)
+        if not root:
+            plans.append(
+                SkinRestorePlan(
+                    skin_id=skin_id,
+                    skin_name=name,
+                    error="skin_addon_path_unavailable",
+                )
+            )
+            continue
+
+        seekbar_paths = find_dialog_seekbar_paths(root)
+        if not seekbar_paths:
+            plans.append(
+                SkinRestorePlan(
+                    skin_id=skin_id,
+                    skin_name=name,
+                    error="dialog_seekbar_not_found",
+                )
+            )
+            continue
+
+        path_plans: list[PathRestorePlan] = []
+        for path in seekbar_paths:
+            bak = path + BACKUP_SUFFIX
+            _debug_log(f"DialogSeekBar backup path: {bak}")
+            if not os.path.isfile(_local_path(bak) or bak):
+                continue
+            writable = path_is_writable(path)
+            path_plans.append(
+                PathRestorePlan(
+                    seekbar_path=path,
+                    backup_path=bak,
+                    writable=writable,
+                )
+            )
+
+        if not path_plans:
+            plans.append(
+                SkinRestorePlan(
+                    skin_id=skin_id,
+                    skin_name=name,
+                    error="backup_not_found",
+                )
+            )
+        else:
+            plans.append(
+                SkinRestorePlan(
+                    skin_id=skin_id,
+                    skin_name=name,
+                    paths=path_plans,
+                )
+            )
+    return plans
+
+
 def _backup_seekbar(seekbar_path: str) -> tuple[bool, str]:
-    bak_path = seekbar_path + BACKUP_SUFFIX
+    local = _local_path(seekbar_path)
+    bak_path = local + BACKUP_SUFFIX
     if os.path.isfile(bak_path):
         return True, "backup_exists"
     try:
-        shutil.copy2(seekbar_path, bak_path)
+        shutil.copy2(local, bak_path)
     except OSError as exc:
         return False, str(exc)
     return True, "backup_created"
 
 
-def _find_controls_element(window_root: ET.Element) -> ET.Element | None:
-    controls = window_root.find("controls")
-    if controls is not None:
-        return controls
-    for child in window_root:
-        if child.tag == "controls":
-            return child
-    return None
-
-
-def _find_control_by_id(root: ET.Element, control_id: str) -> ET.Element | None:
-    for elem in root.iter("control"):
-        if elem.get("id") == control_id:
-            return elem
-    return None
-
-
-def _extract_overlay_from_snippet(snippet_path: str) -> ET.Element:
-    tree = ET.parse(snippet_path)
-    overlay = _find_control_by_id(tree.getroot(), OVERLAY_CONTROL_ID)
-    if overlay is None:
-        raise ValueError(f"snippet missing control id={OVERLAY_CONTROL_ID}")
-    return copy.deepcopy(overlay)
-
-
-def _merge_overlay(seekbar_path: str, snippet_path: str) -> None:
-    tree = ET.parse(seekbar_path)
-    window_root = tree.getroot()
-    controls = _find_controls_element(window_root)
-    if controls is None:
-        raise ValueError("DialogSeekBar.xml has no <controls> element")
-
-    existing = _find_control_by_id(window_root, OVERLAY_CONTROL_ID)
-    if existing is not None:
-        for parent in window_root.iter():
-            for child in list(parent):
-                if child is existing:
-                    parent.remove(child)
-                    break
-            else:
-                continue
-            break
-
-    overlay = _extract_overlay_from_snippet(snippet_path)
-    controls.append(overlay)
-    tree.write(seekbar_path, encoding="utf-8", xml_declaration=True)
+def _merge_overlay_preserve_format(seekbar_path: str, snippet_path: str) -> None:
+    local = _local_path(seekbar_path)
+    text = _read_text(local)
+    text = remove_control_block(text, OVERLAY_CONTROL_ID)
+    overlay = extract_overlay_xml_text(snippet_path)
+    merged = insert_overlay_before_controls_close(text, overlay)
+    _write_text(local, merged)
 
 
 def _replace_seekbar(seekbar_path: str, snippet_path: str) -> None:
-    shutil.copy2(snippet_path, seekbar_path)
+    shutil.copy2(snippet_path, _local_path(seekbar_path))
 
 
 def _install_one_path(
@@ -300,8 +511,8 @@ def _install_one_path(
         if mode == InstallMode.REPLACE:
             _replace_seekbar(local, snippet_path)
         else:
-            _merge_overlay(local, snippet_path)
-    except (OSError, ValueError, ET.ParseError) as exc:
+            _merge_overlay_preserve_format(local, snippet_path)
+    except (OSError, ValueError) as exc:
         return False, str(exc)
 
     if backup_detail == "backup_exists":
@@ -309,15 +520,34 @@ def _install_one_path(
     return True, "ok"
 
 
+def _restore_one_path(seekbar_path: str, backup_path: str) -> tuple[bool, str]:
+    local = _local_path(seekbar_path)
+    bak_local = _local_path(backup_path)
+    if not bak_local or not os.path.isfile(bak_local):
+        return False, "backup_not_found"
+    if not local:
+        return False, "dialog_seekbar_not_found"
+    if not os.access(local, os.W_OK):
+        return False, "not_writable"
+    try:
+        shutil.copy2(bak_local, local)
+    except OSError as exc:
+        return False, str(exc)
+    return True, "restored"
+
+
 def execute_install_plan(
     plans: list[SkinInstallPlan],
     addon_path: str,
+    *,
+    progress: Callable[[int, str], None] | None = None,
 ) -> list[InstallOutcome]:
     snippet_root = _snippet_root(addon_path)
     outcomes: list[InstallOutcome] = []
     modified_active_skin = False
     active = current_skin_id()
 
+    work: list[tuple[SkinInstallPlan, PathInstallPlan]] = []
     for plan in plans:
         if plan.error or not plan.paths:
             outcomes.append(
@@ -330,25 +560,59 @@ def execute_install_plan(
                 )
             )
             continue
-
         for path_plan in plan.paths:
-            snippet_path = os.path.join(snippet_root, path_plan.snippet_file)
-            ok, detail = _install_one_path(
-                path_plan.seekbar_path,
-                snippet_path,
-                path_plan.mode,
-            )
-            outcomes.append(
-                InstallOutcome(
-                    skin_id=plan.skin_id,
-                    skin_name=plan.skin_name,
-                    seekbar_path=path_plan.seekbar_path,
-                    success=ok,
-                    message=detail,
+            if path_plan.already_installed:
+                outcomes.append(
+                    InstallOutcome(
+                        skin_id=plan.skin_id,
+                        skin_name=plan.skin_name,
+                        seekbar_path=path_plan.seekbar_path,
+                        success=True,
+                        message="already_installed",
+                        skipped=True,
+                    )
                 )
+                continue
+            if not path_plan.writable:
+                outcomes.append(
+                    InstallOutcome(
+                        skin_id=plan.skin_id,
+                        skin_name=plan.skin_name,
+                        seekbar_path=path_plan.seekbar_path,
+                        success=False,
+                        message="not_writable",
+                    )
+                )
+                continue
+            work.append((plan, path_plan))
+
+    total = len(work)
+    for index, (plan, path_plan) in enumerate(work):
+        if progress:
+            percent = int((index * 100) / max(total, 1))
+            label = os.path.basename(os.path.dirname(path_plan.seekbar_path))
+            progress(percent, f"{plan.skin_name} — {label}")
+
+        snippet_path = os.path.join(snippet_root, path_plan.snippet_file)
+        ok, detail = _install_one_path(
+            path_plan.seekbar_path,
+            snippet_path,
+            path_plan.mode,
+        )
+        outcomes.append(
+            InstallOutcome(
+                skin_id=plan.skin_id,
+                skin_name=plan.skin_name,
+                seekbar_path=path_plan.seekbar_path,
+                success=ok,
+                message=detail,
             )
-            if ok and normalize_skin_id(plan.skin_id) == active:
-                modified_active_skin = True
+        )
+        if ok and normalize_skin_id(plan.skin_id) == active:
+            modified_active_skin = True
+
+    if progress:
+        progress(100, "Done")
 
     if modified_active_skin:
         _log("Reloading skin after DialogSeekBar snippet install")
@@ -357,7 +621,84 @@ def execute_install_plan(
     return outcomes
 
 
+def execute_restore_plan(
+    plans: list[SkinRestorePlan],
+    *,
+    progress: Callable[[int, str], None] | None = None,
+) -> list[InstallOutcome]:
+    outcomes: list[InstallOutcome] = []
+    modified_active_skin = False
+    active = current_skin_id()
+
+    work: list[tuple[SkinRestorePlan, PathRestorePlan]] = []
+    for plan in plans:
+        if plan.error or not plan.paths:
+            outcomes.append(
+                InstallOutcome(
+                    skin_id=plan.skin_id,
+                    skin_name=plan.skin_name,
+                    seekbar_path="",
+                    success=False,
+                    message=plan.error or "backup_not_found",
+                )
+            )
+            continue
+        for path_plan in plan.paths:
+            if not path_plan.writable:
+                outcomes.append(
+                    InstallOutcome(
+                        skin_id=plan.skin_id,
+                        skin_name=plan.skin_name,
+                        seekbar_path=path_plan.seekbar_path,
+                        success=False,
+                        message="not_writable",
+                    )
+                )
+                continue
+            work.append((plan, path_plan))
+
+    total = len(work)
+    for index, (plan, path_plan) in enumerate(work):
+        if progress:
+            percent = int((index * 100) / max(total, 1))
+            label = os.path.basename(os.path.dirname(path_plan.seekbar_path))
+            progress(percent, f"{plan.skin_name} — {label}")
+
+        ok, detail = _restore_one_path(
+            path_plan.seekbar_path,
+            path_plan.backup_path,
+        )
+        outcomes.append(
+            InstallOutcome(
+                skin_id=plan.skin_id,
+                skin_name=plan.skin_name,
+                seekbar_path=path_plan.seekbar_path,
+                success=ok,
+                message=detail,
+            )
+        )
+        if ok and normalize_skin_id(plan.skin_id) == active:
+            modified_active_skin = True
+
+    if progress:
+        progress(100, "Done")
+
+    if modified_active_skin:
+        _log("Reloading skin after DialogSeekBar restore")
+        xbmc.executebuiltin("ReloadSkin()")
+
+    return outcomes
+
+
 def plan_has_installable_targets(plans: list[SkinInstallPlan]) -> bool:
+    for plan in plans:
+        for path_plan in plan.paths:
+            if not path_plan.already_installed and path_plan.writable:
+                return True
+    return False
+
+
+def plan_has_restore_targets(plans: list[SkinRestorePlan]) -> bool:
     return any(plan.paths for plan in plans)
 
 
@@ -369,15 +710,55 @@ def format_plan_summary(plans: list[SkinInstallPlan]) -> str:
             continue
         for path_plan in plan.paths:
             rel_hint = os.path.basename(os.path.dirname(path_plan.seekbar_path))
+            tags: list[str] = [path_plan.mode.value]
+            if not path_plan.writable:
+                tags.append("not_writable")
+            if path_plan.already_installed:
+                tags.append("already_installed")
             lines.append(
                 f"• {plan.skin_name} ({plan.skin_id}) → "
-                f".../{rel_hint}/{SEEKBAR_FILENAME} [{path_plan.mode.value}]"
+                f".../{rel_hint}/{SEEKBAR_FILENAME} [{', '.join(tags)}]"
             )
     return "\n".join(lines)
 
 
-def summarize_outcomes(outcomes: list[InstallOutcome]) -> tuple[int, int, int]:
-    ok = sum(1 for item in outcomes if item.success)
+def format_restore_plan_summary(plans: list[SkinRestorePlan]) -> str:
+    lines: list[str] = []
+    for plan in plans:
+        if plan.error:
+            lines.append(f"• {plan.skin_name} ({plan.skin_id}): [{plan.error}]")
+            continue
+        for path_plan in plan.paths:
+            rel_hint = os.path.basename(os.path.dirname(path_plan.seekbar_path))
+            tag = "writable" if path_plan.writable else "not_writable"
+            lines.append(
+                f"• {plan.skin_name} ({plan.skin_id}) → "
+                f".../{rel_hint}/{SEEKBAR_FILENAME}.bak [{tag}]"
+            )
+    return "\n".join(lines)
+
+
+def summarize_outcomes(outcomes: list[InstallOutcome]) -> tuple[int, int, int, int]:
+    ok = sum(1 for item in outcomes if item.success and not item.skipped)
+    skipped = sum(1 for item in outcomes if item.skipped)
     fail = sum(1 for item in outcomes if not item.success)
     skins = len({item.skin_id for item in outcomes})
-    return ok, fail, skins
+    return ok, fail, skipped, skins
+
+
+def inactive_skin_install_note(
+    outcomes: list[InstallOutcome],
+    scope: InstallScope,
+) -> str:
+    if scope != InstallScope.ALL:
+        return ""
+    active = current_skin_id()
+    modified_other = any(
+        item.success
+        and not item.skipped
+        and normalize_skin_id(item.skin_id) != active
+        for item in outcomes
+    )
+    if modified_other:
+        return "inactive_skins_note"
+    return ""

@@ -42,7 +42,7 @@ The service detects your active Kodi skin (`xbmc.gui` addon id) and selects seek
 | Arctic Zephyr | `skin.arctic.zephyr`, … | 60, 1060, 1800 |
 | Arctic Horizon | `skin.arctic.horizon`, … | 40, 920, 1840 |
 
-For **Arctic Fuse 3**, the snippet includes two preview groups: **94100** (seek-bar aligned, slot slides) and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-merge group **94090** from `DialogSeekBar-skin.arctic.fuse.3.xml` if you installed an older snippet.
+For **Arctic Fuse 3**, the snippet includes preview groups **94090** (overlay root), **94100** (seek-bar aligned, slot slides), and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-install from `DialogSeekBar-skin.arctic.fuse.3.xml` if you installed an older snippet missing **94100** / **94103**.
 
 Unknown skins fall back to Estuary Mod v2 geometry and log a warning. Override manually under **Add-on settings → Skin profile** if auto-detect is wrong.
 

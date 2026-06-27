@@ -131,6 +131,21 @@ def _register_site_packages() -> str:
     return site
 
 
+def _log_pillow_source() -> None:
+    try:
+        import PIL
+
+        from generator_settings import read_runtime_settings
+
+        if read_runtime_settings().debug_logging:
+            xbmc.log(
+                f"[service.trickplay] Pillow loaded from {PIL.__file__}",
+                xbmc.LOGINFO,
+            )
+    except ImportError:
+        pass
+
+
 def ensure_pillow_loaded(*, force: bool = False) -> bool:
     """Import Pillow from Kodi's Python or the add-on site-packages folder."""
     global _pillow_available
@@ -143,6 +158,7 @@ def ensure_pillow_loaded(*, force: bool = False) -> bool:
         from PIL import Image  # noqa: F401
 
         _pillow_available = True
+        _log_pillow_source()
         return True
     except ImportError:
         pass
@@ -152,6 +168,7 @@ def ensure_pillow_loaded(*, force: bool = False) -> bool:
         from PIL import Image  # noqa: F401
 
         _pillow_available = True
+        _log_pillow_source()
         return True
     except ImportError:
         _pillow_available = False

@@ -8,7 +8,31 @@
 
             <group id="g0" label="32122">
 
-                <setting id="install_tools" type="action" label="32123" help="32124">
+                <setting id="install_pillow" type="action" label="32172" help="32173">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_pillow)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_generator_tools" type="action" label="32174" help="32175">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_generator_tools)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_tools" type="action" label="32176" help="32177">
 
                     <level>0</level>
 
@@ -39,6 +63,30 @@
                     <control type="button" format="action">
 
                         <data>RunScript(service.trickplay,install_skin,all)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="restore_skin_snippet_current" type="action" label="32178" help="32179">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,restore_skin,current)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="restore_skin_snippet_all" type="action" label="32194" help="32195">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,restore_skin,all)</data>
 
                     </control>
 

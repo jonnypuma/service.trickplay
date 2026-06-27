@@ -51,7 +51,12 @@ from trickplay_resolver import (
     resolve_media_path,
     trickplay_root_for_media,
 )
-from temp_cleanup import GENERATE_TEMP_ROOT, cleanup_orphaned_generator_temp
+from temp_cleanup import (
+    GENERATE_TEMP_ROOT,
+    cleanup_orphaned_generator_temp,
+    clear_generation_active,
+    mark_generation_active,
+)
 
 _VIDEO_EXTENSIONS = frozenset(
     {
@@ -1241,6 +1246,7 @@ def generate_trickplay_for_media(
     tile_count = (thumb_count + thumbs_per_tile - 1) // thumbs_per_tile
 
     _ensure_dir(output_dir)
+    mark_generation_active()
     work_dir = os.path.join(GENERATE_TEMP_ROOT, uuid.uuid4().hex)
     _ensure_dir(work_dir)
     _ensure_local_dir(work_dir)
@@ -1658,6 +1664,7 @@ def generate_trickplay_for_media(
         _remove_tree(work_dir)
         if dovi_prep_dir:
             _remove_tree(dovi_prep_dir)
+        clear_generation_active()
 
     if cancelled or _is_cancelled(should_cancel):
         return False

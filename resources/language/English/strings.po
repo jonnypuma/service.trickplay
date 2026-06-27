@@ -676,3 +676,99 @@ msgstr "OK (existing .bak kept)"
 msgctxt "#32171"
 msgid "OK"
 msgstr "OK"
+
+msgctxt "#32172"
+msgid "Install Pillow (preview)"
+msgstr "Install Pillow (preview)"
+
+msgctxt "#32173"
+msgid "Download Pillow into add-on site-packages for preview thumbnail cropping."
+msgstr "Download Pillow into add-on site-packages for preview thumbnail cropping."
+
+msgctxt "#32174"
+msgid "Install generator tools (ffmpeg)"
+msgstr "Install generator tools (ffmpeg)"
+
+msgctxt "#32175"
+msgid "Download ffmpeg/ffprobe and optional HDR extras (zscale/libplacebo, Vulkan loader on Windows, dovi_tool) for trickplay generation."
+msgstr "Download ffmpeg/ffprobe and optional HDR extras (zscale/libplacebo, Vulkan loader on Windows, dovi_tool) for trickplay generation."
+
+msgctxt "#32176"
+msgid "Install preview tools (all)"
+msgstr "Install preview tools (all)"
+
+msgctxt "#32177"
+msgid "Install Pillow for preview cropping, and when the generator is enabled or HDR tone mapping is on, also offers ffmpeg/ffprobe and optional HDR extras."
+msgstr "Install Pillow for preview cropping, and when the generator is enabled or HDR tone mapping is on, also offers ffmpeg/ffprobe and optional HDR extras."
+
+msgctxt "#32178"
+msgid "Restore skin snippet (current skin)"
+msgstr "Restore skin snippet (current skin)"
+
+msgctxt "#32179"
+msgid "Restore the active skin's DialogSeekBar.xml from DialogSeekBar.xml.bak when a backup exists. Reloads the skin when done."
+msgstr "Restore the active skin's DialogSeekBar.xml from DialogSeekBar.xml.bak when a backup exists. Reloads the skin when done."
+
+msgctxt "#32180"
+msgid "Result: %d ok, %d failed, %d skipped (already installed) (%d skin(s) processed)."
+msgstr "Result: %d ok, %d failed, %d skipped (already installed) (%d skin(s) processed)."
+
+msgctxt "#32181"
+msgid "Other installed skins were updated. Switch to each skin and reload, or restart Kodi, before previews will appear there."
+msgstr "Other installed skins were updated. Switch to each skin and reload, or restart Kodi, before previews will appear there."
+
+msgctxt "#32182"
+msgid "%d file(s) failed during batch generation. Retry failed files now?"
+msgstr "%d file(s) failed during batch generation. Retry failed files now?"
+
+msgctxt "#32183"
+msgid "Retrying failed files…"
+msgstr "Retrying failed files…"
+
+msgctxt "#32184"
+msgid "Retry complete: %d ok, %d failed."
+msgstr "Retry complete: %d ok, %d failed."
+
+msgctxt "#32185"
+msgid "Pillow is already available."
+msgstr "Pillow is already available."
+
+msgctxt "#32186"
+msgid "Generator tools are already installed."
+msgstr "Generator tools are already installed."
+
+msgctxt "#32187"
+msgid "No DialogSeekBar.xml.bak backup found"
+msgstr "No DialogSeekBar.xml.bak backup found"
+
+msgctxt "#32188"
+msgid "Already installed (skipped)"
+msgstr "Already installed (skipped)"
+
+msgctxt "#32189"
+msgid "Restored from backup"
+msgstr "Restored from backup"
+
+msgctxt "#32190"
+msgid "Working…"
+msgstr "Working…"
+
+msgctxt "#32191"
+msgid "Restore DialogSeekBar snippet"
+msgstr "Restore DialogSeekBar snippet"
+
+msgctxt "#32192"
+msgid "Skins identified:\n%s\n\nNo restorable backups were found."
+msgstr "Skins identified:\n%s\n\nNo restorable backups were found."
+
+msgctxt "#32193"
+msgid "Skins identified:\n%s\n\nRestore DialogSeekBar.xml from .bak backup now?"
+msgstr "Skins identified:\n%s\n\nRestore DialogSeekBar.xml from .bak backup now?"
+
+msgctxt "#32194"
+msgid "Restore skin snippet (all skins)"
+msgstr "Restore skin snippet (all skins)"
+
+msgctxt "#32195"
+msgid "Restore DialogSeekBar.xml from DialogSeekBar.xml.bak for every installed skin that has a backup. Reloads the active skin when done."
+msgstr "Restore DialogSeekBar.xml from DialogSeekBar.xml.bak for every installed skin that has a backup. Reloads the active skin when done."
