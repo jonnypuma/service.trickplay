@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import threading
+import time
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import xbmc
 
@@ -20,6 +22,7 @@ from trickplay_resolver import (
     TrickplayLookup,
     TrickplayResolution,
     lookup_by_index,
+    lookup_thumbnail,
 )
 
 MAX_TILE_ENQUEUE = 20
@@ -95,6 +98,51 @@ def _neighbor_indices(
     return ordered
 
 
+def _symmetric_window_indices(
+    center_index: int,
+    max_index: int,
+    radius: int,
+) -> list[int]:
+    """Thumb indices within ±radius of center, center first."""
+    ordered: list[int] = []
+    seen: set[int] = set()
+
+    def add(index: int) -> None:
+        if index < 0 or index > max_index or index in seen:
+            return
+        seen.add(index)
+        ordered.append(index)
+
+    add(center_index)
+    for distance in range(1, max(radius, 1) + 1):
+        add(center_index + distance)
+        add(center_index - distance)
+    return ordered
+
+
+def _follow_warm_indices(
+    center_index: int,
+    last_index: int,
+    max_index: int,
+    radius: int,
+) -> list[int]:
+    """Indices newly entering the ±radius window when the playhead moves."""
+    if last_index < 0:
+        return _symmetric_window_indices(center_index, max_index, radius)
+    if center_index == last_index:
+        return []
+
+    indices = [center_index]
+    old_lo = max(0, last_index - radius)
+    old_hi = min(max_index, last_index + radius)
+    new_lo = max(0, center_index - radius)
+    new_hi = min(max_index, center_index + radius)
+    for index in range(new_lo, new_hi + 1):
+        if index < old_lo or index > old_hi:
+            indices.append(index)
+    return indices
+
+
 @dataclass(frozen=True)
 class _PrefetchItem:
     lookup: TrickplayLookup
@@ -113,6 +161,8 @@ class ThumbPrefetch:
         self._prepared_tile: str | None = None
         self._idle_tiles_done: set[str] = set()
         self._max_queue = 48
+        self._last_playback_follow_index = -1
+        self._last_playback_follow_at = 0.0
 
     def cancel(self) -> None:
         with self._lock:
@@ -121,6 +171,105 @@ class ThumbPrefetch:
             self._queued_keys.clear()
             self._prepared_tile = None
             self._idle_tiles_done.clear()
+            self._last_playback_follow_index = -1
+            self._last_playback_follow_at = 0.0
+
+    def schedule_playhead_follow(
+        self,
+        resolution: TrickplayResolution,
+        play_seconds: int,
+        interval_ms: int,
+        settings: PrefetchSettings | None = None,
+        debug: bool = False,
+        *,
+        high_priority: bool = False,
+        force: bool = False,
+    ) -> None:
+        """Keep ±radius thumb crops warm around the moving playhead during playback."""
+        settings = settings or read_prefetch_settings()
+        if not settings.enabled or not settings.during_playback or not resolution.is_usable:
+            return
+        if lookup is None:
+            return
+
+        center_index = lookup.thumb_index
+        previous_index = self._last_playback_follow_index
+        now = time.monotonic()
+        retry_same_index = (
+            not force
+            and center_index == previous_index
+            and now - self._last_playback_follow_at >= 5.0
+        )
+        if (
+            not force
+            and center_index == previous_index
+            and not retry_same_index
+        ):
+            return
+
+        warm_previous = -1 if force or previous_index < 0 or retry_same_index else previous_index
+        self._last_playback_follow_index = center_index
+        self._last_playback_follow_at = now
+        self._warm_around_lookup(
+            resolution,
+            lookup,
+            interval_ms,
+            settings,
+            debug=debug,
+            high_priority=high_priority,
+            whole_tile=False,
+            previous_index=warm_previous,
+        )
+
+    def _warm_around_lookup(
+        self,
+        resolution: TrickplayResolution,
+        center: TrickplayLookup,
+        interval_ms: int,
+        settings: PrefetchSettings,
+        *,
+        debug: bool,
+        high_priority: bool,
+        whole_tile: bool,
+        previous_index: int,
+    ) -> None:
+        self._debug = debug
+        self._max_queue = settings.max_queue
+        max_index = _max_thumb_index(resolution)
+        radius = settings.radius
+
+        if previous_index < 0:
+            indices = _symmetric_window_indices(
+                center.thumb_index, max_index, radius
+            )
+        else:
+            indices = _follow_warm_indices(
+                center.thumb_index,
+                previous_index,
+                max_index,
+                radius,
+            )
+
+        if debug and indices:
+            _log(
+                f"Prefetch playhead follow index {center.thumb_index} "
+                f"±{radius} ({len(indices)} cell(s))"
+            )
+
+        self._schedule_indices(
+            resolution,
+            interval_ms,
+            indices,
+            high_priority=high_priority,
+        )
+        if whole_tile:
+            self._schedule_tile_cells(
+                resolution,
+                center,
+                interval_ms,
+                skip_indices=set(indices),
+                max_enqueue=MAX_TILE_ENQUEUE,
+            )
 
     def schedule_playhead_warm(
         self,
@@ -135,36 +284,18 @@ class ThumbPrefetch:
         if not settings.enabled or not settings.on_start or not resolution.is_usable:
             return
 
-        self._debug = debug
-        self._max_queue = settings.max_queue
-        if debug:
-            _log(
-                f"Prefetch playhead warm index {center.thumb_index} "
-                f"±{settings.playback_warm_radius}"
-            )
-
-        warm_settings = replace(
-            settings, radius=settings.playback_warm_radius
-        )
-        self._schedule_indices(
+        self._last_playback_follow_index = center.thumb_index
+        self._last_playback_follow_at = time.monotonic()
+        self._warm_around_lookup(
             resolution,
+            center,
             interval_ms,
-            _neighbor_indices(
-                center.thumb_index,
-                _max_thumb_index(resolution),
-                scrub_direction=0,
-                settings=warm_settings,
-            ),
+            settings,
+            debug=debug,
             high_priority=True,
+            whole_tile=settings.whole_tile,
+            previous_index=-1,
         )
-        if settings.whole_tile:
-            self._schedule_tile_cells(
-                resolution,
-                center,
-                interval_ms,
-                skip_indices={center.thumb_index},
-                max_enqueue=MAX_TILE_ENQUEUE,
-            )
 
     def schedule_neighbors(
         self,

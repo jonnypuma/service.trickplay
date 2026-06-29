@@ -93,14 +93,16 @@ Jellyfin stores trickplay sprites next to your media:
 
 Legacy Jellyfin folders without an interval suffix (`320 - 10x10/`) are treated as **10000 ms** between thumbnails.
 
-When playback starts, the service locates the matching `.trickplay` folder, maps the seek position to a tile file and grid cell, crops the frame, and sets **DialogSeekBar window properties** for the skin to render. A background prefetch worker pre-crops neighbouring cells (direction-biased ±3–5 indices, plus cells in the current sprite tile) so stepping/scrubbing nearby positions is usually instant after the first frame.
+When playback starts, the service locates the matching `.trickplay` folder, maps the seek position to a tile file and grid cell, crops the active cell with Pillow, and publishes **DialogSeekBar window properties** for the skin to render.
+
+Prefetch pre-crops neighbouring cells in the background. **During playback** (default), the service keeps the configured **prefetch radius** warm symmetrically around the moving playhead — not only when the seek bar opens. Radius is in **thumb indices** (e.g. radius 5 with a 10 s interval ≈ ±50 s on the timeline).
 
 ### Main window properties
 
 | Property | Description |
 |---|---|
 | `Trickplay.PreviewVisible` | `true` when the skin should show the preview |
-| `Trickplay.PreviewImage` | Path to the cropped preview JPEG |
+| `Trickplay.PreviewImage` | Path to a cropped preview JPEG for the active cell |
 | `Trickplay.PreviewTime` | Target position (formatted timestamp) |
 | `Trickplay.PreviewSlot` | Horizontal slot index (0–50) for slide animations |
 | `Trickplay.ShowTimestamp` | `true` when the skin should show the time label |
@@ -113,7 +115,7 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 
 - Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin), **or** use the built-in generator (see below)
 - **Skin edit** to `DialogSeekBar.xml` (see above)
-- **Pillow** — auto-installed via **Install preview tools** in add-on settings (into `addon_data/.../system/python/site-packages/`), or bundled with some Kodi builds; used for playback preview cropping from sprite JPEGs
+- **Pillow** — required for crop fallback and sidecar dimension probing; not required for atlas preview display. Auto-installed via **Install preview tools** when needed.
 - **ffmpeg** and **ffprobe** — required only for trickplay **generation** (and HDR tone mapping); auto-installed via **Install preview tools** when the generator or HDR tone mapping is enabled, batch **Run**, or manual install under `/storage/.kodi/system/ffmpeg/` (CoreELEC) / `addon_data/.../system/ffmpeg/` (Windows)
 
 ## Settings

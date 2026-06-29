@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.3] - 2026-06-29
+
+### Added
+
+- **Prefetch during playback** — while a video plays, the service now keeps the configured prefetch radius (thumb indices, symmetric both directions) warm around the **current playhead**, not only at load time or when the seek bar opens. Seeks force an immediate re-warm. Setting: **Prefetch during playback** (default on).
+
+### Changed
+
+- **Prefetch on start** — uses the full prefetch radius (not a separate smaller cap).
+- **Prefetch radius** help text clarifies indices vs sprite tile files.
+
+## [6.0.2] - 2026-06-29
+
+### Removed
+
+- **Sprite atlas preview** — Kodi's skin engine does not clip child image controls inside a parent group the way CSS sprite sheets do (confirmed on CoreELEC / Arctic Fuse 3: negative offsets show the full tile JPG, not a single cell). The experimental atlas path, settings, and skin viewport groups are removed. Previews use **Pillow per-cell crops** (`Trickplay.PreviewImage`) only, as in 5.2.x.
+
+### Changed
+
+- **Skin snippets** — reverted to crop-only `PreviewImage` controls. **Re-install the skin snippet** after upgrading (current skin or all skins).
+
+## [6.0.1] - 2026-06-29
+
+### Fixed
+
+- **Sprite atlas preview showed nothing** — `Trickplay.TileImage` was overwritten with the raw `nfs://` tile path on every scrub; Kodi cannot texture that in DialogSeekBar. TileImage now always uses the local temp copy. Sprite atlas is **off by default** again (5.2-style crop path).
+- **Crop fallback** — when sprite atlas is enabled, optional **Sprite atlas crop fallback** (default on) also publishes `Trickplay.PreviewImage` so previews work with older skin snippets and when atlas clipping fails on a device.
+- **Skin snippets** — dual atlas + crop controls; outer visibility accepts either `PreviewImage` or `TileImage`.
+
+## [6.0.0] - 2026-05-22
+
+### Added
+
+- **Sprite atlas preview (YouTube-style)** — the skin displays a viewport into the Jellyfin sprite sheet JPG (`Trickplay.TileImage` + offset properties) instead of per-cell Pillow crops. Scrubbing within the same tile updates only window properties (no new JPEG per frame).
+- **Setting: Sprite atlas preview** — under Preview adjustment; disable to restore 5.2-style per-cell crop (`Trickplay.PreviewImage`).
+
+### Changed
+
+- **Skin snippets** — all `DialogSeekBar-*.xml` reference files use a clipping group + negative offset into the sprite sheet. **Re-install the skin snippet** after upgrading (current skin or all skins).
+- **Prefetch** — in atlas mode, warms local copies of sprite tile JPGs instead of pre-cropping cells.
+- **Pillow** — no longer required for preview display when sprite atlas is enabled (still used for sidecar dimension probing and crop fallback).
+
 ## [5.2.0] - 2026-05-22
 
 ### Added

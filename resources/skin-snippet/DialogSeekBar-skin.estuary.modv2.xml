@@ -135,8 +135,8 @@
 				<control type="image" id="94101">
 					<left>0</left>
 					<top>0</top>
-					<width>320</width>
-					<height>180</height>
+					<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
+					<height>$INFO[Window.Property(Trickplay.PreviewHeight)]</height>
 					<aspectratio scalediffuse="false">keep</aspectratio>
 					<texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
 				</control>
@@ -232,8 +232,8 @@
 				<control type="image" id="94104">
 					<left>0</left>
 					<top>0</top>
-					<width>320</width>
-					<height>180</height>
+					<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
+					<height>$INFO[Window.Property(Trickplay.PreviewHeight)]</height>
 					<aspectratio scalediffuse="false">keep</aspectratio>
 					<texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
 				</control>

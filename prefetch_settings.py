@@ -16,6 +16,7 @@ from settings_cache import get_cached
 class PrefetchSettings:
     enabled: bool = True
     on_start: bool = True
+    during_playback: bool = True
     whole_tile: bool = True
     idle_tile: bool = True
     radius: int = 5
@@ -84,6 +85,7 @@ def _load_prefetch_settings() -> PrefetchSettings:
     return PrefetchSettings(
         enabled=_setting_bool("prefetch_enabled", True),
         on_start=_setting_bool("prefetch_on_start", True),
+        during_playback=_setting_bool("prefetch_during_playback", True),
         whole_tile=_setting_bool("prefetch_whole_tile", True),
         idle_tile=_setting_bool("prefetch_idle_tile", True),
         radius=max(_setting_int("prefetch_radius", 5), 1),

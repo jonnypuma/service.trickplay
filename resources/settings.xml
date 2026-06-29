@@ -380,6 +380,26 @@
 
                 </setting>
 
+                <setting id="prefetch_during_playback" type="boolean" label="32200" help="32201">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
                 <setting id="prefetch_whole_tile" type="boolean" label="32027" help="32028">
 
                     <level>0</level>

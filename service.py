@@ -511,7 +511,7 @@ class TrickplayService:
         self._load_thread.start()
 
     def _publish_sprite_properties(self, lookup) -> None:
-        sync_trickplay_property(PROP_TILE, lookup.tile_path)
+        """Publish thumb grid indices for skin/debug."""
         sync_trickplay_property(PROP_COL, str(lookup.col))
         sync_trickplay_property(PROP_ROW, str(lookup.row))
         sync_trickplay_property(PROP_THUMB_W, str(lookup.thumb_width))
@@ -560,7 +560,10 @@ class TrickplayService:
 
         duration_seconds = self._effective_duration_seconds()
         self.preview.show_preview(
-            lookup, duration_seconds, self.player, eager=seeking
+            lookup,
+            duration_seconds,
+            self.player,
+            eager=seeking,
         )
         prefetch_settings = read_prefetch_settings()
         runtime = read_runtime_settings()
@@ -576,6 +579,29 @@ class TrickplayService:
                 debug=runtime.debug_logging,
             )
         return True
+
+    def _maybe_playback_prefetch(
+        self,
+        play_seconds: int,
+        *,
+        high_priority: bool = False,
+        force: bool = False,
+    ) -> None:
+        if self.resolution is None or not self.resolution.is_usable:
+            return
+        prefetch_settings = read_prefetch_settings()
+        if not prefetch_settings.enabled or not prefetch_settings.during_playback:
+            return
+        runtime = read_runtime_settings()
+        self.prefetch.schedule_playhead_follow(
+            self.resolution,
+            play_seconds,
+            self._interval_ms(),
+            settings=prefetch_settings,
+            debug=runtime.debug_logging,
+            high_priority=high_priority,
+            force=force,
+        )
 
     def _maybe_idle_prefetch(self, play_seconds: int) -> None:
         prefetch_settings = read_prefetch_settings()
@@ -671,6 +697,9 @@ class TrickplayService:
         self.preview_active = True
         self.was_seeking = True
         self._set_preview_visible(True)
+        self._maybe_playback_prefetch(
+            target_second, high_priority=True, force=True
+        )
 
     def _seek_target_seconds(self, play_seconds: int) -> int:
         seek_seconds = _parse_time_label(xbmc.getInfoLabel("Player.SeekTime"))
@@ -908,6 +937,8 @@ class TrickplayService:
             self._had_seek_ui = False
             if self.preview_active or self.last_preview_second >= 0 or self.preview_visible:
                 self._clear_preview_session()
+            if not scrubbing:
+                self._maybe_playback_prefetch(play_seconds)
             self._next_poll_ms = self._adaptive_poll_ms()
             return
 
@@ -947,6 +978,8 @@ class TrickplayService:
                     if self.last_preview_second >= 0
                     else play_seconds
                 )
+                if not scrubbing:
+                    self._maybe_playback_prefetch(play_seconds)
                 self._set_preview_visible(True)
             self._next_poll_ms = self._adaptive_poll_ms()
             return

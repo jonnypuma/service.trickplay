@@ -316,7 +316,7 @@ def resync_preview_to_seekbar(*, force: bool = False) -> None:
 
 
 class PreviewDialogController:
-    """Crop trickplay thumbs and publish DialogSeekBar skin properties."""
+    """Publish DialogSeekBar skin properties for trickplay preview (atlas or crop)."""
 
     def __init__(self, addon_path: str) -> None:
         self.addon_path = addon_path

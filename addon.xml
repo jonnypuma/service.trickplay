@@ -2,7 +2,7 @@
 
 <addon id="service.trickplay"
        name="Trickplay Preview"
-       version="5.2.0"
+       version="6.0.3"
        provider-name="Skippy-McSkipface">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>

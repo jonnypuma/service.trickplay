@@ -105,6 +105,14 @@ msgctxt "#32024"
 msgid "Pre-crop neighbouring trickplay cells in the background so scrubbing feels faster."
 msgstr "Pre-crop neighbouring trickplay cells in the background so scrubbing feels faster."
 
+msgctxt "#32200"
+msgid "Prefetch during playback"
+msgstr "Prefetch during playback"
+
+msgctxt "#32201"
+msgid "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
+msgstr "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
+
 msgctxt "#32025"
 msgid "Prefetch on playback start"
 msgstr "Prefetch on playback start"
@@ -134,8 +142,8 @@ msgid "Prefetch radius (indices)"
 msgstr "Prefetch radius (indices)"
 
 msgctxt "#32032"
-msgid "How many trickplay indices to pre-crop ahead/behind the current preview. Higher uses more CPU and disk."
-msgstr "How many trickplay indices to pre-crop ahead/behind the current preview. Higher uses more CPU and disk."
+msgid "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
+msgstr "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
 
 msgctxt "#32033"
 msgid "Prefetch queue size"
@@ -772,3 +780,19 @@ msgstr "Restore skin snippet (all skins)"
 msgctxt "#32195"
 msgid "Restore DialogSeekBar.xml from DialogSeekBar.xml.bak for every installed skin that has a backup. Reloads the active skin when done."
 msgstr "Restore DialogSeekBar.xml from DialogSeekBar.xml.bak for every installed skin that has a backup. Reloads the active skin when done."
+
+msgctxt "#32196"
+msgid "Sprite atlas preview"
+msgstr "Sprite atlas preview"
+
+msgctxt "#32197"
+msgid "Show preview by clipping the Jellyfin sprite sheet in the skin (fast scrubbing, no per-cell crop). Turn off to use the older Pillow crop path (Trickplay.PreviewImage). Re-install the skin snippet after changing this."
+msgstr "Show preview by clipping the Jellyfin sprite sheet in the skin (fast scrubbing, no per-cell crop). Turn off to use the older Pillow crop path (Trickplay.PreviewImage). Re-install the skin snippet after changing this."
+
+msgctxt "#32198"
+msgid "Sprite atlas crop fallback"
+msgstr "Sprite atlas crop fallback"
+
+msgctxt "#32199"
+msgid "When sprite atlas preview is on, also crop PreviewImage as a fallback (works with older skin snippets and when Kodi cannot clip the sprite sheet). Turn off to use atlas-only display."
+msgstr "When sprite atlas preview is on, also crop PreviewImage as a fallback (works with older skin snippets and when Kodi cannot clip the sprite sheet). Turn off to use atlas-only display."
