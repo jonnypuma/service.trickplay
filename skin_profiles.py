@@ -92,6 +92,8 @@ ESTUARY_MODV2 = SkinProfile(
 
 _AF3_OSD_WINDOW_IDS = tuple(list(range(1140, 1150)) + [1152, 1153])
 
+_AF2_OSD_WINDOW_IDS = tuple(range(1140, 1150))
+
 ARCTIC_FUSE_3 = SkinProfile(
     key="arctic_fuse_3",
     label="Arctic Fuse 3",
@@ -99,6 +101,19 @@ ARCTIC_FUSE_3 = SkinProfile(
     seekbar_focus_id=401,
     osd_button_ids=tuple(range(6001, 6010)) + tuple(range(6101, 6110)),
     full_osd_window_ids=_AF3_OSD_WINDOW_IDS,
+    full_osd_extra_visibility=(
+        "Window.IsVisible(videobookmarks) | Window.IsVisible(pvrosdguide) | "
+        "Window.IsVisible(pvrosdchannels)"
+    ),
+)
+
+ARCTIC_FUSE_2 = SkinProfile(
+    key="arctic_fuse_2",
+    label="Arctic Fuse 2",
+    seekbar=(240, 772, 1440),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(6001, 6010)) + tuple(range(6101, 6110)),
+    full_osd_window_ids=_AF2_OSD_WINDOW_IDS,
     full_osd_extra_visibility=(
         "Window.IsVisible(videobookmarks) | Window.IsVisible(pvrosdguide) | "
         "Window.IsVisible(pvrosdchannels)"
@@ -141,15 +156,67 @@ ARCTIC_HORIZON = SkinProfile(
     osd_button_ids=tuple(range(11, 20)),
 )
 
+# jurialmunkey/skin.arctic.horizon.2 — view_pad ~20, progress bar (20, 720, 1840).
+ARCTIC_HORIZON_2 = SkinProfile(
+    key="arctic_horizon_2",
+    label="Arctic Horizon 2",
+    seekbar=(20, 720, 1840),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(11, 20)),
+)
+
+# AH2.1 Arizen fork (skin.arctic.horizon.2.1.arizen) — same bar geometry as AH2 for now.
+ARCTIC_HORIZON_2_ARIZEN = SkinProfile(
+    key="arctic_horizon_2_1_arizen",
+    label="Arctic Horizon 2.1 Arizen",
+    seekbar=(20, 720, 1840),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(11, 20)),
+)
+
+# DenDyGH/skin.arctic.zephyr.2.resurrection.mod — same bar geometry as Arctic Zephyr.
+ARCTIC_ZEPHYR_2_RESURRECTION = SkinProfile(
+    key="arctic_zephyr_2_resurrection",
+    label="Arctic Zephyr 2 Resurrection",
+    seekbar=(60, 1060, 1800),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(11, 20)),
+)
+
+# Nessus85100/skin.bello — bottom seek bar (dynamic placement; geometry approximate).
+BELLO = SkinProfile(
+    key="bello",
+    label="Bello",
+    seekbar=(370, 980, 1180),
+    seekbar_focus_id=401,
+    osd_button_group_id=200,
+)
+
+# matke-84/skin.bingie — Bingie OSD bar (384, 957, 1152); classic OSD (525, 934, 700).
+BINGIE = SkinProfile(
+    key="bingie",
+    label="Bingie",
+    seekbar=(384, 957, 1152),
+    seekbar_wide=(525, 934, 700),
+    seekbar_focus_id=401,
+    osd_button_group_id=200,
+)
+
 DEFAULT_PROFILE = ESTUARY_MODV2
 
 PROFILES_BY_KEY: dict[str, SkinProfile] = {
     ESTUARY_MODV2.key: ESTUARY_MODV2,
     ARCTIC_FUSE_3.key: ARCTIC_FUSE_3,
+    ARCTIC_FUSE_2.key: ARCTIC_FUSE_2,
     ESTUARY.key: ESTUARY,
     AEON_NOX_SILVO.key: AEON_NOX_SILVO,
     ARCTIC_ZEPHYR.key: ARCTIC_ZEPHYR,
+    ARCTIC_ZEPHYR_2_RESURRECTION.key: ARCTIC_ZEPHYR_2_RESURRECTION,
     ARCTIC_HORIZON.key: ARCTIC_HORIZON,
+    ARCTIC_HORIZON_2.key: ARCTIC_HORIZON_2,
+    ARCTIC_HORIZON_2_ARIZEN.key: ARCTIC_HORIZON_2_ARIZEN,
+    BELLO.key: BELLO,
+    BINGIE.key: BINGIE,
 }
 
 PROFILES_BY_SKIN_ID: dict[str, SkinProfile] = {
@@ -157,23 +224,38 @@ PROFILES_BY_SKIN_ID: dict[str, SkinProfile] = {
     "skin.estuary.mod": ESTUARY_MODV2,
     "skin.estuary": ESTUARY,
     "skin.arctic.fuse.3": ARCTIC_FUSE_3,
+    "skin.arctic.fuse.2": ARCTIC_FUSE_2,
     "skin.arctic.fuse": ARCTIC_FUSE_3,
     "skin.aeon.nox.silvo": AEON_NOX_SILVO,
     "skin.aeon.nox": AEON_NOX_SILVO,
+    "skin.arctic.zephyr.2.resurrection.mod": ARCTIC_ZEPHYR_2_RESURRECTION,
     "skin.arctic.zephyr": ARCTIC_ZEPHYR,
-    "skin.arctic.zephyr.2": ARCTIC_ZEPHYR,
+    "skin.arctic.zephyr.2": ARCTIC_ZEPHYR_2_RESURRECTION,
+    "skin.arctic.horizon.2.1.arizen": ARCTIC_HORIZON_2_ARIZEN,
+    "skin.arctic.horizon.2": ARCTIC_HORIZON_2,
     "skin.arctic.horizon": ARCTIC_HORIZON,
-    "skin.arctic.horizon.2": ARCTIC_HORIZON,
+    "skin.bello.10": BELLO,
+    "skin.bello.9": BELLO,
+    "skin.bello": BELLO,
+    "skin.bingie": BINGIE,
 }
 
 # Substrings matched against normalized skin ids (longest wins via ordered list).
 SKIN_ID_MARKERS: tuple[tuple[str, SkinProfile], ...] = (
+    ("arctic.zephyr.2.resurrection", ARCTIC_ZEPHYR_2_RESURRECTION),
+    ("arctic.horizon.2.1.arizen", ARCTIC_HORIZON_2_ARIZEN),
+    ("arctic.horizon.2", ARCTIC_HORIZON_2),
     ("arctic.fuse.3", ARCTIC_FUSE_3),
+    ("arctic.fuse.2", ARCTIC_FUSE_2),
     ("arctic.fuse", ARCTIC_FUSE_3),
     ("arctic.zephyr", ARCTIC_ZEPHYR),
     ("arctic.horizon", ARCTIC_HORIZON),
     ("aeon.nox.silvo", AEON_NOX_SILVO),
     ("aeon.nox", AEON_NOX_SILVO),
+    ("bello.10", BELLO),
+    ("bello.9", BELLO),
+    ("bello", BELLO),
+    ("bingie", BINGIE),
     ("estuary.modv2", ESTUARY_MODV2),
     ("estuary.mod", ESTUARY_MODV2),
     ("estuary", ESTUARY),
@@ -328,13 +410,19 @@ class SkinSnippetSpec:
 # Only entries listed with replace use full-file replace; unknown skins use universal merge.
 SKIN_SNIPPET_REGISTRY: tuple[tuple[str, str, str], ...] = (
     ("arctic.fuse.3", "DialogSeekBar-skin.arctic.fuse.3.xml", "replace"),
+    ("arctic.fuse.2", "DialogSeekBar-skin.arctic.fuse.2.xml", "replace"),
     ("arctic.fuse", "DialogSeekBar-skin.arctic.fuse.3.xml", "replace"),
     ("estuary.modv2", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
     ("estuary.mod", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
+    ("arctic.zephyr.2.resurrection", "DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml", "merge"),
+    ("arctic.horizon.2.1.arizen", "DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml", "merge"),
+    ("arctic.horizon.2", "DialogSeekBar-skin.arctic.horizon.2.xml", "merge"),
     ("aeon.nox.silvo", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
     ("aeon.nox", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
     ("arctic.zephyr", "DialogSeekBar-skin.arctic.zephyr.xml", "merge"),
     ("arctic.horizon", "DialogSeekBar-skin.arctic.horizon.xml", "merge"),
+    ("bello", "DialogSeekBar-skin.bello.xml", "merge"),
+    ("bingie", "DialogSeekBar-skin.bingie.xml", "merge"),
     ("estuary", "DialogSeekBar-skin.estuary.xml", "merge"),
 )
 UNIVERSAL_SNIPPET_FILENAME = "DialogSeekBar-universal-dynamic.xml"

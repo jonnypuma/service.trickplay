@@ -2,25 +2,13 @@
 
 <!--
 
-  Universal trickplay preview overlay (service.trickplay).
-
-
+  Bello (skin.bello, skin.bello.9, skin.bello.10). Skin profile: Bello.
 
   Copy group 94090 into your skin's DialogSeekBar.xml as a top-level control
-
   (not nested inside the seek bar group).
 
-
-
   Position and size come from window properties computed by the service.
-
   Preview image: Trickplay.PreviewImage (per-cell Pillow crop).
-
-
-
-  Skins with dedicated slot-slide snippets (Estuary Mod v2, Arctic Fuse 3)
-
-  may use those instead; this overlay works for all other profiles.
 
 -->
 

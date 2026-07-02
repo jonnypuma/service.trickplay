@@ -16,10 +16,16 @@ The reference snippets in this addon are:
 |---|---|---|
 | Estuary Mod v2 | `resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml` | Slot slides |
 | Arctic Fuse 3 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.3.xml` | Slot slides + full OSD center group |
+| Arctic Fuse 2 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.2.xml` | Slot slides + full OSD center group |
 | Estuary (stock) | `resources/skin-snippet/DialogSeekBar-skin.estuary.xml` | Dynamic `$INFO` placement |
 | Aeon Nox SiLVO | `resources/skin-snippet/DialogSeekBar-skin.aeon.nox.silvo.xml` | Dynamic placement |
 | Arctic Zephyr | `resources/skin-snippet/DialogSeekBar-skin.arctic.zephyr.xml` | Dynamic placement |
+| Arctic Zephyr 2 Resurrection | `resources/skin-snippet/DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml` | Dynamic placement |
 | Arctic Horizon | `resources/skin-snippet/DialogSeekBar-skin.arctic.horizon.xml` | Dynamic placement |
+| Arctic Horizon 2 | `resources/skin-snippet/DialogSeekBar-skin.arctic.horizon.2.xml` | Dynamic placement |
+| Arctic Horizon 2.1 Arizen | `resources/skin-snippet/DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml` | Dynamic placement |
+| Bello | `resources/skin-snippet/DialogSeekBar-skin.bello.xml` | Dynamic placement |
+| Bingie | `resources/skin-snippet/DialogSeekBar-skin.bingie.xml` | Dynamic placement |
 | Any other skin | `resources/skin-snippet/DialogSeekBar-universal-dynamic.xml` | Pick closest skin profile in settings |
 
 Those filenames are deliberate: they are **not** dropped into Kodi as-is. Either:
@@ -37,12 +43,18 @@ The service detects your active Kodi skin (`xbmc.gui` addon id) and selects seek
 |---|---|---|
 | Estuary Mod v2 | `skin.estuary.modv2`, `skin.estuary.mod`, … | 460, 990, 1430 (+ wide 30, 990, 1860) |
 | Arctic Fuse 3 | `skin.arctic.fuse.3`, … | 240, 772, 1440 |
+| Arctic Fuse 2 | `skin.arctic.fuse.2`, … | 240, 772, 1440 |
 | Estuary (stock) | `skin.estuary` | 480, 990, 960 |
 | Aeon Nox SiLVO | `skin.aeon.nox.silvo`, `skin.aeon.nox`, … | 0, 1039, 1920 |
 | Arctic Zephyr | `skin.arctic.zephyr`, … | 60, 1060, 1800 |
+| Arctic Zephyr 2 Resurrection | `skin.arctic.zephyr.2.resurrection.mod`, … | 60, 1060, 1800 |
 | Arctic Horizon | `skin.arctic.horizon`, … | 40, 920, 1840 |
+| Arctic Horizon 2 | `skin.arctic.horizon.2`, … | 20, 720, 1840 |
+| Arctic Horizon 2.1 Arizen | `skin.arctic.horizon.2.1.arizen`, … | 20, 720, 1840 |
+| Bello | `skin.bello`, `skin.bello.9`, `skin.bello.10`, … | 370, 980, 1180 |
+| Bingie | `skin.bingie`, … | 384, 957, 1152 (+ wide 525, 934, 700 classic OSD) |
 
-For **Arctic Fuse 3**, the snippet includes preview groups **94090** (overlay root), **94100** (seek-bar aligned, slot slides), and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-install from `DialogSeekBar-skin.arctic.fuse.3.xml` if you installed an older snippet missing **94100** / **94103**.
+For **Arctic Fuse 3** and **Arctic Fuse 2**, the snippet includes preview groups **94090** (overlay root), **94100** (seek-bar aligned, slot slides), and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-install from the matching `DialogSeekBar-skin.arctic.fuse.*.xml` if you installed an older snippet missing **94100** / **94103**.
 
 Unknown skins fall back to Estuary Mod v2 geometry and log a warning. Override manually under **Add-on settings → Skin profile** if auto-detect is wrong.
 

@@ -1,122 +1,56 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
 <!--
+  Bingie (skin.bingie). Skin profile: Bingie.
+  Source: github.com/matke-84/skin.bingie 1080i/IncludesOSD.xml (OSDPanelBingie / SeekBar_Bingie)
 
-  Universal trickplay preview overlay (service.trickplay).
-
-
-
-  Copy group 94090 into your skin's DialogSeekBar.xml as a top-level control
-
-  (not nested inside the seek bar group).
-
-
-
-  Position and size come from window properties computed by the service.
-
-  Preview image: Trickplay.PreviewImage (per-cell Pillow crop).
-
-
-
-  Skins with dedicated slot-slide snippets (Estuary Mod v2, Arctic Fuse 3)
-
-  may use those instead; this overlay works for all other profiles.
-
+  Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
+  Dynamic $INFO placement — seek bar geometry assumes Bingie OSD (UseBingieOSD).
 -->
-
 <window>
-
 	<controls>
-
 		<control type="group" id="94090">
-
 			<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
-
 			<left>$INFO[Window.Property(Trickplay.PreviewLeft)]</left>
-
 			<top>$INFO[Window.Property(Trickplay.PreviewTop)]</top>
-
 			<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
-
 			<height>$INFO[Window.Property(Trickplay.PreviewTotalHeight)]</height>
-
 			<zorder>10</zorder>
-
 			<colordiffuse>$INFO[Window.Property(Trickplay.PreviewColorDiffuse)]</colordiffuse>
-
 			<animation effect="fade" start="0" end="100" time="100">Visible</animation>
-
 			<animation effect="fade" start="100" end="0" time="100">Hidden</animation>
-
 			<control type="image" id="94106">
-
 				<left>0</left>
-
 				<top>0</top>
-
 				<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
-
 				<height>$INFO[Window.Property(Trickplay.PreviewHeight)]</height>
-
 				<aspectratio scalediffuse="false">keep</aspectratio>
-
-				<bordertexture border="2" infill="false">colors/white.png</bordertexture>
-
+				<bordertexture border="2" infill="false">colors/color_white.png</bordertexture>
 				<bordersize>2</bordersize>
-
 				<colordiffuse>B3FFFFFF</colordiffuse>
-
 			</control>
-
 			<control type="image" id="94101">
-
 				<left>0</left>
-
 				<top>0</top>
-
 				<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
-
 				<height>$INFO[Window.Property(Trickplay.PreviewHeight)]</height>
-
 				<aspectratio scalediffuse="false">keep</aspectratio>
-
 				<texture background="true">$INFO[Window.Property(Trickplay.PreviewImage)]</texture>
-
 			</control>
-
 			<control type="label" id="94102">
-
 				<visible>String.IsEqual(Window.Property(Trickplay.ShowTimestamp),true)</visible>
-
 				<left>0</left>
-
 				<top>$INFO[Window.Property(Trickplay.PreviewHeight)]</top>
-
 				<width>$INFO[Window.Property(Trickplay.PreviewWidth)]</width>
-
 				<height>$INFO[Window.Property(Trickplay.PreviewLabelHeight)]</height>
-
-				<font>font13</font>
-
+				<font>Reg28</font>
 				<align>center</align>
-
 				<aligny>center</aligny>
-
 				<label>$INFO[Window.Property(Trickplay.PreviewTime)]</label>
-
 				<textcolor>FFFFFFFF</textcolor>
-
 				<shadowcolor>FF000000</shadowcolor>
-
 				<shadowoffsetx>2</shadowoffsetx>
-
 				<shadowoffsety>2</shadowoffsety>
-
 			</control>
-
 		</control>
-
 	</controls>
-
 </window>
-

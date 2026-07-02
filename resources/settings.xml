@@ -326,6 +326,8 @@
 
                             <option label="32018">arctic_fuse_3</option>
 
+                            <option label="32202">arctic_fuse_2</option>
+
                             <option label="32140">estuary</option>
 
                             <option label="32141">aeon_nox_silvo</option>
@@ -333,6 +335,16 @@
                             <option label="32142">arctic_zephyr</option>
 
                             <option label="32143">arctic_horizon</option>
+
+                            <option label="32203">arctic_horizon_2</option>
+
+                            <option label="32206">arctic_horizon_2_1_arizen</option>
+
+                            <option label="32204">arctic_zephyr_2_resurrection</option>
+
+                            <option label="32205">bello</option>
+
+                            <option label="32207">bingie</option>
 
                         </options>
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.4] - 2026-05-22
+
+### Added
+
+- **Skin snippets** for Arctic Fuse 2, Arctic Horizon 2, Arctic Horizon 2.1 Arizen, Arctic Zephyr 2 Resurrection, Bello, and Bingie — each with matching skin profile auto-detection and settings override.
+- **DialogSeekBar** install targets: `DialogSeekBar-skin.arctic.fuse.2.xml` (replace, slot slides), `DialogSeekBar-skin.arctic.horizon.2.xml`, `DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml`, `DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml`, `DialogSeekBar-skin.bello.xml`, and `DialogSeekBar-skin.bingie.xml` (merge overlays).
+
+### Changed
+
+- **Arctic Horizon 2.1 Arizen** — separate snippet and skin profile from Arctic Horizon 2 (no longer shares `DialogSeekBar-skin.arctic.horizon.2.xml`).
+
 ## [6.0.3] - 2026-06-29
 
 ### Added
