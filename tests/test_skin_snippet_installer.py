@@ -18,11 +18,16 @@ sys.modules["xbmc"].LOGINFO = 1
 sys.modules["xbmc"].LOGWARNING = 2
 
 from skin_snippet_installer import (  # noqa: E402
+    AH2_VIDEO_OSD_SLIDE_MARKER,
+    NOX_OSD_SLIDE_MARKER,
     OVERLAY_CONTROL_ID,
     extract_overlay_xml_text,
     find_control_block_span,
     insert_overlay_before_controls_close,
+    overlay_already_installed,
+    overlay_needs_refresh,
     remove_control_block,
+    seekbar_has_host_controls,
 )
 
 
@@ -95,6 +100,235 @@ class SkinSnippetMergeTests(unittest.TestCase):
             remove_control_block(SAMPLE_SEEKBAR, OVERLAY_CONTROL_ID),
             SAMPLE_SEEKBAR,
         )
+
+    def test_zephyr_rounded_snippet_uses_home_properties(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.arctic.zephyr.rounded.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
+        self.assertIn('id="94100"', overlay)
+        self.assertIn("Window.IsVisible(videoosd)", overlay)
+        self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
+
+    def test_bello_snippet_uses_home_properties_and_fixed_position(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "VideoFullScreen-skin.bello.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
+        self.assertIn("<top>560</top>", overlay)
+        self.assertIn("<left>478</left>", overlay)
+
+    def test_overlay_needs_refresh_detects_stale_bello(self) -> None:
+        stale = SAMPLE_SEEKBAR.replace(
+            "</controls>",
+            '\t\t<control type="group" id="94090">\n'
+            '\t\t\t<visible>Window.Property(Trickplay.PreviewVisible)</visible>\n'
+            "\t\t</control>\n\t</controls>",
+        )
+        path = os.path.join(self._temp_dir(), "VideoFullScreen.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(stale)
+        self.assertTrue(overlay_already_installed(path))
+        self.assertTrue(
+            overlay_needs_refresh(path, "VideoFullScreen-skin.bello.xml")
+        )
+
+    def test_overlay_needs_refresh_false_when_bello_snippet_present(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "VideoFullScreen-skin.bello.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        merged = insert_overlay_before_controls_close(SAMPLE_SEEKBAR, overlay)
+        path = os.path.join(self._temp_dir(), "VideoFullScreen.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(merged)
+        self.assertFalse(
+            overlay_needs_refresh(path, "VideoFullScreen-skin.bello.xml")
+        )
+
+    def test_bingie_snippet_uses_home_properties_and_slot_slides(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.bingie.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
+        self.assertIn('id="94100"', overlay)
+        self.assertIn("<left>384</left>", overlay)
+        self.assertIn("<top>570</top>", overlay)
+        self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
+
+    def test_overlay_needs_refresh_detects_legacy_window_property_overlay(self) -> None:
+        stale = SAMPLE_SEEKBAR.replace(
+            "</controls>",
+            '\t\t<control type="group" id="94090">\n'
+            '\t\t\t<visible>Window.Property(Trickplay.PreviewVisible)</visible>\n'
+            "\t\t</control>\n\t</controls>",
+        )
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(stale)
+        self.assertTrue(overlay_already_installed(path))
+        self.assertTrue(
+            overlay_needs_refresh(path, "DialogSeekBar-skin.bingie.xml")
+        )
+
+    def test_zephyr_2_resurrection_snippet_raised_above_seekbar(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("<top>740</top>", overlay)
+        self.assertNotIn("<top>820</top>", overlay)
+
+    def test_aeon_nox_silvo_snippet_uses_home_properties_and_slot_slides(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.aeon.nox.silvo.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
+        self.assertIn('id="94100"', overlay)
+        self.assertIn("<top>799</top>", overlay)
+        self.assertIn(NOX_OSD_SLIDE_MARKER, overlay)
+        self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
+
+    def test_arctic_zephyr_snippet_uses_home_properties_and_slot_slides(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.arctic.zephyr.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
+        self.assertIn('id="94100"', overlay)
+        self.assertIn("<top>820</top>", overlay)
+        self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
+
+    def test_arctic_horizon_snippet_uses_home_properties_and_slot_slides(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.arctic.horizon.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
+        self.assertIn('id="94100"', overlay)
+        self.assertIn("<top>680</top>", overlay)
+        self.assertIn(AH2_VIDEO_OSD_SLIDE_MARKER, overlay)
+
+    def test_horizon_2_snippet_uses_home_properties_and_slot_slides(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.arctic.horizon.2.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
+        self.assertIn('id="94100"', overlay)
+        self.assertIn("<top>480</top>", overlay)
+        self.assertIn(AH2_VIDEO_OSD_SLIDE_MARKER, overlay)
+        self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
+
+    def test_overlay_needs_refresh_detects_stale_horizon_2(self) -> None:
+        stale = SAMPLE_SEEKBAR.replace(
+            "</controls>",
+            '\t\t<control type="group" id="94090">\n'
+            '\t\t\t<visible>Window.Property(Trickplay.PreviewVisible)</visible>\n'
+            "\t\t</control>\n\t</controls>",
+        )
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(stale)
+        self.assertTrue(overlay_already_installed(path))
+        self.assertTrue(
+            overlay_needs_refresh(
+                path, "DialogSeekBar-skin.arctic.horizon.2.xml"
+            )
+        )
+
+    def test_overlay_needs_refresh_detects_stale_zephyr_rounded(self) -> None:
+        stale = SAMPLE_SEEKBAR.replace(
+            "</controls>",
+            '\t\t<control type="group" id="94090">\n'
+            '\t\t\t<visible>Window.Property(Trickplay.PreviewVisible)</visible>\n'
+            "\t\t</control>\n\t</controls>",
+        )
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(stale)
+        self.assertTrue(overlay_already_installed(path))
+        self.assertTrue(
+            overlay_needs_refresh(
+                path, "DialogSeekBar-skin.arctic.zephyr.rounded.xml"
+            )
+        )
+
+    def test_overlay_needs_refresh_false_when_home_properties_present(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.arctic.zephyr.rounded.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        merged = insert_overlay_before_controls_close(SAMPLE_SEEKBAR, overlay)
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(merged)
+        self.assertFalse(
+            overlay_needs_refresh(
+                path, "DialogSeekBar-skin.arctic.zephyr.rounded.xml"
+            )
+        )
+
+    def test_seekbar_has_host_controls(self) -> None:
+        self.assertTrue(seekbar_has_host_controls(SAMPLE_SEEKBAR))
+        self.assertFalse(
+            seekbar_has_host_controls(
+                """<?xml version="1.0" encoding="UTF-8"?>
+<window><controls></controls></window>"""
+            )
+        )
+        with_overlay = insert_overlay_before_controls_close(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<window><controls></controls></window>""",
+            extract_overlay_xml_text(
+                os.path.join(
+                    ROOT,
+                    "resources",
+                    "skin-snippet",
+                    "DialogSeekBar-universal-dynamic.xml",
+                )
+            ),
+        )
+        self.assertFalse(seekbar_has_host_controls(with_overlay))
+
+    def _temp_dir(self) -> str:
+        import tempfile
+
+        return tempfile.mkdtemp()
 
 
 if __name__ == "__main__":

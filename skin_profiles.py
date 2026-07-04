@@ -35,6 +35,17 @@ class SkinProfile:
     osd_button_ids: tuple[int, ...] = ()
     full_osd_window_ids: tuple[int, ...] = ()
     full_osd_extra_visibility: str = ""
+    fullscreen_seek_visibility: str = ""
+
+    def fullscreen_seek_ui_visible(self) -> bool:
+        if not self.fullscreen_seek_visibility:
+            return False
+        try:
+            import xbmc
+        except ImportError:  # pragma: no cover
+            return False
+
+        return xbmc.getCondVisibility(self.fullscreen_seek_visibility)
 
     def full_osd_visibility_parts(self) -> list[str]:
         parts = [
@@ -79,6 +90,10 @@ class SkinProfile:
             )
             return xbmc.getCondVisibility(f"[{expr}]")
         return False
+
+    def clears_preview_on_osd_handoff(self) -> bool:
+        """True when opening full video OSD replaces the compact seek bar (Fuse-style)."""
+        return self.key in ("arctic_fuse_2", "arctic_fuse_3")
 
 
 ESTUARY_MODV2 = SkinProfile(
@@ -174,22 +189,40 @@ ARCTIC_HORIZON_2_ARIZEN = SkinProfile(
     osd_button_ids=tuple(range(11, 20)),
 )
 
-# DenDyGH/skin.arctic.zephyr.2.resurrection.mod — same bar geometry as Arctic Zephyr.
-ARCTIC_ZEPHYR_2_RESURRECTION = SkinProfile(
-    key="arctic_zephyr_2_resurrection",
-    label="Arctic Zephyr 2 Resurrection",
-    seekbar=(60, 1060, 1800),
+# Nanomani/skin.arctic.zephyr.rounded — OSD_SidePad 130, progress bar @ bottom.
+ARCTIC_ZEPHYR_ROUNDED = SkinProfile(
+    key="arctic_zephyr_rounded",
+    label="Arctic Zephyr Rounded",
+    seekbar=(130, 962, 1660),
     seekbar_focus_id=401,
     osd_button_ids=tuple(range(11, 20)),
 )
 
-# Nessus85100/skin.bello — bottom seek bar (dynamic placement; geometry approximate).
+# DenDyGH/skin.arctic.zephyr.2.resurrection.mod — progress bar @ bottom 100; preview above OSD_Progress_Text.
+ARCTIC_ZEPHYR_2_RESURRECTION = SkinProfile(
+    key="arctic_zephyr_2_resurrection",
+    label="Arctic Zephyr 2 Resurrection",
+    seekbar=(60, 980, 1800),
+    seekbar_focus_id=401,
+    osd_button_ids=tuple(range(11, 20)),
+)
+
+# Nessus85100/skin.bello — center seek OSD in VideoFullScreen.xml @ 720p.
+_BELLO_FULLSCREEN_SEEK = (
+    "Window.IsActive(FullScreenVideo) + "
+    "[Player.Seeking | Player.Forwarding | Player.Rewinding | "
+    "Player.HasPerformedSeek(1) | Player.Paused | Player.Caching] + "
+    "![String.IsEqual(Skin.String(DialogSeekBarStyle),2) | "
+    "String.IsEqual(Skin.String(DialogSeekBarStyle),3)]"
+)
+
 BELLO = SkinProfile(
     key="bello",
     label="Bello",
-    seekbar=(370, 980, 1180),
+    seekbar=(478, 560, 320),
     seekbar_focus_id=401,
     osd_button_group_id=200,
+    fullscreen_seek_visibility=_BELLO_FULLSCREEN_SEEK,
 )
 
 # matke-84/skin.bingie — Bingie OSD bar (384, 957, 1152); classic OSD (525, 934, 700).
@@ -211,6 +244,7 @@ PROFILES_BY_KEY: dict[str, SkinProfile] = {
     ESTUARY.key: ESTUARY,
     AEON_NOX_SILVO.key: AEON_NOX_SILVO,
     ARCTIC_ZEPHYR.key: ARCTIC_ZEPHYR,
+    ARCTIC_ZEPHYR_ROUNDED.key: ARCTIC_ZEPHYR_ROUNDED,
     ARCTIC_ZEPHYR_2_RESURRECTION.key: ARCTIC_ZEPHYR_2_RESURRECTION,
     ARCTIC_HORIZON.key: ARCTIC_HORIZON,
     ARCTIC_HORIZON_2.key: ARCTIC_HORIZON_2,
@@ -229,6 +263,7 @@ PROFILES_BY_SKIN_ID: dict[str, SkinProfile] = {
     "skin.aeon.nox.silvo": AEON_NOX_SILVO,
     "skin.aeon.nox": AEON_NOX_SILVO,
     "skin.arctic.zephyr.2.resurrection.mod": ARCTIC_ZEPHYR_2_RESURRECTION,
+    "skin.arctic.zephyr.rounded": ARCTIC_ZEPHYR_ROUNDED,
     "skin.arctic.zephyr": ARCTIC_ZEPHYR,
     "skin.arctic.zephyr.2": ARCTIC_ZEPHYR_2_RESURRECTION,
     "skin.arctic.horizon.2.1.arizen": ARCTIC_HORIZON_2_ARIZEN,
@@ -243,6 +278,7 @@ PROFILES_BY_SKIN_ID: dict[str, SkinProfile] = {
 # Substrings matched against normalized skin ids (longest wins via ordered list).
 SKIN_ID_MARKERS: tuple[tuple[str, SkinProfile], ...] = (
     ("arctic.zephyr.2.resurrection", ARCTIC_ZEPHYR_2_RESURRECTION),
+    ("arctic.zephyr.rounded", ARCTIC_ZEPHYR_ROUNDED),
     ("arctic.horizon.2.1.arizen", ARCTIC_HORIZON_2_ARIZEN),
     ("arctic.horizon.2", ARCTIC_HORIZON_2),
     ("arctic.fuse.3", ARCTIC_FUSE_3),
@@ -349,9 +385,15 @@ def profile_for_skin_id(skin_id: str, override: str = PROFILE_AUTO) -> SkinProfi
     if normalized in PROFILES_BY_SKIN_ID:
         return PROFILES_BY_SKIN_ID[normalized]
 
+    best_id = ""
+    best_profile: SkinProfile | None = None
     for known_id, profile in PROFILES_BY_SKIN_ID.items():
         if normalized.startswith(known_id) or known_id.startswith(normalized):
-            return profile
+            if len(known_id) > len(best_id):
+                best_id = known_id
+                best_profile = profile
+    if best_profile is not None:
+        return best_profile
 
     for marker, profile in SKIN_ID_MARKERS:
         if marker in normalized:
@@ -399,11 +441,12 @@ def setting_skin_profile_override() -> str:
 
 @dataclass(frozen=True)
 class SkinSnippetSpec:
-    """Trickplay DialogSeekBar snippet file and install mode for a skin."""
+    """Trickplay skin XML snippet file, install mode, and merge target."""
 
     filename: str
     mode: str  # "merge" or "replace"
     known: bool = True
+    target_xml: str = "DialogSeekBar.xml"
 
 
 # Longest marker first (substring match against normalized skin id).
@@ -415,13 +458,14 @@ SKIN_SNIPPET_REGISTRY: tuple[tuple[str, str, str], ...] = (
     ("estuary.modv2", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
     ("estuary.mod", "DialogSeekBar-skin.estuary.modv2.xml", "replace"),
     ("arctic.zephyr.2.resurrection", "DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml", "merge"),
+    ("arctic.zephyr.rounded", "DialogSeekBar-skin.arctic.zephyr.rounded.xml", "merge"),
     ("arctic.horizon.2.1.arizen", "DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml", "merge"),
     ("arctic.horizon.2", "DialogSeekBar-skin.arctic.horizon.2.xml", "merge"),
     ("aeon.nox.silvo", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
     ("aeon.nox", "DialogSeekBar-skin.aeon.nox.silvo.xml", "merge"),
     ("arctic.zephyr", "DialogSeekBar-skin.arctic.zephyr.xml", "merge"),
     ("arctic.horizon", "DialogSeekBar-skin.arctic.horizon.xml", "merge"),
-    ("bello", "DialogSeekBar-skin.bello.xml", "merge"),
+    ("bello", "VideoFullScreen-skin.bello.xml", "merge", "VideoFullScreen.xml"),
     ("bingie", "DialogSeekBar-skin.bingie.xml", "merge"),
     ("estuary", "DialogSeekBar-skin.estuary.xml", "merge"),
 )
@@ -430,9 +474,18 @@ UNIVERSAL_SNIPPET_FILENAME = "DialogSeekBar-universal-dynamic.xml"
 
 def snippet_spec_for_skin_id(skin_id: str) -> SkinSnippetSpec:
     normalized = normalize_skin_id(skin_id)
-    for marker, filename, mode in SKIN_SNIPPET_REGISTRY:
+    for entry in SKIN_SNIPPET_REGISTRY:
+        marker = entry[0]
+        filename = entry[1]
+        mode = entry[2]
+        target_xml = entry[3] if len(entry) > 3 else "DialogSeekBar.xml"
         if marker in normalized:
-            return SkinSnippetSpec(filename=filename, mode=mode, known=True)
+            return SkinSnippetSpec(
+                filename=filename,
+                mode=mode,
+                known=True,
+                target_xml=target_xml,
+            )
     return SkinSnippetSpec(
         filename=UNIVERSAL_SNIPPET_FILENAME,
         mode="merge",

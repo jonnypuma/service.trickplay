@@ -189,6 +189,7 @@ class ThumbPrefetch:
         settings = settings or read_prefetch_settings()
         if not settings.enabled or not settings.during_playback or not resolution.is_usable:
             return
+        lookup = lookup_thumbnail(resolution, play_seconds, interval_ms)
         if lookup is None:
             return
 

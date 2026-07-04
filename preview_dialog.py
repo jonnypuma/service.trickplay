@@ -129,11 +129,17 @@ def format_preview_time(seconds: int) -> str:
 
 def _thumb_texture_path(thumb_path: str) -> str:
     if thumb_path.startswith(("special://", "vfs://", "zip://")):
-        return thumb_path
+        return thumb_path.replace("\\", "/")
     local = xbmcvfs.translatePath(thumb_path)
-    if local and xbmcvfs.exists(local):
-        return local
-    return thumb_path
+    if local:
+        local = local.replace("\\", "/")
+        profile = xbmcvfs.translatePath("special://profile/").replace("\\", "/")
+        if profile and local.lower().startswith(profile.lower()):
+            rel = local[len(profile) :].lstrip("/")
+            return f"special://profile/{rel}"
+        if xbmcvfs.exists(local):
+            return local
+    return thumb_path.replace("\\", "/")
 
 
 def _seekbar_window() -> xbmcgui.Window | None:
@@ -450,7 +456,13 @@ class PreviewDialogController:
             self._publish_placement(lookup, duration_seconds, player, layout)
             self._last_placement_key = placement_key
         if image_path:
-            _set_property(PROP_PREVIEW_IMAGE, _thumb_texture_path(image_path))
+            texture = _thumb_texture_path(image_path)
+            _set_property(PROP_PREVIEW_IMAGE, texture)
+            if _debug_logging():
+                xbmc.log(
+                    f"[service.trickplay] Preview texture: {texture}",
+                    xbmc.LOGINFO,
+                )
         else:
             _clear_property(PROP_PREVIEW_IMAGE)
         if _dialog_seekbar_visible():

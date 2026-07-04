@@ -137,6 +137,18 @@ msgctxt "#32207"
 msgid "Bingie"
 msgstr "Bingie"
 
+msgctxt "#32208"
+msgid "Arctic Zephyr Rounded"
+msgstr "Arctic Zephyr Rounded"
+
+msgctxt "#32209"
+msgid "DialogSeekBar.xml is empty in this skin (seek bar is elsewhere); skipped"
+msgstr "DialogSeekBar.xml is empty in this skin (seek bar is elsewhere); skipped"
+
+msgctxt "#32210"
+msgid "Skin snippet target XML not found"
+msgstr "Skin snippet target XML not found"
+
 msgctxt "#32025"
 msgid "Prefetch on playback start"
 msgstr "Prefetch on playback start"

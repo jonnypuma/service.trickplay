@@ -639,6 +639,8 @@ def _install_skin_error_message(code: str) -> str:
         "snippet_file_missing": 32167,
         "backup_not_found": 32187,
         "already_installed": 32188,
+        "dialog_seekbar_stub": 32209,
+        "snippet_target_not_found": 32210,
     }
     string_id = mapping.get(code, 32161)
     return _ADDON.getLocalizedString(string_id)
@@ -649,9 +651,13 @@ def _format_skin_outcome_lines(outcomes: list) -> list[str]:
     for item in outcomes:
         if item.skipped:
             rel = os.path.basename(os.path.dirname(item.seekbar_path))
+            if item.message == "dialog_seekbar_stub":
+                detail = _install_skin_error_message("dialog_seekbar_stub")
+            else:
+                detail = _install_skin_error_message("already_installed")
             result_lines.append(
                 f"• {item.skin_name}: .../{rel}/{os.path.basename(item.seekbar_path)} "
-                f"— {_install_skin_error_message('already_installed')}"
+                f"— {detail}"
             )
             continue
         if item.success:
@@ -736,7 +742,7 @@ def run_install_skin_dialog(scope: InstallScope) -> None:
         1
         for plan in plans
         for path_plan in plan.paths
-        if path_plan.writable and not path_plan.already_installed
+        if path_plan.writable and not path_plan.already_installed and not path_plan.stub_seekbar
     )
     title = _ADDON.getLocalizedString(32158)
 

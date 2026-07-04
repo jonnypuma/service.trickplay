@@ -5,12 +5,120 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.8] - 2026-07-04
+
+### Changed
+
+- **Bingie preview position** — lowered 20px (`top` 550 → 570). Re-install the Bingie skin snippet to apply.
+
+## [6.1.7] - 2026-07-04
+
+### Fixed
+
+- **Bingie preview (install + position)** — installer now treats legacy `Window.Property(Trickplay.*)` overlays as stale and reinstalls the Home-property / slot-slide snippet. Preview anchor raised to **top=550** (above the 290px Bingie OSD bottom panel). **Re-install the skin snippet** after upgrading; your `DialogSeekBar.xml` still had the old dynamic overlay.
+
+## [6.1.6] - 2026-07-04
+
+### Fixed
+
+- **Bingie preview** — snippet now uses `Window(Home).Property` bindings, fixed anchor **(384, 717)**, and slot-slide group **94100** (Bingie OSD bar geometry).
+
+### Tested skins
+
+The following skins have been tested with trickplay preview while scrubbing:
+
+- Aeon Nox SiLVO
+- Arctic Fuse 2
+- Arctic Fuse 3
+- Arctic Horizon 2
+- Arctic Zephyr 2 Resurrection
+- Arctic Zephyr Rounded
+- Bingie
+- Estuary Mod v2
+
+## [6.1.5] - 2026-07-04
+
+### Fixed
+
+- **Arctic Zephyr 2 Resurrection preview position** — raised 80px (`top` 820 → 740) so the thumbnail sits above `OSD_Progress_Text` and the progress bar.
+
+## [6.1.4] - 2026-07-04
+
+### Fixed
+
+- **Aeon Nox SiLVO preview** — snippet uses `Window(Home).Property` bindings, fixed anchor **(0, 799)**, slot-slide group **94100**, and **-90px** lift when video OSD is open (matches `DefaultSeekbar`). Preview session is no longer cleared when VideoOSD opens on skins where the seek bar stays visible alongside the OSD.
+
+## [6.1.3] - 2026-07-04
+
+### Fixed
+
+- **Arctic Horizon, Arctic Zephyr, Arctic Zephyr 2 Resurrection previews** — snippets now use `Window(Home).Property` bindings, fixed anchors, and slot-slide group **94100** (same approach as Arctic Horizon 2 / Arctic Zephyr Rounded). Horizon skins include **+80px** compact-seekbar slide; Zephyr / Z2 Resurrection use fixed placement without dynamic `$INFO` coordinates.
+
+## [6.1.2] - 2026-07-04
+
+### Fixed
+
+- **Arctic Horizon 2 preview** — snippet now uses `Window(Home).Property` bindings, fixed anchor **(20, 480)**, and slot-slide group **94100** (same approach as Arctic Zephyr Rounded). Includes **+80px** vertical slide when the compact seek bar is shown, matching `Animation_OSD_Seekbar_NoCodecs`. **AH2.1 Arizen** updated the same way.
+
+## [6.1.1] - 2026-07-04
+
+### Fixed
+
+- **Bello preview flash** — seek polling now treats Bello's fullscreen center seek OSD as seek UI (was only DialogSeekBar / VideoOSD), so the preview session is no longer cleared every poll tick.
+- **Bello preview position** — raised 10px (`top` 570 → 560).
+
+## [6.1.0] - 2026-07-04
+
+### Added
+
+- **Bello 10 seek OSD preview** — new `VideoFullScreen-skin.bello.xml` snippet merges into `VideoFullScreen.xml` (not the empty `DialogSeekBar.xml`). Fixed preview at **478, 570** (320×180) directly below the center seek box, visible with the same conditions as Bello's seek OSD. Uses `Window(Home).Property(Trickplay.*)` bindings.
+- **Installer target XML** — skin snippet registry can specify merge target (`VideoFullScreen.xml` for Bello). Stub `DialogSeekBar` overlays are cleaned up after Bello install.
+
+### Changed
+
+- **Bello skin profile** — seek UI detection uses fullscreen center seek OSD visibility; geometry updated for 720p center box layout.
+
+## [6.0.9] - 2026-07-04
+
+### Fixed
+
+- **Skin snippet install crash (Windows)** — `ReloadSkin()` is deferred by 2 seconds via `AlarmClock` instead of running immediately from the Python installer (avoids Kodi crashes in add-on settings).
+- **Stub DialogSeekBar skins** — skins whose `DialogSeekBar.xml` has no seek bar controls (e.g. Bello) are skipped and no longer trigger a skin reload.
+
+## [6.0.8] - 2026-07-04
+
+### Fixed
+
+- **Arctic Zephyr Rounded full video OSD** — preview group **94100** slides up 74px when `videoosd` is open, matching the skin's seek bar shift so playback controls no longer overlap the thumbnail.
+
+## [6.0.7] - 2026-07-04
+
+### Fixed
+
+- **Arctic Zephyr Rounded preview (rendering)** — snippet now uses fixed anchor coordinates and slot-slide group **94100** (Estuary-style) instead of dynamic `$INFO` left/top/width, which Kodi was not applying on this skin. Preview textures use `special://profile/` paths for reliable loading on Windows.
+
+## [6.0.6] - 2026-07-04
+
+### Fixed
+
+- **Arctic Zephyr Rounded preview** — snippet now binds trickplay properties on `Window(Home)` (this skin's OSD pattern); `DialogSeekBar` reload no longer leaves empty coordinates. Stale overlays are detected and offered for reinstall.
+- **Preview during seek** — opening full video OSD while `Player.Seeking` no longer clears the preview session.
+- **Windows texture paths** — preview image paths use forward slashes for Kodi skin textures.
+
+## [6.0.5] - 2026-07-04
+
+### Fixed
+
+- **Prefetch during playback** — `schedule_playhead_follow()` no longer raises `NameError: lookup is not defined` (broke seek polling and playback prefetch).
+- **Skin profile matching** — longest skin-id prefix wins (e.g. `skin.arctic.zephyr.rounded` no longer resolves as stock Arctic Zephyr).
+- **Arctic Zephyr Rounded snippet** — higher `zorder`, skin-native `InfoNetflix` font and `progress/progress-bg.png` border texture.
+
 ## [6.0.4] - 2026-05-22
 
 ### Added
 
-- **Skin snippets** for Arctic Fuse 2, Arctic Horizon 2, Arctic Horizon 2.1 Arizen, Arctic Zephyr 2 Resurrection, Bello, and Bingie — each with matching skin profile auto-detection and settings override.
-- **DialogSeekBar** install targets: `DialogSeekBar-skin.arctic.fuse.2.xml` (replace, slot slides), `DialogSeekBar-skin.arctic.horizon.2.xml`, `DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml`, `DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml`, `DialogSeekBar-skin.bello.xml`, and `DialogSeekBar-skin.bingie.xml` (merge overlays).
+- **Skin snippets** for Arctic Fuse 2, Arctic Horizon 2, Arctic Horizon 2.1 Arizen, Arctic Zephyr 2 Resurrection, Arctic Zephyr Rounded, Bello, and Bingie — each with matching skin profile auto-detection and settings override.
+- **DialogSeekBar** install targets: `DialogSeekBar-skin.arctic.fuse.2.xml` (replace, slot slides), `DialogSeekBar-skin.arctic.horizon.2.xml`, `DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml`, `DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml`, `DialogSeekBar-skin.arctic.zephyr.rounded.xml`, and `DialogSeekBar-skin.bingie.xml` (merge overlays). **Bello** uses `VideoFullScreen-skin.bello.xml` → `VideoFullScreen.xml`.
 
 ### Changed
 

@@ -740,7 +740,12 @@ class TrickplayService:
         return active_profile().full_osd_visible()
 
     def _seek_ui_visible(self) -> bool:
-        return self._dialog_seekbar_visible() or self._video_osd_visible()
+        profile = active_profile()
+        return (
+            self._dialog_seekbar_visible()
+            or self._video_osd_visible()
+            or profile.fullscreen_seek_ui_visible()
+        )
 
     def _window_focus_id(self, window_id: int) -> int:
         try:
@@ -902,11 +907,14 @@ class TrickplayService:
 
         dialog_seekbar = self._dialog_seekbar_visible()
         video_osd = self._video_osd_visible()
-        seek_ui = dialog_seekbar or video_osd
+        seek_ui = self._seek_ui_visible()
         compact_seekbar = dialog_seekbar and not video_osd
 
         scrubbing, target_second = self._is_scrubbing()
         self._last_poll_scrubbing = scrubbing
+        seeking_active = scrubbing or xbmc.getCondVisibility(
+            "Player.Seeking | !String.IsEmpty(Player.SeekNumeric)"
+        )
         seek_ui_rising = seek_ui and not self._had_seek_ui
         self._last_poll_seek_ui = seek_ui
 
@@ -918,8 +926,9 @@ class TrickplayService:
             video_osd
             and self._had_compact_seekbar
             and not compact_seekbar
-            and not scrubbing
+            and not seeking_active
             and self.preview_active
+            and active_profile().clears_preview_on_osd_handoff()
         ):
             self._clear_preview_session("compact seekbar -> full OSD")
 
