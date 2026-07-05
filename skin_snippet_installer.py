@@ -63,7 +63,10 @@ OSD_SLIDE_MARKERS = {
     "DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml": AH2_VIDEO_OSD_SLIDE_MARKER,
 }
 LEGACY_PROPERTY_MARKER = "Window.Property(Trickplay.PreviewVisible)"
-BINGIE_PREVIEW_TOP_MARKER = "<top>570</top>"
+LEGACY_DYNAMIC_PREVIEW_MARKER = "$INFO[Window.Property(Trickplay.PreviewLeft)]"
+OVERLAY_REVISION_MARKER = "trickplay-overlay-rev:2"
+BINGIE_PREVIEW_TOP_MARKER = "<top>717</top>"
+BELLO_PREVIEW_TOP_MARKER = "<top>560</top>"
 Z2_RESURRECTION_PREVIEW_TOP_MARKER = "<top>740</top>"
 _CONTROL_OPEN_RE = re.compile(
     r"<control\b[^>]*\bid=[\"']" + OVERLAY_CONTROL_ID + r"[\"']",
@@ -303,6 +306,11 @@ def insert_overlay_before_controls_close(text: str, overlay_xml: str) -> str:
     return text[:insert_at] + indented + text[insert_at:]
 
 
+def overlay_has_legacy_dynamic_placement(text: str) -> bool:
+    """True when the overlay uses dynamic Window.Property $INFO coords (broken on many skins)."""
+    return LEGACY_DYNAMIC_PREVIEW_MARKER in text
+
+
 def overlay_already_installed(seekbar_path: str) -> bool:
     local = _local_path(seekbar_path)
     if not local or not os.path.isfile(local):
@@ -329,6 +337,10 @@ def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
         text = _read_text(local)
     except OSError:
         return False
+    if overlay_has_legacy_dynamic_placement(text):
+        return True
+    if OVERLAY_REVISION_MARKER not in text:
+        return True
     if snippet_file == "VideoFullScreen-skin.bello.xml":
         return (
             HOME_PROPERTY_MARKER not in text
@@ -378,7 +390,7 @@ def _clean_overlay_from_stub_seekbars(skin_root: str) -> None:
 
 
 def current_skin_overlay_installed() -> bool:
-    """True when the active skin's snippet target XML already contains the trickplay overlay."""
+    """True when the active skin's snippet target XML has an up-to-date trickplay overlay."""
     skin_id = current_skin_id()
     if not skin_id:
         return True
@@ -389,7 +401,11 @@ def current_skin_overlay_installed() -> bool:
     paths = find_skin_xml_paths(root, spec.target_xml)
     if not paths:
         return False
-    return any(overlay_already_installed(path) for path in paths)
+    return any(
+        overlay_already_installed(path)
+        and not overlay_needs_refresh(path, spec.filename)
+        for path in paths
+    )
 
 
 def path_is_writable(seekbar_path: str) -> bool:
@@ -919,6 +935,8 @@ def format_plan_summary(plans: list[SkinInstallPlan]) -> str:
                 tags.append("not_writable")
             if path_plan.already_installed:
                 tags.append("already_installed")
+            elif overlay_already_installed(path_plan.target_path):
+                tags.append("stale_overlay")
             if path_plan.stub_seekbar:
                 tags.append("stub_seekbar")
             lines.append(

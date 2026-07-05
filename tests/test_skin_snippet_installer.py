@@ -168,7 +168,7 @@ class SkinSnippetMergeTests(unittest.TestCase):
         self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
         self.assertIn('id="94100"', overlay)
         self.assertIn("<left>384</left>", overlay)
-        self.assertIn("<top>570</top>", overlay)
+        self.assertIn("<top>717</top>", overlay)
         self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
 
     def test_overlay_needs_refresh_detects_legacy_window_property_overlay(self) -> None:
@@ -182,6 +182,36 @@ class SkinSnippetMergeTests(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(stale)
         self.assertTrue(overlay_already_installed(path))
+        self.assertTrue(
+            overlay_needs_refresh(path, "DialogSeekBar-skin.bingie.xml")
+        )
+
+    def test_overlay_needs_refresh_detects_legacy_dynamic_bingie_overlay(self) -> None:
+        stale = SAMPLE_SEEKBAR.replace(
+            "</controls>",
+            '\t\t<control type="group" id="94090">\n'
+            '\t\t\t<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true)</visible>\n'
+            '\t\t\t<left>$INFO[Window.Property(Trickplay.PreviewLeft)]</left>\n'
+            "\t\t</control>\n\t</controls>",
+        )
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(stale)
+        self.assertTrue(
+            overlay_needs_refresh(path, "DialogSeekBar-skin.bingie.xml")
+        )
+
+    def test_overlay_needs_refresh_detects_missing_revision_marker(self) -> None:
+        stale = SAMPLE_SEEKBAR.replace(
+            "</controls>",
+            '\t\t<control type="group" id="94090">\n'
+            '\t\t\t<visible>Window(Home).Property(Trickplay.PreviewVisible)</visible>\n'
+            '\t\t\t<control type="group" id="94100"></control>\n'
+            "\t\t</control>\n\t</controls>",
+        )
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(stale)
         self.assertTrue(
             overlay_needs_refresh(path, "DialogSeekBar-skin.bingie.xml")
         )

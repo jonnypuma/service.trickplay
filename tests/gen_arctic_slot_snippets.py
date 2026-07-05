@@ -105,13 +105,12 @@ SPECS = (
         filename="DialogSeekBar-skin.bingie.xml",
         comment=(
             "Bingie (skin.bingie).\n"
-            "  Fixed anchor + slot slides (94100); raised above Bingie OSD bottom panel.\n"
+            "  Fixed anchor + slot slides (94100); aligned above SeekBar_Bingie.\n"
             "  Source: github.com/matke-84/skin.bingie 1080i/IncludesOSD.xml"
         ),
         bar=(384, 957, 1152),
         border_texture="colors/color_white.png",
         font="Reg28",
-        anchor_top_override=570,
     ),
 )
 
@@ -179,12 +178,14 @@ def render_snippet(spec: ArcticSnippetSpec) -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!--
   {spec.comment}
+  trickplay-overlay-rev:2
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
 -->
 <window>
 \t<controls>
 \t\t<control type="group" id="94090">
+\t\t\t<!-- trickplay-overlay-rev:2 -->
 \t\t\t<zorder>999</zorder>
 \t\t\t<control type="group" id="94100">
 \t\t\t\t<visible>!String.IsEmpty(Window(Home).Property(Trickplay.PreviewImage)) + [String.IsEqual(Window(Home).Property(Trickplay.PreviewVisible),true) | Player.Seeking]</visible>

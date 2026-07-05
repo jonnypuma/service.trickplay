@@ -2,12 +2,14 @@
 <!--
   Arctic Horizon 2.1 Arizen (skin.arctic.horizon.2.1.arizen).
   Same geometry as Arctic Horizon 2.
+  trickplay-overlay-rev:2
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
 -->
 <window>
 	<controls>
 		<control type="group" id="94090">
+			<!-- trickplay-overlay-rev:2 -->
 			<zorder>999</zorder>
 			<control type="group" id="94100">
 				<visible>!String.IsEmpty(Window(Home).Property(Trickplay.PreviewImage)) + [String.IsEqual(Window(Home).Property(Trickplay.PreviewVisible),true) | Player.Seeking]</visible>

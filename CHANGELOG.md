@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.9] - 2026-07-05
+
+### Fixed
+
+- **Bingie preview position** — removed the manual `top=550/570` override; preview now uses seek-bar geometry (`top=717`, aligned above `SeekBar_Bingie`).
+- **Skin snippet reinstall** — legacy dynamic `$INFO[Window.Property(Trickplay.PreviewLeft)]` overlays and missing `trickplay-overlay-rev:2` marker are treated as stale, so **Install skin snippet** updates them instead of reporting `already_installed`.
+
 ## [6.1.8] - 2026-07-04
 
 ### Changed

@@ -3,12 +3,14 @@
   Arctic Horizon (skin.arctic.horizon).
   Fixed anchor + slot slides (94100); +80px Y when compact seekbar.
   Source: github.com/jurialmunkey/skin.arctic.horizon 1080i/Includes_OSD.xml
+  trickplay-overlay-rev:2
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
 -->
 <window>
 	<controls>
 		<control type="group" id="94090">
+			<!-- trickplay-overlay-rev:2 -->
 			<zorder>999</zorder>
 			<control type="group" id="94100">
 				<visible>!String.IsEmpty(Window(Home).Property(Trickplay.PreviewImage)) + [String.IsEqual(Window(Home).Property(Trickplay.PreviewVisible),true) | Player.Seeking]</visible>
