@@ -19,8 +19,14 @@ sys.modules["xbmc"].LOGWARNING = 2
 
 from skin_snippet_installer import (  # noqa: E402
     AH2_VIDEO_OSD_SLIDE_MARKER,
+    BELLO_CENTER_SEEK_MARKER,
+    BELLO_SIMPLE_SEEK_MARKER,
     NOX_OSD_SLIDE_MARKER,
     OVERLAY_CONTROL_ID,
+    SKIPPY_SEEKBAR_VISIBLE_MARKER,
+    _bello_seek_osd_groups_have_skippy,
+    ensure_bello_skippy_seek_visible,
+    ensure_skippy_seekbar_visible,
     extract_overlay_xml_text,
     find_control_block_span,
     insert_overlay_before_controls_close,
@@ -50,6 +56,38 @@ SAMPLE_SNIPPET = """<?xml version="1.0" encoding="UTF-8"?>
 \t\t\t<control type="image" id="94091">
 \t\t\t\t<texture>foo.png</texture>
 \t\t\t</control>
+\t\t</control>
+\t</controls>
+</window>
+"""
+
+SAMPLE_BELLO_VIDEO_FULLSCREEN = """<?xml version="1.0" encoding="UTF-8"?>
+<window>
+\t<controls>
+\t\t<control type="group" id="1">
+\t\t\t<visible>!String.IsEqual(Skin.String(FullScreenVideoStyle),2)</visible>
+\t\t\t<visible>Window.IsActive(FullScreenVideo) + Player.Seeking</visible>
+\t\t\t<control type="image" id="1">
+\t\t\t\t<left>449</left>
+\t\t\t\t<top>177</top>
+\t\t\t\t<texture background="true">osd/osd_controls_bg.png</texture>
+\t\t\t</control>
+\t\t</control>
+\t\t<control type="group" id="1">
+\t\t\t<left>45</left>
+\t\t\t<top>615</top>
+\t\t\t<visible>Window.IsActive(FullScreenVideo) + Player.Seeking</visible>
+\t\t\t<include content="SeekBarSimple">
+\t\t\t\t<param name="progressbar_id" value="3"/>
+\t\t\t</include>
+\t\t</control>
+\t\t<control type="group" id="1">
+\t\t\t<left>45</left>
+\t\t\t<top>615</top>
+\t\t\t<visible>Window.IsActive(FullScreenVideo) + Player.Seeking</visible>
+\t\t\t<include content="SeekBarSimple">
+\t\t\t\t<param name="progressbar_id" value="4"/>
+\t\t\t</include>
 \t\t</control>
 \t</controls>
 </window>
@@ -149,7 +187,8 @@ class SkinSnippetMergeTests(unittest.TestCase):
             "VideoFullScreen-skin.bello.xml",
         )
         overlay = extract_overlay_xml_text(snippet_path)
-        merged = insert_overlay_before_controls_close(SAMPLE_SEEKBAR, overlay)
+        host = ensure_bello_skippy_seek_visible(SAMPLE_BELLO_VIDEO_FULLSCREEN)
+        merged = insert_overlay_before_controls_close(host, overlay)
         path = os.path.join(self._temp_dir(), "VideoFullScreen.xml")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(merged)
@@ -354,6 +393,86 @@ class SkinSnippetMergeTests(unittest.TestCase):
             ),
         )
         self.assertFalse(seekbar_has_host_controls(with_overlay))
+
+    def test_ensure_skippy_seekbar_visible_injects_before_controls(self) -> None:
+        merged = ensure_skippy_seekbar_visible(SAMPLE_SEEKBAR)
+        self.assertIn(SKIPPY_SEEKBAR_VISIBLE_MARKER, merged)
+        self.assertLess(merged.index(SKIPPY_SEEKBAR_VISIBLE_MARKER), merged.index("<controls"))
+
+    def test_ensure_skippy_seekbar_visible_is_idempotent(self) -> None:
+        once = ensure_skippy_seekbar_visible(SAMPLE_SEEKBAR)
+        twice = ensure_skippy_seekbar_visible(once)
+        self.assertEqual(once, twice)
+
+    def test_overlay_needs_refresh_when_skippy_visible_missing(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.bingie.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        stale_overlay = overlay.replace(SKIPPY_SEEKBAR_VISIBLE_MARKER, "Skippy.Removed")
+        merged = insert_overlay_before_controls_close(SAMPLE_SEEKBAR, stale_overlay)
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(merged)
+        self.assertTrue(overlay_needs_refresh(path, "DialogSeekBar-skin.bingie.xml"))
+
+    def test_universal_snippet_includes_skippy_visible(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-universal-dynamic.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn(SKIPPY_SEEKBAR_VISIBLE_MARKER, overlay)
+
+    def test_ensure_bello_skippy_seek_visible_patches_seek_groups(self) -> None:
+        patched = ensure_bello_skippy_seek_visible(SAMPLE_BELLO_VIDEO_FULLSCREEN)
+        self.assertIn(BELLO_CENTER_SEEK_MARKER, patched)
+        self.assertIn(BELLO_SIMPLE_SEEK_MARKER, patched)
+        self.assertTrue(_bello_seek_osd_groups_have_skippy(patched))
+        self.assertEqual(
+            patched.count(SKIPPY_SEEKBAR_VISIBLE_MARKER),
+            3,
+        )
+
+    def test_overlay_needs_refresh_when_bello_seek_groups_missing_skippy(
+        self,
+    ) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "VideoFullScreen-skin.bello.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        merged = insert_overlay_before_controls_close(
+            SAMPLE_BELLO_VIDEO_FULLSCREEN, overlay
+        )
+        path = os.path.join(self._temp_dir(), "VideoFullScreen.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(merged)
+        self.assertTrue(overlay_needs_refresh(path, "VideoFullScreen-skin.bello.xml"))
+
+    def test_overlay_needs_refresh_false_when_bello_seek_groups_patched(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "VideoFullScreen-skin.bello.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        host = ensure_bello_skippy_seek_visible(SAMPLE_BELLO_VIDEO_FULLSCREEN)
+        merged = insert_overlay_before_controls_close(host, overlay)
+        path = os.path.join(self._temp_dir(), "VideoFullScreen.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(merged)
+        self.assertFalse(
+            overlay_needs_refresh(path, "VideoFullScreen-skin.bello.xml")
+        )
 
     def _temp_dir(self) -> str:
         import tempfile

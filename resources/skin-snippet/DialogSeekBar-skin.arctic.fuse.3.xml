@@ -8,6 +8,7 @@
     <visible>!Window.IsActive(DialogSlider.xml)</visible>
     <visible>!Player.HasGame</visible>
     <visible>!Window.IsVisible(DialogPlayerProcessInfo.xml)</visible>
+    <visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 
     <animation effect="fade" start="0" end="100" time="300">WindowOpen</animation>
     <animation effect="fade" start="100" end="0" time="300">WindowClose</animation>

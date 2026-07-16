@@ -3,14 +3,15 @@
   Aeon Nox SiLVO (skin.aeon.nox.silvo).
   Fixed anchor + slot slides (94100); lifts -90px with video OSD (DefaultSeekbar).
   Source: github.com/Doctor-Eggs/Aeon-Nox-SiLVO 16x9/Includes.xml
-  trickplay-overlay-rev:2
+  trickplay-overlay-rev:3
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
 -->
 <window>
 	<controls>
 		<control type="group" id="94090">
-			<!-- trickplay-overlay-rev:2 -->
+			<!-- trickplay-overlay-rev:3 -->
+			<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 			<zorder>999</zorder>
 			<control type="group" id="94100">
 				<visible>!String.IsEmpty(Window(Home).Property(Trickplay.PreviewImage)) + [String.IsEqual(Window(Home).Property(Trickplay.PreviewVisible),true) | Player.Seeking]</visible>

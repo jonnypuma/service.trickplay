@@ -64,12 +64,23 @@ OSD_SLIDE_MARKERS = {
 }
 LEGACY_PROPERTY_MARKER = "Window.Property(Trickplay.PreviewVisible)"
 LEGACY_DYNAMIC_PREVIEW_MARKER = "$INFO[Window.Property(Trickplay.PreviewLeft)]"
-OVERLAY_REVISION_MARKER = "trickplay-overlay-rev:2"
+OVERLAY_REVISION_MARKER = "trickplay-overlay-rev:3"
+SKIPPY_SEEKBAR_VISIBLE_MARKER = "Window(Home).Property(Skippy.Skipping)"
+SKIPPY_SEEKBAR_VISIBLE_TAG = (
+    "<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>"
+)
+_CONTROLS_OPEN_RE = re.compile(r"^([ \t]*)<controls\b", re.MULTILINE)
 BINGIE_PREVIEW_TOP_MARKER = "<top>717</top>"
 BELLO_PREVIEW_TOP_MARKER = "<top>560</top>"
+BELLO_CENTER_SEEK_MARKER = "osd/osd_controls_bg.png"
+BELLO_SIMPLE_SEEK_MARKER = '<include content="SeekBarSimple">'
 Z2_RESURRECTION_PREVIEW_TOP_MARKER = "<top>740</top>"
 _CONTROL_OPEN_RE = re.compile(
     r"<control\b[^>]*\bid=[\"']" + OVERLAY_CONTROL_ID + r"[\"']",
+    re.IGNORECASE,
+)
+_GROUP_OPEN_RE = re.compile(
+    r"<control\b[^>]*\btype=[\"']group[\"']",
     re.IGNORECASE,
 )
 
@@ -222,26 +233,133 @@ def find_control_block_span(text: str, control_id: str) -> tuple[int, int] | Non
         re.IGNORECASE,
     )
     for match in pattern.finditer(text):
-        start = match.start()
-        depth = 0
-        index = start
-        length = len(text)
-        while index < length:
-            if text.startswith("<control", index):
-                close = text.find(">", index)
-                if close < 0:
-                    break
-                depth += 1
-                index = close + 1
-                continue
-            if text.startswith("</control>", index):
-                depth -= 1
-                index += len("</control>")
-                if depth == 0:
-                    return start, index
-                continue
-            index += 1
+        span = _control_block_span_from_open(text, match.start())
+        if span is not None:
+            return span
     return None
+
+
+def _control_block_span_from_open(text: str, open_start: int) -> tuple[int, int] | None:
+    if open_start < 0 or open_start >= len(text):
+        return None
+    depth = 0
+    index = open_start
+    length = len(text)
+    while index < length:
+        if text.startswith("<control", index):
+            close = text.find(">", index)
+            if close < 0:
+                return None
+            depth += 1
+            index = close + 1
+            continue
+        if text.startswith("</control>", index):
+            depth -= 1
+            index += len("</control>")
+            if depth == 0:
+                return open_start, index
+            continue
+        index += 1
+    return None
+
+
+def _innermost_group_span_containing_at(
+    text: str, marker_pos: int
+) -> tuple[int, int] | None:
+    last: tuple[int, int] | None = None
+    for match in _GROUP_OPEN_RE.finditer(text):
+        if match.start() > marker_pos:
+            break
+        span = _control_block_span_from_open(text, match.start())
+        if span and span[0] <= marker_pos < span[1]:
+            last = span
+    return last
+
+
+def _innermost_group_span_containing(text: str, marker: str) -> tuple[int, int] | None:
+    marker_pos = text.find(marker)
+    if marker_pos < 0:
+        return None
+    return _innermost_group_span_containing_at(text, marker_pos)
+
+
+def _all_group_spans_containing(text: str, marker: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    search_from = 0
+    while True:
+        marker_pos = text.find(marker, search_from)
+        if marker_pos < 0:
+            break
+        span = _innermost_group_span_containing_at(text, marker_pos)
+        if span and span not in spans:
+            spans.append(span)
+        search_from = marker_pos + len(marker)
+    return spans
+
+
+def _inject_skippy_visible_in_group_block(group_block: str) -> str:
+    if SKIPPY_SEEKBAR_VISIBLE_MARKER in group_block:
+        return group_block
+    visible_matches = list(
+        re.finditer(r"<visible>[^<]*</visible>", group_block, re.IGNORECASE)
+    )
+    if visible_matches:
+        insert_after = visible_matches[-1].end()
+        line_start = group_block.rfind("\n", 0, insert_after) + 1
+        indent = re.match(r"[ \t]*", group_block[line_start:]).group(0)
+        if not indent:
+            indent = "\t\t\t"
+    else:
+        open_close = group_block.find(">", group_block.find("<control"))
+        insert_after = open_close + 1 if open_close >= 0 else 0
+        indent = "\t\t\t"
+    insertion = f"\n{indent}{SKIPPY_SEEKBAR_VISIBLE_TAG}"
+    return group_block[:insert_after] + insertion + group_block[insert_after:]
+
+
+def _bello_seek_osd_groups_have_skippy(text: str) -> bool:
+    if BELLO_CENTER_SEEK_MARKER not in text:
+        return True
+    center = _innermost_group_span_containing(text, BELLO_CENTER_SEEK_MARKER)
+    if center is None:
+        return False
+    if SKIPPY_SEEKBAR_VISIBLE_MARKER not in text[center[0] : center[1]]:
+        return False
+    simple_spans = _all_group_spans_containing(text, BELLO_SIMPLE_SEEK_MARKER)
+    if not simple_spans:
+        return True
+    return all(
+        SKIPPY_SEEKBAR_VISIBLE_MARKER in text[span[0] : span[1]]
+        for span in simple_spans
+    )
+
+
+def ensure_bello_skippy_seek_visible(text: str) -> str:
+    """Patch Bello center + simple seek OSD groups in VideoFullScreen.xml."""
+    for marker in (BELLO_CENTER_SEEK_MARKER, BELLO_SIMPLE_SEEK_MARKER):
+        while True:
+            if marker == BELLO_CENTER_SEEK_MARKER:
+                span = _innermost_group_span_containing(text, marker)
+                spans = [span] if span else []
+            else:
+                spans = [
+                    span
+                    for span in _all_group_spans_containing(text, marker)
+                    if SKIPPY_SEEKBAR_VISIBLE_MARKER
+                    not in text[span[0] : span[1]]
+                ]
+            if not spans:
+                break
+            span = spans[0]
+            block = text[span[0] : span[1]]
+            text = (
+                text[: span[0]]
+                + _inject_skippy_visible_in_group_block(block)
+                + text[span[1] :]
+            )
+            if marker == BELLO_CENTER_SEEK_MARKER:
+                break
+    return text
 
 
 def remove_control_block(text: str, control_id: str) -> str:
@@ -324,10 +442,20 @@ def overlay_already_installed(seekbar_path: str) -> bool:
     return TRICKPLAY_MARKER in text
 
 
+def ensure_skippy_seekbar_visible(text: str) -> str:
+    """Add Skippy skip OSD suppression to the seek bar / fullscreen window."""
+    if SKIPPY_SEEKBAR_VISIBLE_MARKER in text:
+        return text
+    match = _CONTROLS_OPEN_RE.search(text)
+    if not match:
+        return text
+    indent = match.group(1)
+    insertion = f"{indent}{SKIPPY_SEEKBAR_VISIBLE_TAG}\n"
+    return text[: match.start()] + insertion + text[match.start() :]
+
+
 def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
     """True when an installed overlay is stale (e.g. missing Home-window property bindings)."""
-    if snippet_file not in HOME_PROPERTY_SNIPPETS:
-        return False
     if not overlay_already_installed(target_path):
         return False
     local = _local_path(target_path)
@@ -337,6 +465,15 @@ def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
         text = _read_text(local)
     except OSError:
         return False
+    if SKIPPY_SEEKBAR_VISIBLE_MARKER not in text:
+        return True
+    if snippet_file not in HOME_PROPERTY_SNIPPETS:
+        if snippet_file in (
+            UNIVERSAL_SNIPPET_FILENAME,
+            "DialogSeekBar-skin.estuary.xml",
+        ):
+            return overlay_has_legacy_dynamic_placement(text)
+        return False
     if overlay_has_legacy_dynamic_placement(text):
         return True
     if OVERLAY_REVISION_MARKER not in text:
@@ -345,6 +482,7 @@ def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
         return (
             HOME_PROPERTY_MARKER not in text
             or BELLO_PREVIEW_TOP_MARKER not in text
+            or not _bello_seek_osd_groups_have_skippy(text)
         )
     if snippet_file == "DialogSeekBar-skin.bingie.xml":
         return (
@@ -641,10 +779,19 @@ def _backup_seekbar(seekbar_path: str) -> tuple[bool, str]:
     return True, "backup_created"
 
 
-def _merge_overlay_preserve_format(seekbar_path: str, snippet_path: str) -> None:
+def _merge_overlay_preserve_format(
+    seekbar_path: str,
+    snippet_path: str,
+    *,
+    target_xml: str = SEEKBAR_FILENAME,
+) -> None:
     local = _local_path(seekbar_path)
     text = _read_text(local)
     text = remove_control_block(text, OVERLAY_CONTROL_ID)
+    if target_xml == SEEKBAR_FILENAME:
+        text = ensure_skippy_seekbar_visible(text)
+    elif target_xml == VIDEO_FULLSCREEN_FILENAME:
+        text = ensure_bello_skippy_seek_visible(text)
     overlay = extract_overlay_xml_text(snippet_path)
     merged = insert_overlay_before_controls_close(text, overlay)
     _write_text(local, merged)
@@ -658,6 +805,8 @@ def _install_one_path(
     seekbar_path: str,
     snippet_path: str,
     mode: InstallMode,
+    *,
+    target_xml: str = SEEKBAR_FILENAME,
 ) -> tuple[bool, str]:
     local = _local_path(seekbar_path)
     if not local or not os.path.isfile(local):
@@ -674,7 +823,9 @@ def _install_one_path(
         if mode == InstallMode.REPLACE:
             _replace_seekbar(local, snippet_path)
         else:
-            _merge_overlay_preserve_format(local, snippet_path)
+            _merge_overlay_preserve_format(
+                local, snippet_path, target_xml=target_xml
+            )
     except (OSError, ValueError) as exc:
         return False, str(exc)
 
@@ -775,6 +926,7 @@ def execute_install_plan(
             path_plan.target_path,
             snippet_path,
             path_plan.mode,
+            target_xml=path_plan.target_xml,
         )
         outcomes.append(
             InstallOutcome(

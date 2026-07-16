@@ -3,14 +3,17 @@
   Bello 10 (skin.bello, skin.bello.9, skin.bello.10).
   Seek OSD is the center box in VideoFullScreen.xml (not DialogSeekBar.xml).
   Fixed preview below osd_controls_bg (449,177 + 377x385 @ 720p).
-  trickplay-overlay-rev:2
+  Install skin snippet also patches Bello seek OSD groups (center + simple bars)
+  with Skippy.Skipping suppression.
+  trickplay-overlay-rev:3
 
   Copy group 94090 into VideoFullScreen.xml (top-level control).
 -->
 <window>
 	<controls>
 		<control type="group" id="94090">
-			<!-- trickplay-overlay-rev:2 -->
+			<!-- trickplay-overlay-rev:3 -->
+			<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 			<zorder>999</zorder>
 			<visible>!String.IsEqual(Skin.String(FullScreenVideoStyle),2)</visible>
 			<visible>Window.IsActive(FullScreenVideo) + [[Player.Paused | Player.Forwarding | Player.Rewinding | Player.Seeking | Player.HasPerformedSeek(1) | Player.Caching | Integer.IsGreater(PVR.ChannelNumberInput,0)] + ![String.IsEqual(Skin.String(DialogSeekBarStyle),2) | String.IsEqual(Skin.String(DialogSeekBarStyle),3)]] + ![Player.ShowInfo | Window.IsActive(VideoOSD) | Window.IsActive(SliderDialog) | Window.IsActive(SubtitleSearch) | Window.IsActive(ShutdownMenu) | Window.IsActive(favourites) | Window.IsActive(NumericInput) | Window.IsActive(PVROSDChannels) | Window.IsActive(PVRChannelGuide) | Window.IsActive(PVRGuideInfo)]</visible>

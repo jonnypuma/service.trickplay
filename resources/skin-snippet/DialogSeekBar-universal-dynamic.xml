@@ -30,6 +30,7 @@
 
 		<control type="group" id="94090">
 
+			<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 			<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
 
 			<left>$INFO[Window.Property(Trickplay.PreviewLeft)]</left>

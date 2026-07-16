@@ -103,6 +103,26 @@ To add a new skin, define a profile in `skin_profiles.py`, add a `DialogSeekBar-
 
 Without this merge, the service will still load trickplay data and log preview updates, but **nothing will appear on screen**.
 
+### Skin: hide seek OSD during Skippy skips
+
+If you use **[service.skippy](https://github.com/Skippy-McSkipface/service.skippy)** (intro/recap skip), Skippy sets `Window(Home).Property(Skippy.Skipping)` while an auto-skip or confirmed ask-skip seek is in progress. To avoid the seek bar flashing during those jumps, add this as an extra `<visible>` tag (Kodi ANDs multiple tags) on the seek bar window or control:
+
+```xml
+<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
+```
+
+Manual seeks are unaffected — only Skippy-driven skips set the property.
+
+**Trickplay skin snippets include this automatically:**
+
+| Install mode | Where it is applied |
+|---|---|
+| **Merge** (overlay group `94090`) | On overlay group `94090` **and** injected on the host `DialogSeekBar.xml` window before `<controls>` when you use **Install skin snippet** |
+| **Replace** (Estuary Mod v2, Arctic Fuse 2/3) | On the `DialogSeekBar.xml` window |
+| **Bello** (`VideoFullScreen.xml`) | On trickplay overlay group `94090` **and** on Bello’s native seek OSD groups (center box + simple seek bars) when you use **Install skin snippet** |
+
+Re-run **Add-on settings → Preview tools → Install skin snippet** to pick up Skippy support on an existing install (stale overlays without `Skippy.Skipping` are treated as needing refresh).
+
 ---
 
 ## How it works

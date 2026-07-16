@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.1] - 2026-07-16
+
+### Added
+
+- **Bello Skippy seek OSD suppression** — **Install skin snippet** now patches Bello’s native seek OSD groups in `VideoFullScreen.xml` (center `osd_controls_bg` box and both `SeekBarSimple` bars) with `Skippy.Skipping` visibility, not just the trickplay overlay.
+
+## [6.2.0] - 2026-07-16
+
+### Added
+
+- **Skippy skip OSD suppression** — skin snippets and **Install skin snippet** now add `<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>` so the seek bar stays hidden during [service.skippy](https://github.com/Skippy-McSkipface/service.skippy) auto-skips. Merge installs inject it on the host `DialogSeekBar.xml` window; replace snippets (Estuary Mod v2, Arctic Fuse 2/3) include it at window level. Overlay revision bumped to `trickplay-overlay-rev:3`; reinstall when upgrading from older snippets.
+
 ## [6.1.9] - 2026-07-05
 
 ### Fixed
