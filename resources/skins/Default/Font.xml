@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Not loaded for script WindowXML — Kodi resolves fonts from the active skin only.
+     Segment Editor uses skin-standard font10/font12; button text is narrowed via <aspect> in XML. -->
+<fonts>
+  <fontset id="Default" idloc="31390" unicode="true">
+    <font>
+      <name>font13</name>
+      <filename>arial.ttf</filename>
+      <size>26</size>
+    </font>
+    <font>
+      <name>font10</name>
+      <filename>arial.ttf</filename>
+      <size>20</size>
+    </font>
+    <font>
+      <name>font12</name>
+      <filename>arial.ttf</filename>
+      <size>22</size>
+    </font>
+    <font>
+      <name>font14</name>
+      <filename>arial.ttf</filename>
+      <size>26</size>
+    </font>
+    <font>
+      <name>font16</name>
+      <filename>arial.ttf</filename>
+      <size>30</size>
+    </font>
+    <font>
+      <name>font30</name>
+      <filename>arial.ttf</filename>
+      <size>48</size>
+    </font>
+  </fontset>
+</fonts>
