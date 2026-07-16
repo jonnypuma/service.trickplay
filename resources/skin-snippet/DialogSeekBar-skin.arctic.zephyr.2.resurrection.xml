@@ -3,15 +3,14 @@
   Arctic Zephyr 2 Resurrection (skin.arctic.zephyr.2.resurrection.mod).
   Fixed anchor + slot slides (94100); raised above OSD_Progress_Text / bar.
   Source: github.com/DenDyGH/skin.arctic.zephyr.2.resurrection.mod
-  trickplay-overlay-rev:3
+  trickplay-overlay-rev:4
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
 -->
 <window>
 	<controls>
 		<control type="group" id="94090">
-			<!-- trickplay-overlay-rev:3 -->
-			<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
+			<!-- trickplay-overlay-rev:4 -->
 			<zorder>999</zorder>
 			<control type="group" id="94100">
 				<visible>!String.IsEmpty(Window(Home).Property(Trickplay.PreviewImage)) + [String.IsEqual(Window(Home).Property(Trickplay.PreviewVisible),true) | Player.Seeking]</visible>

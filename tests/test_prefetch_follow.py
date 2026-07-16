@@ -88,5 +88,90 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
         prefetch._schedule_indices.assert_called_once()
 
 
+class PrefetchPriorityTests(unittest.TestCase):
+    def _lookup(self, index: int, tile: str = "/tiles/0.jpg") -> TrickplayLookup:
+        return TrickplayLookup(
+            tile_path=tile,
+            col=index % 10,
+            row=index // 10,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=index,
+            target_second=index * 10,
+        )
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_high_priority_goes_to_front(self, _mock_cached: MagicMock) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._max_queue = 48
+        prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+
+        prefetch._enqueue(self._lookup(1), high_priority=False)
+        prefetch._enqueue(self._lookup(2), high_priority=False)
+        prefetch._enqueue(self._lookup(9), high_priority=True)
+
+        with prefetch._lock:
+            front = prefetch._queue[0].lookup.thumb_index
+        self.assertEqual(front, 9)
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_yield_for_scrub_keeps_preferred_high_priority(
+        self, _mock_cached: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._debug = False
+
+        prefetch._enqueue(self._lookup(1, "/tiles/0.jpg"), high_priority=False)
+        prefetch._enqueue(self._lookup(2, "/tiles/0.jpg"), high_priority=False)
+        prefetch._enqueue(self._lookup(201, "/tiles/2.jpg"), high_priority=True)
+
+        prefetch.yield_for_scrub("/tiles/2.jpg")
+
+        with prefetch._lock:
+            indices = [item.lookup.thumb_index for item in prefetch._queue]
+            tiles = [item.lookup.tile_path for item in prefetch._queue]
+        self.assertEqual(indices, [201])
+        self.assertEqual(tiles, ["/tiles/2.jpg"])
+
+
+class ScrubChurnTests(unittest.TestCase):
+    def test_single_large_jump_is_not_fast_scrub(self) -> None:
+        from preview_dialog import PreviewDialogController
+
+        controller = PreviewDialogController("/addon")
+        lookup_near = TrickplayLookup(
+            tile_path="/t/0.jpg",
+            col=0,
+            row=0,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=1,
+            target_second=10,
+        )
+        lookup_far = TrickplayLookup(
+            tile_path="/t/2.jpg",
+            col=1,
+            row=4,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=241,
+            target_second=2410,
+        )
+        # Prime last scrub as a settled position (not within coalesce window).
+        controller._last_scrub_at = 0.0
+        controller._last_scrub_thumb_index = 1
+        self.assertFalse(
+            controller._scrub_churn_active(lookup_far, seeking=True)
+        )
+
+        # Rapid follow-up with another jump is churn.
+        controller._last_scrub_at = __import__("time").monotonic()
+        controller._last_scrub_thumb_index = 241
+        self.assertTrue(
+            controller._scrub_churn_active(lookup_near, seeking=True)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

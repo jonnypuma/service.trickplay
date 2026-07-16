@@ -178,14 +178,14 @@ def render_snippet(spec: ArcticSnippetSpec) -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!--
   {spec.comment}
-  trickplay-overlay-rev:2
+  trickplay-overlay-rev:4
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
 -->
 <window>
 \t<controls>
 \t\t<control type="group" id="94090">
-\t\t\t<!-- trickplay-overlay-rev:2 -->
+\t\t\t<!-- trickplay-overlay-rev:4 -->
 \t\t\t<zorder>999</zorder>
 \t\t\t<control type="group" id="94100">
 \t\t\t\t<visible>!String.IsEmpty(Window(Home).Property(Trickplay.PreviewImage)) + [String.IsEqual(Window(Home).Property(Trickplay.PreviewVisible),true) | Player.Seeking]</visible>

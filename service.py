@@ -444,10 +444,10 @@ class TrickplayService:
 
                     if not current_skin_overlay_installed():
                         _log(
-                            "Trickplay data loaded but the active skin has no preview "
-                            "controls — use Install skin snippet (current skin) in add-on "
-                            "settings, or merge the matching file from "
-                            "resources/skin-snippet/ into DialogSeekBar.xml",
+                            "Trickplay data loaded but the active skin has no up-to-date "
+                            "preview controls — use Show addon status, then Install / Force "
+                            "reinstall skin snippet in add-on settings (DialogSeekBar.xml, "
+                            "or VideoFullScreen.xml for Bello)",
                             xbmc.LOGWARNING,
                         )
                 except ImportError:
@@ -558,6 +558,12 @@ class TrickplayService:
                 scrub_direction = -1
         self._last_preview_thumb_index = lookup.thumb_index
 
+        prefetch_settings = read_prefetch_settings()
+        runtime = read_runtime_settings()
+        # Free NFS / crop bandwidth before the foreground thumb path runs.
+        if seeking:
+            self.prefetch.yield_for_scrub(lookup.tile_path)
+
         duration_seconds = self._effective_duration_seconds()
         self.preview.show_preview(
             lookup,
@@ -565,8 +571,6 @@ class TrickplayService:
             self.player,
             eager=seeking,
         )
-        prefetch_settings = read_prefetch_settings()
-        runtime = read_runtime_settings()
         if seeking and self.preview.fast_scrub_active:
             self.prefetch.cancel()
         elif prefetch_settings.enabled:

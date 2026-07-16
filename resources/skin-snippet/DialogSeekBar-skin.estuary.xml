@@ -1,13 +1,15 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Stock Estuary (skin.estuary). Skin profile: Estuary (stock).
   Source: github.com/xbmc/xbmc addons/skin.estuary/xml/DialogSeekBar.xml
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
+  trickplay-overlay-rev:4
 -->
 <window>
 	<controls>
 		<control type="group" id="94090">
+			<!-- trickplay-overlay-rev:4 -->
 			<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 			<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
 			<left>$INFO[Window.Property(Trickplay.PreviewLeft)]</left>

@@ -55,6 +55,7 @@
 			<include condition="!Skin.HasSetting(ShowSeekBar) + Skin.HasSetting(SmallOSDVideo) + Window.IsVisible(fullscreenvideo) + !Window.IsActive(fullscreeninfo)">OSDWithoutInfo</include>
 		</control>
 		<!-- Trickplay overlay: separate top-level group so it draws above OSDWithInfo (poster, metadata). -->
+		<!-- trickplay-overlay-rev:4 -->
 		<control type="group" id="94090">
 			<animation effect="slide" end="0,-140" time="0" condition="Window.IsVisible(fullscreenvideo) + Skin.HasSetting(ScopeMode) + String.IsEqual(Skin.String(scope_mode),$LOCALIZE[31476])">Conditional</animation>
 			<animation effect="slide" end="0,-135" time="0" condition="Window.IsVisible(fullscreenvideo) + Skin.HasSetting(ScopeMode) + String.IsEqual(Skin.String(scope_mode),$LOCALIZE[31479])">Conditional</animation>

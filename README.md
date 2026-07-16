@@ -44,8 +44,8 @@ The following skins have been tested with trickplay preview while scrubbing:
 
 Those filenames are deliberate: they are **not** dropped into Kodi as-is. Either:
 
-- Use **Add-on settings → Preview tools → Install skin snippet (current skin)** or **(all skins)** to back up each skin’s `DialogSeekBar.xml` to `DialogSeekBar.xml.bak` and install the matching snippet (merge overlay group **94090** or full replace for Estuary Mod v2 / Arctic Fuse 3), **or**
-- Manually copy the preview block from the matching file into your skin’s real **`DialogSeekBar.xml`** (backup the original first).
+- Use **Add-on settings → Preview tools → Show addon status** to see whether the active skin snippet is missing or stale, then **Install skin snippet (current skin)** (updates stale overlays) or **Force reinstall skin snippet** if needed. Install backs up each skin’s target XML (usually `DialogSeekBar.xml`; Bello uses `VideoFullScreen.xml`) and merges overlay group **94090** (or full replace for Estuary Mod v2 / Arctic Fuse), **or**
+- Manually copy the preview block from the matching file into your skin’s real target XML (backup the original first).
 
 Skins without a discoverable `DialogSeekBar.xml` under their add-on folder are skipped and reported as failed.
 
@@ -161,8 +161,8 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 ## Requirements
 
 - Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin), **or** use the built-in generator (see below)
-- **Skin edit** to `DialogSeekBar.xml` (see above)
-- **Pillow** — required for crop fallback and sidecar dimension probing; not required for atlas preview display. Auto-installed via **Install preview tools** when needed.
+- **Skin edit** to `DialogSeekBar.xml` (or `VideoFullScreen.xml` for Bello) — see above
+- **Pillow** — required for cropping preview cells and sidecar dimension probing. Auto-installed via **Install preview tools** when needed.
 - **ffmpeg** and **ffprobe** — required only for trickplay **generation** (and HDR tone mapping); auto-installed via **Install preview tools** when the generator or HDR tone mapping is enabled, batch **Run**, or manual install under `/storage/.kodi/system/ffmpeg/` (CoreELEC) / `addon_data/.../system/ffmpeg/` (Windows)
 
 ## Settings

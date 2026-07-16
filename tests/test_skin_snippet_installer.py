@@ -6,6 +6,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -16,6 +17,7 @@ for _name in ("xbmc", "xbmcaddon", "xbmcvfs", "xbmcgui"):
 
 sys.modules["xbmc"].LOGINFO = 1
 sys.modules["xbmc"].LOGWARNING = 2
+sys.modules["xbmcvfs"].translatePath = lambda path: path
 
 from skin_snippet_installer import (  # noqa: E402
     AH2_VIDEO_OSD_SLIDE_MARKER,
@@ -362,7 +364,8 @@ class SkinSnippetMergeTests(unittest.TestCase):
             "DialogSeekBar-skin.arctic.zephyr.rounded.xml",
         )
         overlay = extract_overlay_xml_text(snippet_path)
-        merged = insert_overlay_before_controls_close(SAMPLE_SEEKBAR, overlay)
+        host = ensure_skippy_seekbar_visible(SAMPLE_SEEKBAR)
+        merged = insert_overlay_before_controls_close(host, overlay)
         path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(merged)
@@ -372,6 +375,87 @@ class SkinSnippetMergeTests(unittest.TestCase):
             )
         )
 
+    def test_overlay_needs_refresh_false_for_current_arctic_fuse_3(self) -> None:
+        """AF3/Estuary Mod use Window.Property on DialogSeekBar — not Home."""
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.arctic.fuse.3.xml",
+        )
+        with open(snippet_path, encoding="utf-8") as handle:
+            text = handle.read()
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        self.assertTrue(overlay_already_installed(path))
+        self.assertFalse(
+            overlay_needs_refresh(path, "DialogSeekBar-skin.arctic.fuse.3.xml")
+        )
+        self.assertIn("Window.Property(Trickplay.PreviewVisible)", text)
+        self.assertNotIn("Window(Home).Property(Trickplay.PreviewVisible)", text)
+
+    def test_skin_ids_from_addons_folders_finds_gui_skins(self) -> None:
+        from skin_snippet_installer import _skin_ids_from_addons_folders
+
+        root = self._temp_dir()
+        skin_dir = os.path.join(root, "skin.example.test")
+        os.makedirs(skin_dir)
+        with open(os.path.join(skin_dir, "addon.xml"), "w", encoding="utf-8") as handle:
+            handle.write(
+                '<?xml version="1.0"?>\n'
+                '<addon id="skin.example.test">\n'
+                '  <extension point="xbmc.gui.skin"/>\n'
+                "</addon>\n"
+            )
+        other = os.path.join(root, "plugin.video.foo")
+        os.makedirs(other)
+        with open(os.path.join(other, "addon.xml"), "w", encoding="utf-8") as handle:
+            handle.write(
+                '<?xml version="1.0"?>\n'
+                '<addon id="plugin.video.foo">\n'
+                '  <extension point="xbmc.python.pluginsource"/>\n'
+                "</addon>\n"
+            )
+        with (
+            mock.patch(
+                "skin_snippet_installer.xbmcvfs.translatePath",
+                return_value=root,
+            ),
+        ):
+            ids = _skin_ids_from_addons_folders()
+        self.assertIn("skin.example.test", ids)
+        self.assertNotIn("plugin.video.foo", ids)
+
+    def test_overlay_needs_refresh_detects_stale_replace_snippet(self) -> None:
+        # Old Estuary Mod v2 install without revision marker.
+        text = ensure_skippy_seekbar_visible(SAMPLE_SEEKBAR).replace(
+            "</controls>",
+            '\t\t<control type="group" id="94090">\n'
+            '\t\t\t<control type="group" id="94100"></control>\n'
+            '\t\t\t<visible>Trickplay.Preview</visible>\n'
+            "\t\t</control>\n\t</controls>",
+        )
+        path = os.path.join(self._temp_dir(), "DialogSeekBar.xml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        self.assertTrue(overlay_already_installed(path))
+        self.assertTrue(
+            overlay_needs_refresh(path, "DialogSeekBar-skin.estuary.modv2.xml")
+        )
+
+    def test_replace_snippet_has_revision_marker(self) -> None:
+        for name in (
+            "DialogSeekBar-skin.estuary.modv2.xml",
+            "DialogSeekBar-skin.arctic.fuse.2.xml",
+            "DialogSeekBar-skin.arctic.fuse.3.xml",
+        ):
+            path = os.path.join(ROOT, "resources", "skin-snippet", name)
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            self.assertIn("trickplay-overlay-rev:4", text, msg=name)
+            self.assertIn(SKIPPY_SEEKBAR_VISIBLE_MARKER, text, msg=name)
+
     def test_seekbar_has_host_controls(self) -> None:
         self.assertTrue(seekbar_has_host_controls(SAMPLE_SEEKBAR))
         self.assertFalse(
@@ -380,7 +464,29 @@ class SkinSnippetMergeTests(unittest.TestCase):
 <window><controls></controls></window>"""
             )
         )
+        # Arctic Zephyr Rounded style: seek bar lives in an include, overlay is the
+        # only top-level control — still a real host DialogSeekBar.
+        include_host = """<?xml version="1.0" encoding="UTF-8"?>
+<window>
+\t<controls>
+\t\t<include condition="VideoPlayer.IsFullscreen">OSD_Video_SeekBar</include>
+\t</controls>
+</window>
+"""
+        self.assertTrue(seekbar_has_host_controls(include_host))
         with_overlay = insert_overlay_before_controls_close(
+            include_host,
+            extract_overlay_xml_text(
+                os.path.join(
+                    ROOT,
+                    "resources",
+                    "skin-snippet",
+                    "DialogSeekBar-skin.arctic.zephyr.rounded.xml",
+                )
+            ),
+        )
+        self.assertTrue(seekbar_has_host_controls(with_overlay))
+        overlay_only = insert_overlay_before_controls_close(
             """<?xml version="1.0" encoding="UTF-8"?>
 <window><controls></controls></window>""",
             extract_overlay_xml_text(
@@ -392,8 +498,37 @@ class SkinSnippetMergeTests(unittest.TestCase):
                 )
             ),
         )
-        self.assertFalse(seekbar_has_host_controls(with_overlay))
+        self.assertFalse(seekbar_has_host_controls(overlay_only))
 
+    def test_skin_addon_path_falls_back_to_filesystem(self) -> None:
+        from skin_snippet_installer import _skin_addon_path
+
+        root = self._temp_dir()
+        skin_id = "skin.plextuary"
+        skin_dir = os.path.join(root, skin_id)
+        os.makedirs(skin_dir)
+        with open(os.path.join(skin_dir, "addon.xml"), "w", encoding="utf-8") as handle:
+            handle.write(
+                '<?xml version="1.0"?>\n'
+                f'<addon id="{skin_id}" name="Plextuary">\n'
+                '  <extension point="xbmc.gui.skin"/>\n'
+                "</addon>\n"
+            )
+
+        def _addon_boom(_sid: str):
+            raise RuntimeError("Addon not found")
+
+        sys.modules["xbmcaddon"].Addon = _addon_boom
+        try:
+            with mock.patch(
+                "skin_snippet_installer._addon_dir_roots",
+                return_value=[root],
+            ):
+                resolved = _skin_addon_path(skin_id, quiet=True)
+        finally:
+            if hasattr(sys.modules["xbmcaddon"], "Addon"):
+                delattr(sys.modules["xbmcaddon"], "Addon")
+        self.assertEqual(resolved, skin_dir)
     def test_ensure_skippy_seekbar_visible_injects_before_controls(self) -> None:
         merged = ensure_skippy_seekbar_visible(SAMPLE_SEEKBAR)
         self.assertIn(SKIPPY_SEEKBAR_VISIBLE_MARKER, merged)

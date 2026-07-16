@@ -142,8 +142,8 @@ msgid "Arctic Zephyr Rounded"
 msgstr "Arctic Zephyr Rounded"
 
 msgctxt "#32209"
-msgid "DialogSeekBar.xml is empty in this skin (seek bar is elsewhere); skipped"
-msgstr "DialogSeekBar.xml is empty in this skin (seek bar is elsewhere); skipped"
+msgid "DialogSeekBar.xml has no seek-bar content (no controls or includes); skipped"
+msgstr "DialogSeekBar.xml has no seek-bar content (no controls or includes); skipped"
 
 msgctxt "#32210"
 msgid "Skin snippet target XML not found"
@@ -662,20 +662,20 @@ msgid "Install skin snippet (current skin)"
 msgstr "Install skin snippet (current skin)"
 
 msgctxt "#32155"
-msgid "Back up and install the trickplay preview block into the active skin's DialogSeekBar.xml (merge overlay or replace full file for supported skins). Reloads the skin when done."
-msgstr "Back up and install the trickplay preview block into the active skin's DialogSeekBar.xml (merge overlay or replace full file for supported skins). Reloads the skin when done."
+msgid "Back up and install the trickplay preview block into the active skin (DialogSeekBar.xml, or VideoFullScreen.xml for Bello). Merge overlay or replace full file for supported skins. Reloads the skin when done. Stale overlays are updated automatically."
+msgstr "Back up and install the trickplay preview block into the active skin (DialogSeekBar.xml, or VideoFullScreen.xml for Bello). Merge overlay or replace full file for supported skins. Reloads the skin when done. Stale overlays are updated automatically."
 
 msgctxt "#32156"
 msgid "Install skin snippet (all skins)"
 msgstr "Install skin snippet (all skins)"
 
 msgctxt "#32157"
-msgid "Back up and install the trickplay preview block into DialogSeekBar.xml for every installed skin that contains it. Skins without DialogSeekBar.xml are reported as failed."
-msgstr "Back up and install the trickplay preview block into DialogSeekBar.xml for every installed skin that contains it. Skins without DialogSeekBar.xml are reported as failed."
+msgid "Back up and install the trickplay preview block for every installed skin that has a matching target XML (DialogSeekBar.xml, or VideoFullScreen.xml for Bello). Skins without a target are reported as failed."
+msgstr "Back up and install the trickplay preview block for every installed skin that has a matching target XML (DialogSeekBar.xml, or VideoFullScreen.xml for Bello). Skins without a target are reported as failed."
 
 msgctxt "#32158"
-msgid "Install DialogSeekBar snippet"
-msgstr "Install DialogSeekBar snippet"
+msgid "Install skin snippet"
+msgstr "Install skin snippet"
 
 msgctxt "#32159"
 msgid "Skins identified:\n%s\n\nInstall trickplay preview controls now?"
@@ -818,17 +818,37 @@ msgid "Restore DialogSeekBar.xml from DialogSeekBar.xml.bak for every installed 
 msgstr "Restore DialogSeekBar.xml from DialogSeekBar.xml.bak for every installed skin that has a backup. Reloads the active skin when done."
 
 msgctxt "#32196"
-msgid "Sprite atlas preview"
-msgstr "Sprite atlas preview"
+msgid "(unused)"
+msgstr "(unused)"
 
 msgctxt "#32197"
-msgid "Show preview by clipping the Jellyfin sprite sheet in the skin (fast scrubbing, no per-cell crop). Turn off to use the older Pillow crop path (Trickplay.PreviewImage). Re-install the skin snippet after changing this."
-msgstr "Show preview by clipping the Jellyfin sprite sheet in the skin (fast scrubbing, no per-cell crop). Turn off to use the older Pillow crop path (Trickplay.PreviewImage). Re-install the skin snippet after changing this."
+msgid "(unused)"
+msgstr "(unused)"
 
 msgctxt "#32198"
-msgid "Sprite atlas crop fallback"
-msgstr "Sprite atlas crop fallback"
+msgid "(unused)"
+msgstr "(unused)"
 
 msgctxt "#32199"
-msgid "When sprite atlas preview is on, also crop PreviewImage as a fallback (works with older skin snippets and when Kodi cannot clip the sprite sheet). Turn off to use atlas-only display."
-msgstr "When sprite atlas preview is on, also crop PreviewImage as a fallback (works with older skin snippets and when Kodi cannot clip the sprite sheet). Turn off to use atlas-only display."
+msgid "(unused)"
+msgstr "(unused)"
+
+msgctxt "#32211"
+msgid "Show addon status"
+msgstr "Show addon status"
+
+msgctxt "#32212"
+msgid "Show active skin, snippet install status (missing/stale/ok), Pillow, and ffmpeg paths."
+msgstr "Show active skin, snippet install status (missing/stale/ok), Pillow, and ffmpeg paths."
+
+msgctxt "#32213"
+msgid "Stale overlay (will update)"
+msgstr "Stale overlay (will update)"
+
+msgctxt "#32214"
+msgid "Force reinstall skin snippet"
+msgstr "Force reinstall skin snippet"
+
+msgctxt "#32215"
+msgid "Reinstall the trickplay overlay even if the installer thinks it is already up to date. Use after manual skin edits or if the preview position looks wrong."
+msgstr "Reinstall the trickplay overlay even if the installer thinks it is already up to date. Use after manual skin edits or if the preview position looks wrong."

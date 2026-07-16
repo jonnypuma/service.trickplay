@@ -64,6 +64,7 @@
         <!-- Trickplay preview overlay (service.trickplay). Copy group 94090 into skin DialogSeekBar.xml. -->
         <!-- Compact seek bar: group 94100 (anchor 270,670, slot slides). Full OSD: group 94103 (800,670, centered above bar). -->
         <!-- Matched automatically when skin.arctic.fuse.3 is active (see skin_profiles.py). -->
+        <!-- trickplay-overlay-rev:4 -->
         <control type="group" id="94090">
             <control type="group" id="94100">
                 <visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage)) + !String.IsEqual(Window.Property(Trickplay.PreviewLayout),center)</visible>

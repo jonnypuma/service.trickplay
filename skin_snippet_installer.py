@@ -44,7 +44,6 @@ NOX_OSD_SLIDE_MARKER = (
 HOME_PROPERTY_SNIPPETS = frozenset(
     {
         "DialogSeekBar-skin.aeon.nox.silvo.xml",
-        "DialogSeekBar-skin.aeon.nox.silvo.xml",
         "DialogSeekBar-skin.bingie.xml",
         "DialogSeekBar-skin.arctic.horizon.xml",
         "DialogSeekBar-skin.arctic.horizon.2.xml",
@@ -53,6 +52,13 @@ HOME_PROPERTY_SNIPPETS = frozenset(
         "DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml",
         "DialogSeekBar-skin.arctic.zephyr.rounded.xml",
         "VideoFullScreen-skin.bello.xml",
+    }
+)
+REPLACE_SNIPPETS = frozenset(
+    {
+        "DialogSeekBar-skin.estuary.modv2.xml",
+        "DialogSeekBar-skin.arctic.fuse.2.xml",
+        "DialogSeekBar-skin.arctic.fuse.3.xml",
     }
 )
 OSD_SLIDE_MARKERS = {
@@ -64,7 +70,8 @@ OSD_SLIDE_MARKERS = {
 }
 LEGACY_PROPERTY_MARKER = "Window.Property(Trickplay.PreviewVisible)"
 LEGACY_DYNAMIC_PREVIEW_MARKER = "$INFO[Window.Property(Trickplay.PreviewLeft)]"
-OVERLAY_REVISION_MARKER = "trickplay-overlay-rev:3"
+OVERLAY_REVISION = 4
+OVERLAY_REVISION_MARKER = f"trickplay-overlay-rev:{OVERLAY_REVISION}"
 SKIPPY_SEEKBAR_VISIBLE_MARKER = "Window(Home).Property(Skippy.Skipping)"
 SKIPPY_SEEKBAR_VISIBLE_TAG = (
     "<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>"
@@ -104,9 +111,15 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 
 
 def seekbar_has_host_controls(text: str) -> bool:
-    """True when DialogSeekBar contains seek/OSD controls besides the trickplay overlay."""
+    """True when DialogSeekBar has seek/OSD content besides the trickplay overlay.
+
+    Many skins (e.g. Arctic Zephyr Rounded) put the seek bar in an ``<include>``
+    with no top-level ``<control>`` besides our overlay — that is still a real host.
+    """
     without_overlay = remove_control_block(text, OVERLAY_CONTROL_ID)
-    return bool(re.search(r"<control\b", without_overlay, re.IGNORECASE))
+    if re.search(r"<control\b", without_overlay, re.IGNORECASE):
+        return True
+    return bool(re.search(r"<include\b", without_overlay, re.IGNORECASE))
 
 
 def schedule_skin_reload() -> None:
@@ -135,43 +148,106 @@ def _local_path(path: str) -> str:
 
 
 def _jsonrpc_addons_get_skins() -> list[str]:
-    for addon_type in ("kodi.python.skin", "xbmc.python.skin"):
+    """List installed skin addon ids via JSON-RPC (xbmc.gui.skin)."""
+    # enabled=False returns only *disabled* skins; use "all" (or omit).
+    # Type must be xbmc.gui.skin — not xbmc.python.skin.
+    attempts = (
+        {"type": "xbmc.gui.skin", "enabled": "all", "installed": True},
+        {"type": "xbmc.gui.skin", "installed": True},
+        {"type": "xbmc.gui.skin"},
+    )
+    for params in attempts:
         command = {
             "jsonrpc": "2.0",
             "method": "Addons.GetAddons",
-            "params": {"type": addon_type, "enabled": False},
+            "params": params,
             "id": 1,
         }
         try:
-            response = json.loads(
-                xbmc.executeJSONRPC(
-                    json.dumps(command)
-                )
-            )
+            response = json.loads(xbmc.executeJSONRPC(json.dumps(command)))
         except (RuntimeError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if response.get("error"):
+            _debug_log(f"Addons.GetAddons error for {params}: {response.get('error')}")
             continue
         addons = response.get("result", {}).get("addons") or []
         if addons:
             return [
                 normalize_skin_id(str(item.get("addonid", "")))
                 for item in addons
-                if item
+                if item and item.get("addonid")
             ]
     return []
+
+
+def _addon_dir_roots() -> list[str]:
+    """Local filesystem roots that may contain installed add-ons."""
+    roots: list[str] = []
+    for special in ("special://home/addons", "special://xbmc/addons"):
+        try:
+            translated = xbmcvfs.translatePath(special)
+        except Exception:
+            continue
+        if translated and os.path.isdir(translated) and translated not in roots:
+            roots.append(translated)
+    return roots
+
+
+def _skin_ids_from_addons_folders() -> list[str]:
+    """Filesystem fallback: scan Kodi addon dirs for xbmc.gui.skin packages."""
+    found: list[str] = []
+    for root in _addon_dir_roots():
+        try:
+            names = os.listdir(root)
+        except OSError:
+            continue
+        for name in names:
+            if not name.startswith("skin."):
+                continue
+            addon_xml = os.path.join(root, name, "addon.xml")
+            if not os.path.isfile(addon_xml):
+                continue
+            try:
+                text = _read_text(addon_xml)
+            except OSError:
+                continue
+            if "xbmc.gui.skin" not in text:
+                continue
+            found.append(normalize_skin_id(name))
+    return sorted(set(found))
 
 
 _skin_list_rpc_warned = False
 
 
 def list_installed_skin_ids() -> list[str]:
+    """Installed skin ids from JSON-RPC, merged with a filesystem scan.
+
+    JSON-RPC alone misses skins that are broken, disabled, or only dropped into
+    the addons folder (e.g. not shown under Settings → Interface → Skin).
+    """
     global _skin_list_rpc_warned
-    ids = [sid for sid in _jsonrpc_addons_get_skins() if sid]
+    rpc_ids = {sid for sid in _jsonrpc_addons_get_skins() if sid}
+    fs_ids = {sid for sid in _skin_ids_from_addons_folders() if sid}
+    ids = rpc_ids | fs_ids
+    if not rpc_ids and fs_ids and not _skin_list_rpc_warned:
+        _skin_list_rpc_warned = True
+        _log(
+            "Addons.GetAddons skin list empty; using filesystem scan "
+            f"({len(fs_ids)} skin(s))",
+            xbmc.LOGWARNING,
+        )
+    elif fs_ids - rpc_ids:
+        _debug_log(
+            "Filesystem skin scan added ids missing from JSON-RPC: "
+            + ", ".join(sorted(fs_ids - rpc_ids))
+        )
     if ids:
-        return sorted(set(ids))
+        return sorted(ids)
     if not _skin_list_rpc_warned:
         _skin_list_rpc_warned = True
         _log(
-            "Could not enumerate installed skins via JSON-RPC; "
+            "Could not enumerate installed skins via JSON-RPC or filesystem; "
             "falling back to active skin only",
             xbmc.LOGWARNING,
         )
@@ -179,20 +255,52 @@ def list_installed_skin_ids() -> list[str]:
     return [active] if active else []
 
 
-def _skin_addon_path(skin_id: str) -> str | None:
+def _skin_addon_path(skin_id: str, *, quiet: bool = False) -> str | None:
+    """Resolve a skin's on-disk folder (Addon API, then filesystem fallback)."""
     try:
         path = xbmcaddon.Addon(skin_id).getAddonInfo("path")
     except RuntimeError:
-        return None
+        path = None
     local = _local_path(path) if path else ""
-    return local if local and os.path.isdir(local) else None
+    if local and os.path.isdir(local):
+        return local
+    # Disabled / broken / not registered skins still have a folder on disk.
+    for root in _addon_dir_roots():
+        candidate = os.path.join(root, skin_id)
+        if os.path.isdir(candidate) and os.path.isfile(
+            os.path.join(candidate, "addon.xml")
+        ):
+            if not quiet:
+                _log(
+                    f"Resolved {skin_id} via filesystem ({candidate}) — "
+                    "Addon() unavailable (disabled or not listed under Skins)",
+                    xbmc.LOGWARNING,
+                )
+            return candidate
+    return None
 
 
 def _skin_display_name(skin_id: str) -> str:
     try:
         return xbmcaddon.Addon(skin_id).getAddonInfo("name") or skin_id
     except RuntimeError:
-        return skin_id
+        pass
+    path = _skin_addon_path(skin_id, quiet=True)
+    if path:
+        addon_xml = os.path.join(path, "addon.xml")
+        if os.path.isfile(addon_xml):
+            try:
+                text = _read_text(addon_xml)
+            except OSError:
+                text = ""
+            match = re.search(
+                r'<addon\b[^>]*\bname=["\']([^"\']+)["\']',
+                text,
+                re.IGNORECASE,
+            )
+            if match:
+                return match.group(1)
+    return skin_id
 
 
 def find_skin_xml_paths(skin_root: str, filename: str) -> list[str]:
@@ -455,7 +563,7 @@ def ensure_skippy_seekbar_visible(text: str) -> str:
 
 
 def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
-    """True when an installed overlay is stale (e.g. missing Home-window property bindings)."""
+    """True when an installed overlay is stale (revision, Skippy, or skin-specific markers)."""
     if not overlay_already_installed(target_path):
         return False
     local = _local_path(target_path)
@@ -465,19 +573,31 @@ def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
         text = _read_text(local)
     except OSError:
         return False
+    # Shared checks for every snippet type (merge, replace, universal).
     if SKIPPY_SEEKBAR_VISIBLE_MARKER not in text:
-        return True
-    if snippet_file not in HOME_PROPERTY_SNIPPETS:
-        if snippet_file in (
-            UNIVERSAL_SNIPPET_FILENAME,
-            "DialogSeekBar-skin.estuary.xml",
-        ):
-            return overlay_has_legacy_dynamic_placement(text)
-        return False
-    if overlay_has_legacy_dynamic_placement(text):
         return True
     if OVERLAY_REVISION_MARKER not in text:
         return True
+
+    # Replace-mode skins (AF2/AF3, Estuary Mod v2) intentionally use
+    # Window.Property(Trickplay.*) on DialogSeekBar — not Home properties.
+    if snippet_file in REPLACE_SNIPPETS:
+        return SLOT_SLIDE_MARKER not in text
+
+    # Dynamic / Home-property merge snippets: flag old dynamic Left/Top placement
+    # and Window.Property-only overlays that should have been migrated to Home.
+    if overlay_has_legacy_dynamic_placement(text):
+        return True
+    if (
+        snippet_file in HOME_PROPERTY_SNIPPETS
+        and LEGACY_PROPERTY_MARKER in text
+        and HOME_PROPERTY_MARKER not in text
+    ):
+        return True
+
+    if snippet_file not in HOME_PROPERTY_SNIPPETS:
+        return False
+
     if snippet_file == "VideoFullScreen-skin.bello.xml":
         return (
             HOME_PROPERTY_MARKER not in text
@@ -489,7 +609,6 @@ def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
             HOME_PROPERTY_MARKER not in text
             or SLOT_SLIDE_MARKER not in text
             or BINGIE_PREVIEW_TOP_MARKER not in text
-            or LEGACY_PROPERTY_MARKER in text
         )
     if snippet_file == "DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml":
         return (
@@ -501,8 +620,6 @@ def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
         marker = OSD_SLIDE_MARKERS[snippet_file]
         if marker not in text:
             return True
-    if LEGACY_PROPERTY_MARKER in text and HOME_PROPERTY_MARKER not in text:
-        return True
     return HOME_PROPERTY_MARKER not in text or SLOT_SLIDE_MARKER not in text
 
 
@@ -561,6 +678,7 @@ class PathInstallPlan:
     mode: InstallMode
     writable: bool = True
     already_installed: bool = False
+    needs_refresh: bool = False
     stub_seekbar: bool = False
 
     @property
@@ -616,7 +734,12 @@ def _mode_from_spec(mode: str) -> InstallMode:
     return InstallMode.MERGE
 
 
-def build_install_plan(scope: InstallScope, addon_path: str) -> list[SkinInstallPlan]:
+def build_install_plan(
+    scope: InstallScope,
+    addon_path: str,
+    *,
+    force: bool = False,
+) -> list[SkinInstallPlan]:
     if scope == InstallScope.CURRENT:
         skin_ids = [sid for sid in [current_skin_id()] if sid]
     else:
@@ -685,7 +808,8 @@ def build_install_plan(scope: InstallScope, addon_path: str) -> list[SkinInstall
                     snippet_file=spec.filename,
                     mode=mode,
                     writable=writable,
-                    already_installed=installed and not needs_refresh,
+                    already_installed=installed and not needs_refresh and not force,
+                    needs_refresh=needs_refresh or (force and installed),
                     stub_seekbar=stub_seekbar,
                 )
             )
@@ -1087,6 +1211,8 @@ def format_plan_summary(plans: list[SkinInstallPlan]) -> str:
                 tags.append("not_writable")
             if path_plan.already_installed:
                 tags.append("already_installed")
+            elif path_plan.needs_refresh:
+                tags.append("stale_overlay")
             elif overlay_already_installed(path_plan.target_path):
                 tags.append("stale_overlay")
             if path_plan.stub_seekbar:

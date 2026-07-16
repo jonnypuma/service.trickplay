@@ -26,7 +26,8 @@ from trickplay_resolver import (
 )
 
 MAX_TILE_ENQUEUE = 20
-IDLE_TILE_MAX_ENQUEUE = 100
+# Cap idle whole-tile floods so NFS sprite copies do not starve scrub crops.
+IDLE_TILE_MAX_ENQUEUE = 24
 
 
 def _cache_key(lookup: TrickplayLookup) -> ThumbCacheKey:
@@ -146,10 +147,11 @@ def _follow_warm_indices(
 @dataclass(frozen=True)
 class _PrefetchItem:
     lookup: TrickplayLookup
+    high_priority: bool = False
 
 
 class ThumbPrefetch:
-    """Low-priority crop queue; foreground preview crops are unchanged."""
+    """Background crop queue; scrub/foreground work preempts idle tile floods."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -173,6 +175,36 @@ class ThumbPrefetch:
             self._idle_tiles_done.clear()
             self._last_playback_follow_index = -1
             self._last_playback_follow_at = 0.0
+
+    def yield_for_scrub(self, preferred_tile: str | None = None) -> None:
+        """Drop queued work that would contend with a scrub crop.
+
+        Keeps high-priority items for ``preferred_tile`` (if set) so neighbor
+        warm can continue; clears everything else so NFS bandwidth is free for
+        the foreground crop worker.
+        """
+        with self._lock:
+            if not self._queue:
+                return
+            kept: deque[_PrefetchItem] = deque()
+            keys: set[tuple[str, int, int, int, int]] = set()
+            for item in self._queue:
+                if (
+                    preferred_tile
+                    and item.high_priority
+                    and item.lookup.tile_path == preferred_tile
+                ):
+                    kept.append(item)
+                    keys.add(_cache_key(item.lookup))
+            dropped = len(self._queue) - len(kept)
+            self._queue = kept
+            self._queued_keys = keys
+            if dropped and self._debug:
+                _log(
+                    f"Prefetch yield for scrub"
+                    f"{f' tile={preferred_tile}' if preferred_tile else ''}"
+                    f" dropped {dropped} queued cell(s)"
+                )
 
     def schedule_playhead_follow(
         self,
@@ -373,7 +405,10 @@ class ThumbPrefetch:
         indices: list[int],
         high_priority: bool,
     ) -> None:
-        for index in indices:
+        # High-priority uses appendleft; enqueue in reverse so the first
+        # index stays at the front of the queue.
+        ordered = reversed(indices) if high_priority else indices
+        for index in ordered:
             lookup = lookup_by_index(resolution, index, interval_ms)
             if lookup is None:
                 continue
@@ -416,13 +451,27 @@ class ThumbPrefetch:
         key = _cache_key(lookup)
         with self._lock:
             if key in self._queued_keys:
+                if not high_priority:
+                    return False
+                # Promote an already-queued low-priority cell to the front.
+                for existing in self._queue:
+                    if _cache_key(existing.lookup) == key:
+                        self._queue.remove(existing)
+                        self._queue.appendleft(
+                            _PrefetchItem(lookup, high_priority=True)
+                        )
+                        return True
                 return False
             if len(self._queue) >= self._max_queue:
                 if not high_priority:
                     return False
                 dropped = self._queue.pop()
                 self._queued_keys.discard(_cache_key(dropped.lookup))
-            self._queue.append(_PrefetchItem(lookup))
+            item = _PrefetchItem(lookup, high_priority=high_priority)
+            if high_priority:
+                self._queue.appendleft(item)
+            else:
+                self._queue.append(item)
             self._queued_keys.add(key)
 
         self._ensure_worker()

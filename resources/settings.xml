@@ -44,6 +44,18 @@
 
                 </setting>
 
+                <setting id="addon_status" type="action" label="32211" help="32212">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,addon_status)</data>
+
+                    </control>
+
+                </setting>
+
                 <setting id="install_skin_snippet_current" type="action" label="32154" help="32155">
 
                     <level>0</level>
@@ -51,6 +63,18 @@
                     <control type="button" format="action">
 
                         <data>RunScript(service.trickplay,install_skin,current)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_skin_snippet_force" type="action" label="32214" help="32215">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_skin,current,force)</data>
 
                     </control>
 

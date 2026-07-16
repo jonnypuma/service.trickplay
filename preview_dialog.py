@@ -365,6 +365,7 @@ class PreviewDialogController:
         _clear_preview_properties()
 
     def _scrub_churn_active(self, lookup: TrickplayLookup, *, seeking: bool) -> bool:
+        """True only during rapid successive scrub updates (not a single big jump)."""
         if not seeking:
             self._scrub_burst_until = 0.0
             return False
@@ -372,11 +373,19 @@ class PreviewDialogController:
         fast = False
         if now < self._scrub_burst_until:
             fast = True
-        if self._last_scrub_at > 0.0 and now - self._last_scrub_at < SCRUB_GAP_SEC:
+        if (
+            self._last_scrub_at > 0.0
+            and now - self._last_scrub_at < SCRUB_COALESCE_SEC
+        ):
             fast = True
-        if self._last_scrub_at > 0.0 and now - self._last_scrub_at < SCRUB_COALESCE_SEC:
-            fast = True
-        if self._last_scrub_thumb_index >= 0:
+        # Large index jumps only count as churn when updates are already arriving
+        # quickly — a single leap from playhead to scrub target must still use
+        # cache / eager crop so the first thumb is not delayed.
+        recent = (
+            self._last_scrub_at > 0.0
+            and now - self._last_scrub_at < SCRUB_GAP_SEC
+        )
+        if recent and self._last_scrub_thumb_index >= 0:
             jump = abs(lookup.thumb_index - self._last_scrub_thumb_index)
             if jump >= SCRUB_JUMP_THUMBS:
                 fast = True

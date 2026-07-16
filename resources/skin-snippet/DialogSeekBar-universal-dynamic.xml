@@ -22,6 +22,8 @@
 
   may use those instead; this overlay works for all other profiles.
 
+  trickplay-overlay-rev:4
+
 -->
 
 <window>
@@ -30,6 +32,7 @@
 
 		<control type="group" id="94090">
 
+			<!-- trickplay-overlay-rev:4 -->
 			<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 			<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
 

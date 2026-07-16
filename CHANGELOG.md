@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.3] - 2026-07-16
+
+### Fixed
+
+- **First scrub thumb latency on NFS** — prefetch was running, but idle whole-tile crops flooded the queue and a single large seek jump was treated as “fast scrub” (skipping cache/eager crop). High-priority neighbor work now goes to the front of the queue, scrub yields drop idle backlog before the foreground crop, and a lone big jump uses cache/eager crop again. Idle tile enqueue cap reduced (100 → 24).
+
+## [6.3.2] - 2026-07-16
+
+### Fixed
+
+- **Arctic Zephyr Rounded stub false positive** — DialogSeekBar that hosts the seek bar via `<include>` (no other top-level `<control>` besides the trickplay overlay) is no longer skipped as “empty / seek bar elsewhere”.
+- **Disabled / unlisted skins (e.g. Plextuary)** — skin folder is resolved from the addons directory when `xbmcaddon.Addon()` fails; install-all merges JSON-RPC results with a filesystem scan so skins missing from Settings → Interface → Skin still appear.
+
+## [6.3.1] - 2026-07-16
+
+### Fixed
+
+- **Addon status always STALE on Arctic Fuse / Estuary Mod v2** — those replace snippets correctly use `Window.Property(Trickplay.*)` on DialogSeekBar; the stale checker no longer treats that as a legacy Home-property overlay.
+- **Install skin snippet (all skins)** — JSON-RPC now queries `xbmc.gui.skin` with `enabled=all` (was wrong type + `enabled=false`, which only returned disabled skins). Falls back to scanning the addons folder for `skin.*` packages when RPC returns nothing.
+
+## [6.3.0] - 2026-07-16
+
+### Added
+
+- **Show addon status** — settings button reports active skin, profile, snippet target (`DialogSeekBar.xml` / Bello `VideoFullScreen.xml`), snippet state (missing / stale / OK), Pillow, and ffmpeg.
+- **Force reinstall skin snippet** — reinstalls the overlay even when the installer would otherwise skip as `already_installed`.
+
+### Fixed
+
+- **Stale overlay detection for all snippets** — replace-mode skins (Estuary Mod v2, Arctic Fuse 2/3) and merge snippets now share `trickplay-overlay-rev:4`. Missing revision or Skippy visibility marks the install as stale so **Install skin snippet** updates instead of skipping.
+- **Skin install messaging** — help text and service warnings mention Bello’s `VideoFullScreen.xml` target; install plan tags stale overlays as `stale_overlay`.
+
+### Changed
+
+- Removed leftover sprite-atlas setting strings (atlas preview was removed earlier; Pillow is always required for crops).
+
 ## [6.2.1] - 2026-07-16
 
 ### Added

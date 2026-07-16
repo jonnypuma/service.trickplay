@@ -641,6 +641,7 @@ def _install_skin_error_message(code: str) -> str:
         "already_installed": 32188,
         "dialog_seekbar_stub": 32209,
         "snippet_target_not_found": 32210,
+        "stale_overlay": 32213,
     }
     string_id = mapping.get(code, 32161)
     return _ADDON.getLocalizedString(string_id)
@@ -705,12 +706,17 @@ def _execute_skin_plan_with_progress(
         progress.close()
 
 
-def run_install_skin_dialog(scope: InstallScope) -> None:
-    _log(f"run_install_skin_dialog started (scope={scope.value})")
-    plans = build_install_plan(scope, _ADDON_PATH)
+def run_install_skin_dialog(scope: InstallScope, *, force: bool = False) -> None:
+    _log(f"run_install_skin_dialog started (scope={scope.value}, force={force})")
+    plans = build_install_plan(scope, _ADDON_PATH, force=force)
+    title = (
+        _ADDON.getLocalizedString(32214)
+        if force
+        else _ADDON.getLocalizedString(32158)
+    )
     if not plans:
         xbmcgui.Dialog().ok(
-            _ADDON.getLocalizedString(32158),
+            title,
             _ADDON.getLocalizedString(32163),
         )
         return
@@ -723,14 +729,14 @@ def run_install_skin_dialog(scope: InstallScope) -> None:
 
     if not plan_has_installable_targets(plans):
         xbmcgui.Dialog().ok(
-            _ADDON.getLocalizedString(32158),
+            title,
             _ADDON.getLocalizedString(32159) % summary,
         )
         return
 
     prompt = _ADDON.getLocalizedString(32159) % summary
     if not xbmcgui.Dialog().yesno(
-        _ADDON.getLocalizedString(32158),
+        title,
         prompt,
         yeslabel=_ADDON.getLocalizedString(32164),
         nolabel=_ADDON.getLocalizedString(32100),
@@ -744,7 +750,6 @@ def run_install_skin_dialog(scope: InstallScope) -> None:
         for path_plan in plan.paths
         if path_plan.writable and not path_plan.already_installed and not path_plan.stub_seekbar
     )
-    title = _ADDON.getLocalizedString(32158)
 
     def _run(progress):
         return execute_install_plan(plans, _ADDON_PATH, progress=progress)
@@ -766,6 +771,14 @@ def run_install_skin_dialog(scope: InstallScope) -> None:
         summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
 
     xbmcgui.Dialog().ok(title, summary_body)
+
+
+def run_addon_status_dialog() -> None:
+    _log("run_addon_status_dialog started")
+    from addon_health import collect_addon_health, format_health_report
+
+    report = format_health_report(collect_addon_health())
+    xbmcgui.Dialog().ok(_ADDON.getLocalizedString(32211), report)
 
 
 def run_restore_skin_dialog(scope: InstallScope) -> None:
@@ -846,6 +859,14 @@ def _resolve_install_skin_scope(argv: list[str]) -> InstallScope | None:
     return _resolve_skin_scope(argv, "install_skin")
 
 
+def _resolve_install_skin_force(argv: list[str]) -> bool:
+    for arg in argv[1:]:
+        normalized = (arg or "").strip().lower()
+        if normalized in ("force", "install_skin_force", "force_install_skin"):
+            return True
+    return False
+
+
 def _resolve_restore_skin_scope(argv: list[str]) -> InstallScope | None:
     return _resolve_skin_scope(argv, "restore_skin")
 
@@ -865,8 +886,12 @@ def _resolve_mode(argv: list[str]) -> str:
             "install_skin_all",
             "install_skin_snippet_current",
             "install_skin_snippet_all",
+            "install_skin_force",
+            "force_install_skin",
         ):
             return "install_skin"
+        if normalized in ("addon_status", "show_status", "status"):
+            return "addon_status"
         if normalized in ("restore_skin", "restore_skin_snippet"):
             return "restore_skin"
         if normalized in (
@@ -906,7 +931,10 @@ if __name__ == "__main__":
         run_install_tools_dialog(from_playback_prompt=_from_playback_prompt(sys.argv))
     elif mode == "install_skin":
         scope = _resolve_install_skin_scope(sys.argv) or InstallScope.CURRENT
-        run_install_skin_dialog(scope)
+        force = _resolve_install_skin_force(sys.argv)
+        run_install_skin_dialog(scope, force=force)
+    elif mode == "addon_status":
+        run_addon_status_dialog()
     elif mode == "restore_skin":
         scope = _resolve_restore_skin_scope(sys.argv) or InstallScope.CURRENT
         run_restore_skin_dialog(scope)
