@@ -103,7 +103,8 @@ class InstallMode(str, Enum):
 
 
 SKIN_RELOAD_ALARM = "trickplay-skin-reload"
-SKIN_RELOAD_DELAY = "00:02"
+# Delay after schedule so addon settings / dialog teardown can finish first.
+SKIN_RELOAD_DELAY = "00:03"
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -122,13 +123,18 @@ def seekbar_has_host_controls(text: str) -> bool:
     return bool(re.search(r"<include\b", without_overlay, re.IGNORECASE))
 
 
-def schedule_skin_reload() -> None:
-    """Defer ReloadSkin to avoid Kodi crashes on Windows when called from a Python script."""
+def cancel_skin_reload() -> None:
+    """Cancel a pending deferred ReloadSkin alarm."""
     xbmc.executebuiltin(f"CancelAlarm({SKIN_RELOAD_ALARM},silent)")
+
+
+def schedule_skin_reload() -> None:
+    """Defer ReloadSkin to avoid Kodi crashes when called from a Python script/dialog."""
+    cancel_skin_reload()
     xbmc.executebuiltin(
         f"AlarmClock({SKIN_RELOAD_ALARM},ReloadSkin(),{SKIN_RELOAD_DELAY},silent)"
     )
-    _log("Scheduled deferred skin reload")
+    _log(f"Scheduled deferred skin reload ({SKIN_RELOAD_DELAY})")
 
 
 def _debug_log(message: str) -> None:
@@ -979,7 +985,15 @@ def execute_install_plan(
     addon_path: str,
     *,
     progress: Callable[[int, str], None] | None = None,
-) -> list[InstallOutcome]:
+    schedule_reload: bool = True,
+) -> tuple[list[InstallOutcome], bool]:
+    """Install planned snippets.
+
+    Returns ``(outcomes, needs_skin_reload)``. When ``schedule_reload`` is True
+    (default), schedules a deferred ReloadSkin if the active skin was modified.
+    Callers that show a modal summary should pass ``schedule_reload=False`` and
+    call :func:`schedule_skin_reload` only after the dialog is dismissed.
+    """
     snippet_root = _snippet_root(addon_path)
     outcomes: list[InstallOutcome] = []
     modified_active_skin = False
@@ -1087,22 +1101,25 @@ def execute_install_plan(
     if progress:
         progress(100, "Done")
 
-    if modified_active_skin and reload_host_skin:
+    needs_reload = modified_active_skin and reload_host_skin
+    if needs_reload and schedule_reload:
         schedule_skin_reload()
-    elif modified_active_skin:
+    elif modified_active_skin and not reload_host_skin:
         _log(
             "Skipped skin reload: DialogSeekBar has no host seek bar controls",
             xbmc.LOGWARNING,
         )
 
-    return outcomes
+    return outcomes, needs_reload
 
 
 def execute_restore_plan(
     plans: list[SkinRestorePlan],
     *,
     progress: Callable[[int, str], None] | None = None,
-) -> list[InstallOutcome]:
+    schedule_reload: bool = True,
+) -> tuple[list[InstallOutcome], bool]:
+    """Restore seekbar backups. Returns ``(outcomes, needs_skin_reload)``."""
     outcomes: list[InstallOutcome] = []
     modified_active_skin = False
     reload_host_skin = False
@@ -1171,15 +1188,16 @@ def execute_restore_plan(
     if progress:
         progress(100, "Done")
 
-    if modified_active_skin and reload_host_skin:
+    needs_reload = modified_active_skin and reload_host_skin
+    if needs_reload and schedule_reload:
         schedule_skin_reload()
-    elif modified_active_skin:
+    elif modified_active_skin and not reload_host_skin:
         _log(
             "Skipped skin reload: DialogSeekBar has no host seek bar controls",
             xbmc.LOGWARNING,
         )
 
-    return outcomes
+    return outcomes, needs_reload
 
 
 def plan_has_installable_targets(plans: list[SkinInstallPlan]) -> bool:

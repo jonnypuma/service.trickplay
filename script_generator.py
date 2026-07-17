@@ -29,6 +29,7 @@ from skin_snippet_installer import (
     InstallScope,
     build_install_plan,
     build_restore_plan,
+    cancel_skin_reload,
     execute_install_plan,
     execute_restore_plan,
     format_plan_summary,
@@ -36,6 +37,7 @@ from skin_snippet_installer import (
     inactive_skin_install_note,
     plan_has_installable_targets,
     plan_has_restore_targets,
+    schedule_skin_reload,
     summarize_outcomes,
 )
 from library_path_browse import browse_library_folder
@@ -752,9 +754,11 @@ def run_install_skin_dialog(scope: InstallScope, *, force: bool = False) -> None
     )
 
     def _run(progress):
-        return execute_install_plan(plans, _ADDON_PATH, progress=progress)
+        return execute_install_plan(
+            plans, _ADDON_PATH, progress=progress, schedule_reload=False
+        )
 
-    outcomes = _execute_skin_plan_with_progress(work_count, title, _run)
+    outcomes, needs_reload = _execute_skin_plan_with_progress(work_count, title, _run)
     ok_count, fail_count, skipped_count, skin_count = summarize_outcomes(outcomes)
     result_lines = _format_skin_outcome_lines(outcomes)
 
@@ -770,7 +774,11 @@ def run_install_skin_dialog(scope: InstallScope, *, force: bool = False) -> None
     if note_key:
         summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
 
+    # ReloadSkin must not race the summary OK dialog (crashes Kodi on Windows).
+    cancel_skin_reload()
     xbmcgui.Dialog().ok(title, summary_body)
+    if needs_reload:
+        schedule_skin_reload()
 
 
 def run_addon_status_dialog() -> None:
@@ -820,9 +828,9 @@ def run_restore_skin_dialog(scope: InstallScope) -> None:
     title = _ADDON.getLocalizedString(32191)
 
     def _run(progress):
-        return execute_restore_plan(plans, progress=progress)
+        return execute_restore_plan(plans, progress=progress, schedule_reload=False)
 
-    outcomes = _execute_skin_plan_with_progress(work_count, title, _run)
+    outcomes, needs_reload = _execute_skin_plan_with_progress(work_count, title, _run)
     ok_count, fail_count, skipped_count, skin_count = summarize_outcomes(outcomes)
     result_lines = _format_skin_outcome_lines(outcomes)
 
@@ -838,7 +846,10 @@ def run_restore_skin_dialog(scope: InstallScope) -> None:
     if note_key:
         summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
 
+    cancel_skin_reload()
     xbmcgui.Dialog().ok(title, summary_body)
+    if needs_reload:
+        schedule_skin_reload()
 
 
 def _resolve_skin_scope(argv: list[str], action: str) -> InstallScope | None:
