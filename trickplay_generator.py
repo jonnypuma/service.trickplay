@@ -79,6 +79,10 @@ _ACCURATE_FRAME_TIMEOUT_BASE_SEC = 600.0
 _ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC = 0.2
 _FAST_FRAME_TIMEOUT_SEC = 120.0
 _FAST_BATCH_FPS_MAX_INTERVAL_SEC = 5.0
+# Fps-batch wall clock: decode ~frame_count*interval of video. Cap so corrupt
+# demux/H.264 hangs fail in ~15 min (weak hardware budget) instead of ~50+.
+_FPS_BATCH_TIMEOUT_FLOOR_SEC = 180.0
+_FPS_BATCH_TIMEOUT_CAP_SEC = 900.0
 
 
 @dataclass
@@ -124,6 +128,19 @@ class WindowsHwExtractState:
 
 def _accurate_frame_timeout_sec(thumb_index: int) -> float:
     return _ACCURATE_FRAME_TIMEOUT_BASE_SEC + max(thumb_index, 0) * _ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC
+
+
+def _fps_batch_timeout_sec(duration_sec: float) -> float:
+    """Wall-clock budget for one fps-batch tile decode.
+
+    Scales with the media span being scanned, floored for short tiles and
+    capped so hung/corrupt demux cannot block a batch for ~50 minutes.
+    """
+    span = max(float(duration_sec), 0.0)
+    return min(
+        _FPS_BATCH_TIMEOUT_CAP_SEC,
+        max(_FPS_BATCH_TIMEOUT_FLOOR_SEC, span * 0.8 + 60.0),
+    )
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -185,6 +202,19 @@ def _list_jpg_files(directory: str) -> list[str]:
             if str(name).lower().endswith(".jpg"):
                 paths.append(os.path.join(directory, name))
     return sorted(paths, key=_jpg_sort_key)
+
+
+def _clear_jpg_files(directory: str) -> None:
+    """Remove leftover JPEGs before a seek fallback after a failed fps batch."""
+    for path in _list_jpg_files(directory):
+        local = _local_path(path)
+        try:
+            if local and os.path.isfile(local):
+                os.remove(local)
+            elif xbmcvfs.exists(path):
+                xbmcvfs.delete(path)
+        except (OSError, RuntimeError):
+            pass
 
 
 def _list_jpg_tiles(directory: str) -> list[str]:
@@ -780,17 +810,21 @@ def _extract_tile_batch_fps(
     _ensure_local_dir(output_dir)
     local_dir = _local_path(output_dir)
     duration = max(frame_count * interval_sec, interval_sec)
-    timeout = max(120.0, duration * 3.0 + 60.0)
+    timeout = _fps_batch_timeout_sec(duration)
     pattern = os.path.join(local_dir, "%05d.jpg")
 
     _log(
         f"Tile {tile_index + 1}/{tile_count}: fps batch "
         f"{frame_count} frame(s) from {tile_start:.1f}s "
-        f"(~{duration:.0f}s decode)"
+        f"(~{duration:.0f}s decode, timeout {timeout:.0f}s)"
     )
 
     cmd = [
         *_ffmpeg_cmd_prefix(ffmpeg, ffmpeg_input_args),
+        # Soften corrupt EBML/H.264 packets so continuous decode can survive
+        # remux glitches; still fails closed if zero frames are produced.
+        "-fflags",
+        "+discardcorrupt",
         "-ss",
         f"{max(tile_start, 0.0):.3f}",
         "-i",
@@ -847,11 +881,19 @@ def _extract_tile_batch_fps(
                 ffmpeg_input_args=sw[1],
                 hw_state=hw_state,
             )
-        _log(
-            f"Tile fps batch failed at {tile_start:.1f}s "
-            f"({frame_count} frame(s)): {detail[:500]}",
-            xbmc.LOGWARNING,
-        )
+        reason = (detail or "").strip() or "unknown error"
+        if reason == "timeout" or "timeout" in reason.lower():
+            _log(
+                f"Tile fps batch timed out after {timeout:.0f}s at {tile_start:.1f}s "
+                f"({frame_count} frame(s))",
+                xbmc.LOGWARNING,
+            )
+        else:
+            _log(
+                f"Tile fps batch failed at {tile_start:.1f}s "
+                f"({frame_count} frame(s)): {reason[:500]}",
+                xbmc.LOGWARNING,
+            )
         return []
 
     frame_paths = _list_jpg_files(output_dir)[:frame_count]
@@ -924,6 +966,12 @@ def _extract_tile_fast_seek(
             sw_fallback=sw_fallback,
             hw_state=hw_state,
         ):
+            if not frame_paths:
+                _log(
+                    f"Tile {tile_index + 1}/{tile_count}: fast seek failed at "
+                    f"{timestamp:.1f}s (no frames yet); aborting tile",
+                    xbmc.LOGWARNING,
+                )
             return frame_paths
         frame_paths.append(frame_path)
         _log(
@@ -963,7 +1011,7 @@ def _extract_tile_fast(
     if _should_use_fps_batch(
         interval_sec, apply_tonemap=apply_tonemap, hw_state=hw_state
     ):
-        return _extract_tile_batch_fps(
+        frame_paths = _extract_tile_batch_fps(
             ffmpeg,
             env,
             ffmpeg_input,
@@ -973,6 +1021,35 @@ def _extract_tile_fast(
             tile_width,
             output_dir,
             batch_vf,
+            tile_index=tile_index,
+            tile_count=tile_count,
+            debug=debug,
+            should_cancel=should_cancel,
+            output_color_args=output_color_args,
+            ffmpeg_input_args=ffmpeg_input_args,
+            sw_fallback=sw_fallback,
+            hw_state=hw_state,
+        )
+        if frame_paths or _is_cancelled(should_cancel):
+            return frame_paths
+        # Corrupt remuxes / EBML glitches often make continuous fps decode
+        # hang or exit with zero JPEGs; per-frame seeks can still succeed.
+        _log(
+            f"Tile {tile_index + 1}/{tile_count}: fps batch yielded no frames; "
+            "falling back to per-frame fast seek",
+            xbmc.LOGWARNING,
+        )
+        _clear_jpg_files(output_dir)
+        return _extract_tile_fast_seek(
+            ffmpeg,
+            env,
+            ffmpeg_input,
+            start_index,
+            frame_count,
+            interval_sec,
+            tile_width,
+            output_dir,
+            thumb_vf,
             tile_index=tile_index,
             tile_count=tile_count,
             debug=debug,

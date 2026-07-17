@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.4] - 2026-07-17
+
+### Fixed
+
+- **Generator fps-batch hang on corrupt H.264/MKV** — tile timeout was `duration×3+60` (~51 min for a 1000s tile). Cap is now **15 minutes** (floor 3 min), with `+discardcorrupt`, and empty/failed fps batch falls back to per-frame fast seek instead of aborting the file immediately.
+
 ## [6.3.3] - 2026-07-16
 
 ### Fixed
