@@ -1,0 +1,5 @@
+# Exclude from `git archive` / GitHub "Download ZIP" (addon install packages).
+# Files remain in the repository for development and CI.
+.gitattributes export-ignore
+.gitignore export-ignore
+tests/ export-ignore
