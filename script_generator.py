@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import threading
@@ -29,7 +30,6 @@ from skin_snippet_installer import (
     InstallScope,
     build_install_plan,
     build_restore_plan,
-    cancel_skin_reload,
     execute_install_plan,
     execute_restore_plan,
     format_plan_summary,
@@ -685,11 +685,160 @@ def _format_skin_outcome_lines(outcomes: list) -> list[str]:
     return result_lines
 
 
+_SKIN_RESULT_ALARM = "trickplay-skin-result"
+_SKIN_RESULT_FILENAME = "last_skin_op_result.json"
+
+
+def _skin_result_path() -> str:
+    profile = _ADDON.getAddonInfo("profile") or ""
+    data = xbmcvfs.translatePath(profile) if profile else ""
+    return os.path.join(data, _SKIN_RESULT_FILENAME)
+
+
+def _build_skin_summary_body(outcomes: list, scope: InstallScope) -> str:
+    ok_count, fail_count, skipped_count, skin_count = summarize_outcomes(outcomes)
+    result_lines = _format_skin_outcome_lines(outcomes)
+    summary_body = _ADDON.getLocalizedString(32180) % (
+        ok_count,
+        fail_count,
+        skipped_count,
+        skin_count,
+    )
+    if result_lines:
+        summary_body = summary_body + "\n\n" + "\n".join(result_lines)
+    if inactive_skin_install_note(outcomes, scope):
+        summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
+    return summary_body
+
+
+def _persist_skin_result(
+    title: str,
+    summary_body: str,
+    *,
+    needs_reload: bool,
+) -> None:
+    path = _skin_result_path()
+    folder = os.path.dirname(path)
+    payload = {
+        "title": title,
+        "body": summary_body,
+        "needs_reload": bool(needs_reload),
+    }
+    try:
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False)
+    except OSError as exc:
+        _log(f"Could not persist skin result: {exc}", xbmc.LOGWARNING)
+        try:
+            home = xbmcgui.Window(10000)
+            home.setProperty("Trickplay.SkinResult.Title", title)
+            home.setProperty("Trickplay.SkinResult.Body", summary_body)
+            home.setProperty(
+                "Trickplay.SkinResult.NeedsReload",
+                "true" if needs_reload else "false",
+            )
+        except RuntimeError:
+            pass
+
+
+def _load_skin_result() -> tuple[str, str, bool] | None:
+    path = _skin_result_path()
+    try:
+        if path and os.path.isfile(path):
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+            title = str(payload.get("title") or "")
+            body = str(payload.get("body") or "")
+            needs_reload = bool(payload.get("needs_reload"))
+            if title and body:
+                return title, body, needs_reload
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        _log(f"Could not load skin result file: {exc}", xbmc.LOGWARNING)
+
+    try:
+        home = xbmcgui.Window(10000)
+        title = home.getProperty("Trickplay.SkinResult.Title")
+        body = home.getProperty("Trickplay.SkinResult.Body")
+        needs = home.getProperty("Trickplay.SkinResult.NeedsReload")
+        if title and body:
+            return title, body, needs.lower() in ("true", "1", "yes")
+    except RuntimeError:
+        pass
+    return None
+
+
+def _clear_skin_result() -> None:
+    path = _skin_result_path()
+    try:
+        if path and os.path.isfile(path):
+            os.remove(path)
+    except OSError:
+        pass
+    try:
+        home = xbmcgui.Window(10000)
+        home.clearProperty("Trickplay.SkinResult.Title")
+        home.clearProperty("Trickplay.SkinResult.Body")
+        home.clearProperty("Trickplay.SkinResult.NeedsReload")
+    except RuntimeError:
+        pass
+
+
+def _schedule_skin_result_dialog() -> None:
+    """Show results after the settings RunScript context has fully exited.
+
+    A second Dialog().ok() inside the same settings action often never appears
+    on Windows/Omega; AlarmClock + a fresh RunScript is reliable.
+    """
+    xbmc.executebuiltin(f"CancelAlarm({_SKIN_RESULT_ALARM},silent)")
+    xbmc.executebuiltin(
+        f"AlarmClock({_SKIN_RESULT_ALARM},"
+        f"RunScript(service.trickplay,skin_result),00:01,silent)"
+    )
+    _log("Scheduled deferred skin result dialog")
+
+
+def _queue_skin_result_dialog(
+    title: str,
+    summary_body: str,
+    *,
+    needs_reload: bool,
+) -> None:
+    _log(f"Skin result queued:\n{summary_body}")
+    _persist_skin_result(title, summary_body, needs_reload=needs_reload)
+    # Immediate toast so the user always gets feedback even if the modal is delayed.
+    xbmcgui.Dialog().notification(
+        title,
+        summary_body.split("\n", 1)[0],
+        xbmcgui.NOTIFICATION_INFO,
+        8000,
+    )
+    _schedule_skin_result_dialog()
+
+
+def run_skin_result_dialog() -> None:
+    """Deferred modal: install/restore summary, then ReloadSkin after dismiss."""
+    _log("run_skin_result_dialog started")
+    loaded = _load_skin_result()
+    if loaded is None:
+        _log("No pending skin result to show", xbmc.LOGWARNING)
+        return
+    title, summary_body, needs_reload = loaded
+    _clear_skin_result()
+    xbmcgui.Dialog().ok(title, summary_body)
+    if needs_reload:
+        schedule_skin_reload()
+
+
 def _execute_skin_plan_with_progress(
     work_count: int,
     title: str,
-    execute: Callable[[Callable[[int, str], None] | None], list],
-) -> list:
+    execute: Callable[
+        [Callable[[int, str], None] | None],
+        tuple[list, bool],
+    ],
+) -> tuple[list, bool]:
     if work_count <= 1:
         return execute(None)
 
@@ -706,6 +855,7 @@ def _execute_skin_plan_with_progress(
         return execute(_progress)
     finally:
         progress.close()
+        monitor.waitForAbort(0.2)
 
 
 def run_install_skin_dialog(scope: InstallScope, *, force: bool = False) -> None:
@@ -759,26 +909,8 @@ def run_install_skin_dialog(scope: InstallScope, *, force: bool = False) -> None
         )
 
     outcomes, needs_reload = _execute_skin_plan_with_progress(work_count, title, _run)
-    ok_count, fail_count, skipped_count, skin_count = summarize_outcomes(outcomes)
-    result_lines = _format_skin_outcome_lines(outcomes)
-
-    summary_body = _ADDON.getLocalizedString(32180) % (
-        ok_count,
-        fail_count,
-        skipped_count,
-        skin_count,
-    )
-    if result_lines:
-        summary_body = summary_body + "\n\n" + "\n".join(result_lines)
-    note_key = inactive_skin_install_note(outcomes, scope)
-    if note_key:
-        summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
-
-    # ReloadSkin must not race the summary OK dialog (crashes Kodi on Windows).
-    cancel_skin_reload()
-    xbmcgui.Dialog().ok(title, summary_body)
-    if needs_reload:
-        schedule_skin_reload()
+    summary_body = _build_skin_summary_body(outcomes, scope)
+    _queue_skin_result_dialog(title, summary_body, needs_reload=needs_reload)
 
 
 def run_addon_status_dialog() -> None:
@@ -831,25 +963,8 @@ def run_restore_skin_dialog(scope: InstallScope) -> None:
         return execute_restore_plan(plans, progress=progress, schedule_reload=False)
 
     outcomes, needs_reload = _execute_skin_plan_with_progress(work_count, title, _run)
-    ok_count, fail_count, skipped_count, skin_count = summarize_outcomes(outcomes)
-    result_lines = _format_skin_outcome_lines(outcomes)
-
-    summary_body = _ADDON.getLocalizedString(32180) % (
-        ok_count,
-        fail_count,
-        skipped_count,
-        skin_count,
-    )
-    if result_lines:
-        summary_body = summary_body + "\n\n" + "\n".join(result_lines)
-    note_key = inactive_skin_install_note(outcomes, scope)
-    if note_key:
-        summary_body = summary_body + "\n\n" + _ADDON.getLocalizedString(32181)
-
-    cancel_skin_reload()
-    xbmcgui.Dialog().ok(title, summary_body)
-    if needs_reload:
-        schedule_skin_reload()
+    summary_body = _build_skin_summary_body(outcomes, scope)
+    _queue_skin_result_dialog(title, summary_body, needs_reload=needs_reload)
 
 
 def _resolve_skin_scope(argv: list[str], action: str) -> InstallScope | None:
@@ -903,6 +1018,8 @@ def _resolve_mode(argv: list[str]) -> str:
             return "install_skin"
         if normalized in ("addon_status", "show_status", "status"):
             return "addon_status"
+        if normalized in ("skin_result", "show_skin_result"):
+            return "skin_result"
         if normalized in ("restore_skin", "restore_skin_snippet"):
             return "restore_skin"
         if normalized in (
@@ -944,6 +1061,8 @@ if __name__ == "__main__":
         scope = _resolve_install_skin_scope(sys.argv) or InstallScope.CURRENT
         force = _resolve_install_skin_force(sys.argv)
         run_install_skin_dialog(scope, force=force)
+    elif mode == "skin_result":
+        run_skin_result_dialog()
     elif mode == "addon_status":
         run_addon_status_dialog()
     elif mode == "restore_skin":

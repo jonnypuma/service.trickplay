@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.7] - 2026-07-17
+
+### Fixed
+
+- **Skin install result modal never appearing** — a second `Dialog().ok` inside the settings `RunScript` action is often swallowed on Windows after the confirm dialog. Results are now saved and shown ~1s later via a deferred `RunScript(skin_result)` (plus an immediate notification). `ReloadSkin` still waits until that result dialog is dismissed.
+
+## [6.3.6] - 2026-07-17
+
+### Fixed
+
+- **Skin install result dialog** — after Install, the per-skin ok/failed/skipped summary is shown again more reliably (short pause after the progress dialog so the result modal is not swallowed), plus a notification with the result counts. `ReloadSkin` still waits until you dismiss that summary.
+
 ## [6.3.5] - 2026-07-17
 
 ### Fixed
