@@ -6,13 +6,14 @@ import os
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import xbmc
 
 from prefetch_settings import PrefetchSettings, read_prefetch_settings
 from thumb_cropper import (
     ThumbCacheKey,
+    crop_tile_cells_batch,
     get_cached_thumb_path,
     get_cropped_thumb_path,
     temp_tile_copy,
@@ -165,8 +166,15 @@ class ThumbPrefetch:
         self._max_queue = 48
         self._last_playback_follow_index = -1
         self._last_playback_follow_at = 0.0
+        # Separate low-contention queue: copy sprite JPGs to local temp ASAP.
+        self._copy_lock = threading.Lock()
+        self._copy_queue: deque[str] = deque()
+        self._copy_queued: set[str] = set()
+        self._copy_done: set[str] = set()
+        self._copy_worker: threading.Thread | None = None
+        self._copy_generation = 0
 
-    def cancel(self) -> None:
+    def cancel(self, *, clear_copies: bool = True) -> None:
         with self._lock:
             self._generation += 1
             self._queue.clear()
@@ -175,6 +183,12 @@ class ThumbPrefetch:
             self._idle_tiles_done.clear()
             self._last_playback_follow_index = -1
             self._last_playback_follow_at = 0.0
+        if clear_copies:
+            with self._copy_lock:
+                self._copy_generation += 1
+                self._copy_queue.clear()
+                self._copy_queued.clear()
+                self._copy_done.clear()
 
     def yield_for_scrub(self, preferred_tile: str | None = None) -> None:
         """Drop queued work that would contend with a scrub crop.
@@ -205,6 +219,95 @@ class ThumbPrefetch:
                     f"{f' tile={preferred_tile}' if preferred_tile else ''}"
                     f" dropped {dropped} queued cell(s)"
                 )
+        if preferred_tile:
+            self.prioritize_tile_copy(preferred_tile)
+
+    def schedule_all_tile_copies(
+        self,
+        tile_paths: tuple[str, ...] | list[str],
+        *,
+        prioritize: tuple[str, ...] | list[str] = (),
+        debug: bool = False,
+    ) -> None:
+        """Copy every sprite JPG to local temp in the background (priority first)."""
+        self._debug = debug
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for path in [*prioritize, *tile_paths]:
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            ordered.append(path)
+        if not ordered:
+            return
+
+        with self._copy_lock:
+            new_queue: deque[str] = deque()
+            queued: set[str] = set()
+            for path in ordered:
+                if path in self._copy_done:
+                    continue
+                new_queue.append(path)
+                queued.add(path)
+            self._copy_queue = new_queue
+            self._copy_queued = queued
+
+        if debug:
+            _log(
+                f"Scheduled local copies for {len(ordered)} sprite tile(s) "
+                f"(priority {len([p for p in prioritize if p])})"
+            )
+        self._ensure_copy_worker()
+
+    def prioritize_tile_copy(self, tile_path: str) -> None:
+        """Move a sprite tile to the front of the local-copy queue."""
+        if not tile_path:
+            return
+        with self._copy_lock:
+            if tile_path in self._copy_done:
+                return
+            if tile_path in self._copy_queued:
+                try:
+                    self._copy_queue.remove(tile_path)
+                except ValueError:
+                    pass
+            else:
+                self._copy_queued.add(tile_path)
+            self._copy_queue.appendleft(tile_path)
+        self._ensure_copy_worker()
+
+    def _ensure_copy_worker(self) -> None:
+        with self._copy_lock:
+            if self._copy_worker is not None and self._copy_worker.is_alive():
+                return
+            generation = self._copy_generation
+            self._copy_worker = threading.Thread(
+                target=self._run_tile_copies,
+                args=(generation,),
+                daemon=True,
+                name="trickplay-tile-copy",
+            )
+            self._copy_worker.start()
+
+    def _run_tile_copies(self, generation: int) -> None:
+        while True:
+            with self._copy_lock:
+                if generation != self._copy_generation:
+                    return
+                if not self._copy_queue:
+                    self._copy_worker = None
+                    return
+                tile_path = self._copy_queue.popleft()
+                self._copy_queued.discard(tile_path)
+
+            if self._debug:
+                _log(f"Prefetch local tile copy {os.path.basename(tile_path)}")
+            local = temp_tile_copy(tile_path)
+            with self._copy_lock:
+                if generation != self._copy_generation:
+                    return
+                if local:
+                    self._copy_done.add(tile_path)
 
     def schedule_playhead_follow(
         self,
@@ -217,7 +320,7 @@ class ThumbPrefetch:
         high_priority: bool = False,
         force: bool = False,
     ) -> None:
-        """Keep ±radius thumb crops warm around the moving playhead during playback."""
+        """Keep ±playback_warm_radius crops warm around the playhead during playback."""
         settings = settings or read_prefetch_settings()
         if not settings.enabled or not settings.during_playback or not resolution.is_usable:
             return
@@ -243,11 +346,13 @@ class ThumbPrefetch:
         warm_previous = -1 if force or previous_index < 0 or retry_same_index else previous_index
         self._last_playback_follow_index = center_index
         self._last_playback_follow_at = now
+        # Cap during-playback follow so a large scrub radius does not flood the queue.
+        follow_settings = replace(settings, radius=settings.playback_warm_radius)
         self._warm_around_lookup(
             resolution,
             lookup,
             interval_ms,
-            settings,
+            follow_settings,
             debug=debug,
             high_priority=high_priority,
             whole_tile=False,
@@ -502,35 +607,70 @@ class ThumbPrefetch:
                     return
                 item = self._queue.popleft()
                 self._queued_keys.discard(_cache_key(item.lookup))
-                lookup = item.lookup
+                batch = [item.lookup]
+                tile_path = item.lookup.tile_path
+                # Drain more queued cells from the same sprite so one decode
+                # pass can warm many thumbs.
+                remaining: deque[_PrefetchItem] = deque()
+                while self._queue:
+                    nxt = self._queue.popleft()
+                    key = _cache_key(nxt.lookup)
+                    self._queued_keys.discard(key)
+                    if nxt.lookup.tile_path == tile_path:
+                        batch.append(nxt.lookup)
+                    else:
+                        remaining.append(nxt)
+                        self._queued_keys.add(key)
+                if remaining:
+                    self._queue.extendleft(reversed(remaining))
 
-            if get_cached_thumb_path(
-                lookup.tile_path,
-                lookup.col,
-                lookup.row,
-                lookup.thumb_width,
-                lookup.thumb_height,
-            ):
+            cells: list[tuple[int, int, int, int]] = []
+            seen_cells: set[tuple[int, int, int, int]] = set()
+            for lookup in batch:
+                if get_cached_thumb_path(
+                    lookup.tile_path,
+                    lookup.col,
+                    lookup.row,
+                    lookup.thumb_width,
+                    lookup.thumb_height,
+                ):
+                    continue
+                cell = (
+                    lookup.col,
+                    lookup.row,
+                    lookup.thumb_width,
+                    lookup.thumb_height,
+                )
+                if cell in seen_cells:
+                    continue
+                seen_cells.add(cell)
+                cells.append(cell)
+
+            if not cells:
                 continue
 
-            if lookup.tile_path != prepared_tile:
-                temp_tile_copy(lookup.tile_path)
-                prepared_tile = lookup.tile_path
+            if tile_path != prepared_tile:
+                temp_tile_copy(tile_path)
+                prepared_tile = tile_path
                 with self._lock:
                     if generation == self._generation:
                         self._prepared_tile = prepared_tile
 
             if self._debug:
                 _log(
-                    f"Prefetch crop cell ({lookup.col},{lookup.row}) "
-                    f"index {lookup.thumb_index}"
+                    f"Prefetch batch crop {len(cells)} cell(s) from "
+                    f"{os.path.basename(tile_path)}"
                 )
 
-            get_cropped_thumb_path(
-                lookup.tile_path,
-                lookup.col,
-                lookup.row,
-                lookup.thumb_width,
-                lookup.thumb_height,
-                debug=self._debug,
-            )
+            if len(cells) == 1:
+                col, row, thumb_w, thumb_h = cells[0]
+                get_cropped_thumb_path(
+                    tile_path,
+                    col,
+                    row,
+                    thumb_w,
+                    thumb_h,
+                    debug=self._debug,
+                )
+            else:
+                crop_tile_cells_batch(tile_path, cells, debug=self._debug)

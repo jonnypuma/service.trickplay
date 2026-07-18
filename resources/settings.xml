@@ -570,6 +570,42 @@
 
                 </setting>
 
+                <setting id="cache_jpeg_quality" type="integer" label="32216" help="32217">
+
+                    <level>1</level>
+
+                    <default>90</default>
+
+                    <constraints>
+
+                        <minimum>50</minimum>
+
+                        <maximum>95</maximum>
+
+                        <step>5</step>
+
+                    </constraints>
+
+                    <control type="slider" format="integer">
+
+                        <heading>32216</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="clear_preview_cache" type="action" label="32218" help="32219">
+
+                    <level>1</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,clear_preview_cache)</data>
+
+                    </control>
+
+                </setting>
+
             </group>
 
             <group id="g3" label="32040">

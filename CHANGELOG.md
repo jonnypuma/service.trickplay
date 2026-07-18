@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.4] - 2026-07-18
+
+### Added
+
+- **Clear preview cache** — settings action (with confirm) deletes cropped seek thumbs under addon_data and local sprite tile copies in temp. Does not touch media `.trickplay` sidecars or generator workdirs. Shows a toast with file counts and sizes.
+
+## [6.4.3] - 2026-07-18
+
+### Fixed
+
+- **Playback warm radius** — during-playback playhead follow now uses the capped `playback_warm_radius` (min of scrub radius and 5) instead of the full scrub radius, so a large prefetch radius no longer floods the queue while watching.
+
+## [6.4.2] - 2026-07-18
+
+### Added
+
+- **Cached thumb JPEG quality** — setting (50–95, default 90) controls Pillow compression for cropped preview JPEGs on disk. Lower values write/load faster; does not change source trickplay sprites.
+
+## [6.4.1] - 2026-07-18
+
+### Changed
+
+- **Background sprite tile copies** — after trickplay loads, all sprite JPGs are copied to local temp on a dedicated worker (playhead tile first). Scrubbing re-prioritizes the current/next tile without cancelling the copy queue on fast scrub.
+
+## [6.4.0] - 2026-07-18
+
+### Changed
+
+- **Batch tile prefetch crops** — the prefetch worker drains queued cells for the same sprite JPG and crops them in one Pillow decode pass (`crop_tile_cells_batch`), instead of open/decode per cell.
+
+## [6.3.9] - 2026-07-18
+
+### Changed
+
+- **Faster same-tile scrub crops** — decoded sprite JPGs are kept in memory (up to 2 tiles, LRU) so Pillow no longer re-decodes the full tile for every cell crop during scrub/prefetch.
+
 ## [6.3.8] - 2026-07-17
 
 ### Changed

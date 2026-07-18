@@ -22,6 +22,7 @@ class PrefetchSettings:
     radius: int = 5
     max_queue: int = 48
     cache_max_mb: int = 500
+    cache_jpeg_quality: int = 90
 
     @property
     def radius_ahead(self) -> int:
@@ -82,6 +83,8 @@ def _setting_int(setting_id: str, default: int) -> int:
 
 
 def _load_prefetch_settings() -> PrefetchSettings:
+    quality = _setting_int("cache_jpeg_quality", 90)
+    quality = max(50, min(quality, 95))
     return PrefetchSettings(
         enabled=_setting_bool("prefetch_enabled", True),
         on_start=_setting_bool("prefetch_on_start", True),
@@ -91,6 +94,7 @@ def _load_prefetch_settings() -> PrefetchSettings:
         radius=max(_setting_int("prefetch_radius", 5), 1),
         max_queue=max(_setting_int("prefetch_max_queue", 48), 8),
         cache_max_mb=max(_setting_int("cache_max_mb", 500), 0),
+        cache_jpeg_quality=quality,
     )
 
 

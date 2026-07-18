@@ -19,6 +19,7 @@ for _name in ("xbmcaddon", "xbmcvfs", "xbmcgui"):
     sys.modules.setdefault(_name, MagicMock())
 
 from prefetch import ThumbPrefetch, _follow_warm_indices, _symmetric_window_indices
+from prefetch_settings import PrefetchSettings
 from trickplay_resolver import TrickplayLookup, TrickplayResolution
 
 
@@ -45,18 +46,24 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
         )
         self.assertEqual(indices, [])
 
+    def test_playback_warm_radius_caps_large_scrub_radius(self) -> None:
+        settings = PrefetchSettings(radius=12)
+        self.assertEqual(settings.playback_warm_radius, 5)
+        self.assertEqual(settings.radius_symmetric, 12)
+
     @patch("prefetch.lookup_thumbnail")
     @patch("prefetch.read_prefetch_settings")
-    def test_schedule_playhead_follow_resolves_lookup(
+    def test_schedule_playhead_follow_uses_playback_warm_radius(
         self,
         mock_read_settings: MagicMock,
         mock_lookup_thumbnail: MagicMock,
     ) -> None:
-        settings = MagicMock()
-        settings.enabled = True
-        settings.during_playback = True
-        settings.radius = 2
-        settings.max_queue = 48
+        settings = PrefetchSettings(
+            enabled=True,
+            during_playback=True,
+            radius=12,
+            max_queue=48,
+        )
         mock_read_settings.return_value = settings
 
         resolution = TrickplayResolution(
@@ -67,7 +74,7 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
             tile_paths=("/tiles/0.jpg",),
             thumb_width=320,
             thumb_height=180,
-            thumbnail_count=10,
+            thumbnail_count=100,
         )
         lookup = TrickplayLookup(
             tile_path="/tiles/0.jpg",
@@ -75,17 +82,20 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
             row=0,
             thumb_width=320,
             thumb_height=180,
-            thumb_index=1,
-            target_second=10,
+            thumb_index=10,
+            target_second=100,
         )
         mock_lookup_thumbnail.return_value = lookup
 
         prefetch = ThumbPrefetch()
         prefetch._schedule_indices = MagicMock()  # type: ignore[method-assign]
-        prefetch.schedule_playhead_follow(resolution, 10, 10000)
+        prefetch.schedule_playhead_follow(resolution, 100, 10000)
 
-        mock_lookup_thumbnail.assert_called_once_with(resolution, 10, 10000)
+        mock_lookup_thumbnail.assert_called_once_with(resolution, 100, 10000)
         prefetch._schedule_indices.assert_called_once()
+        indices = prefetch._schedule_indices.call_args.args[2]
+        # ±playback_warm_radius (5), not full scrub radius (12)
+        self.assertEqual(indices, [10, 11, 9, 12, 8, 13, 7, 14, 6, 15, 5])
 
 
 class PrefetchPriorityTests(unittest.TestCase):
@@ -171,6 +181,38 @@ class ScrubChurnTests(unittest.TestCase):
         self.assertTrue(
             controller._scrub_churn_active(lookup_near, seeking=True)
         )
+
+
+class PrefetchTileCopyTests(unittest.TestCase):
+    @patch("prefetch.temp_tile_copy", return_value="/local/tile.jpg")
+    def test_schedule_all_tile_copies_priority_order(
+        self, mock_copy: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_copy_worker = MagicMock()  # type: ignore[method-assign]
+
+        prefetch.schedule_all_tile_copies(
+            ("/tiles/0.jpg", "/tiles/1.jpg", "/tiles/2.jpg"),
+            prioritize=("/tiles/2.jpg",),
+        )
+
+        with prefetch._copy_lock:
+            ordered = list(prefetch._copy_queue)
+        self.assertEqual(
+            ordered, ["/tiles/2.jpg", "/tiles/0.jpg", "/tiles/1.jpg"]
+        )
+        prefetch._ensure_copy_worker.assert_called()
+
+    def test_prioritize_moves_to_front(self) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_copy_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch.schedule_all_tile_copies(
+            ("/tiles/0.jpg", "/tiles/1.jpg", "/tiles/2.jpg")
+        )
+        prefetch.prioritize_tile_copy("/tiles/2.jpg")
+        with prefetch._copy_lock:
+            ordered = list(prefetch._copy_queue)
+        self.assertEqual(ordered[0], "/tiles/2.jpg")
 
 
 if __name__ == "__main__":

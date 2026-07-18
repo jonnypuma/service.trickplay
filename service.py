@@ -468,11 +468,21 @@ class TrickplayService:
                     warm_lookup.thumb_height,
                     debug=runtime.debug_logging,
                 )
+                self.prefetch.schedule_all_tile_copies(
+                    self.resolution.tile_paths,
+                    prioritize=(warm_lookup.tile_path,),
+                    debug=runtime.debug_logging,
+                )
                 self.prefetch.schedule_playhead_warm(
                     self.resolution,
                     warm_lookup,
                     self._interval_ms(),
                     settings=prefetch_settings,
+                    debug=runtime.debug_logging,
+                )
+            elif self.resolution.tile_paths:
+                self.prefetch.schedule_all_tile_copies(
+                    self.resolution.tile_paths,
                     debug=runtime.debug_logging,
                 )
             if playing_file == self.playing_file:
@@ -563,6 +573,15 @@ class TrickplayService:
         # Free NFS / crop bandwidth before the foreground thumb path runs.
         if seeking:
             self.prefetch.yield_for_scrub(lookup.tile_path)
+            next_tile = self._adjacent_tile_path(lookup, scrub_direction)
+            prioritize = [lookup.tile_path]
+            if next_tile:
+                prioritize.append(next_tile)
+            self.prefetch.schedule_all_tile_copies(
+                self.resolution.tile_paths if self.resolution else (),
+                prioritize=prioritize,
+                debug=runtime.debug_logging,
+            )
 
         duration_seconds = self._effective_duration_seconds()
         self.preview.show_preview(
@@ -572,7 +591,7 @@ class TrickplayService:
             eager=seeking,
         )
         if seeking and self.preview.fast_scrub_active:
-            self.prefetch.cancel()
+            self.prefetch.cancel(clear_copies=False)
         elif prefetch_settings.enabled:
             self.prefetch.schedule_neighbors(
                 self.resolution,
@@ -583,6 +602,24 @@ class TrickplayService:
                 debug=runtime.debug_logging,
             )
         return True
+
+    def _adjacent_tile_path(self, lookup, scrub_direction: int) -> str | None:
+        if self.resolution is None or not self.resolution.tile_paths:
+            return None
+        try:
+            index = self.resolution.tile_paths.index(lookup.tile_path)
+        except ValueError:
+            return None
+        if scrub_direction > 0 and index + 1 < len(self.resolution.tile_paths):
+            return self.resolution.tile_paths[index + 1]
+        if scrub_direction < 0 and index > 0:
+            return self.resolution.tile_paths[index - 1]
+        # No direction yet: warm the next tile if any.
+        if index + 1 < len(self.resolution.tile_paths):
+            return self.resolution.tile_paths[index + 1]
+        if index > 0:
+            return self.resolution.tile_paths[index - 1]
+        return None
 
     def _maybe_playback_prefetch(
         self,
@@ -655,6 +692,11 @@ class TrickplayService:
             debug=runtime.debug_logging,
         )
         if prefetch_settings.enabled:
+            self.prefetch.schedule_all_tile_copies(
+                self.resolution.tile_paths,
+                prioritize=(lookup.tile_path,),
+                debug=runtime.debug_logging,
+            )
             self.prefetch.schedule_playhead_warm(
                 self.resolution,
                 lookup,

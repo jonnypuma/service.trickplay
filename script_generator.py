@@ -789,6 +789,42 @@ def run_addon_status_dialog() -> None:
     xbmcgui.Dialog().ok(_ADDON.getLocalizedString(32211), report)
 
 
+def _format_cache_bytes(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def run_clear_preview_cache_dialog() -> None:
+    _log("run_clear_preview_cache_dialog started")
+    title = _ADDON.getLocalizedString(32218)
+    if not xbmcgui.Dialog().yesno(
+        title,
+        _ADDON.getLocalizedString(32220),
+        yeslabel=_ADDON.getLocalizedString(32164),
+        nolabel=_ADDON.getLocalizedString(32100),
+    ):
+        _log("Clear preview cache cancelled")
+        return
+
+    from thumb_cropper import clear_preview_cache
+
+    result = clear_preview_cache()
+    if result.total_files <= 0:
+        message = _ADDON.getLocalizedString(32222)
+    else:
+        message = _ADDON.getLocalizedString(32221) % (
+            result.thumb_files,
+            _format_cache_bytes(result.thumb_bytes),
+            result.tile_files,
+            _format_cache_bytes(result.tile_bytes),
+        )
+    _log(f"Clear preview cache result: {message}")
+    xbmcgui.Dialog().notification(title, message, xbmcgui.NOTIFICATION_INFO, 5000)
+
+
 def run_restore_skin_dialog(scope: InstallScope) -> None:
     _log(f"run_restore_skin_dialog started (scope={scope.value})")
     plans = build_restore_plan(scope)
@@ -900,6 +936,8 @@ def _resolve_mode(argv: list[str]) -> str:
             return "install_pillow"
         if normalized in ("install_generator_tools", "install_generator"):
             return "install_generator_tools"
+        if normalized in ("clear_preview_cache", "clear_cache", "clear_thumb_cache"):
+            return "clear_preview_cache"
         if normalized.endswith(".py"):
             continue
         if normalized:
@@ -937,5 +975,7 @@ if __name__ == "__main__":
         run_install_pillow_dialog()
     elif mode == "install_generator_tools":
         run_install_generator_tools_dialog()
+    elif mode == "clear_preview_cache":
+        run_clear_preview_cache_dialog()
     else:
         _log(f"Unsupported mode {mode!r}; no action taken", xbmc.LOGERROR)

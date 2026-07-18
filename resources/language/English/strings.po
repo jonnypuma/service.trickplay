@@ -852,3 +852,31 @@ msgstr "Force reinstall skin snippet"
 msgctxt "#32215"
 msgid "Reinstall the trickplay overlay even if the installer thinks it is already up to date. Use after manual skin edits or if the preview position looks wrong."
 msgstr "Reinstall the trickplay overlay even if the installer thinks it is already up to date. Use after manual skin edits or if the preview position looks wrong."
+
+msgctxt "#32216"
+msgid "Cached thumb JPEG quality"
+msgstr "Cached thumb JPEG quality"
+
+msgctxt "#32217"
+msgid "Compression quality for cropped preview JPEGs saved on disk (50–95). Lower is smaller/faster to write; higher looks sharper. Default 90. Does not change source trickplay sprites."
+msgstr "Compression quality for cropped preview JPEGs saved on disk (50–95). Lower is smaller/faster to write; higher looks sharper. Default 90. Does not change source trickplay sprites."
+
+msgctxt "#32218"
+msgid "Clear preview cache"
+msgstr "Clear preview cache"
+
+msgctxt "#32219"
+msgid "Deletes cropped seek thumbs and local sprite tile copies used while scrubbing. Does not remove .trickplay sidecars on your media or generator work folders."
+msgstr "Deletes cropped seek thumbs and local sprite tile copies used while scrubbing. Does not remove .trickplay sidecars on your media or generator work folders."
+
+msgctxt "#32220"
+msgid "Clear cropped preview thumbs and local tile copies? Source trickplay sprites on your media library are not deleted."
+msgstr "Clear cropped preview thumbs and local tile copies? Source trickplay sprites on your media library are not deleted."
+
+msgctxt "#32221"
+msgid "Cleared %d thumbs (%s) and %d tile copies (%s)."
+msgstr "Cleared %d thumbs (%s) and %d tile copies (%s)."
+
+msgctxt "#32222"
+msgid "Preview cache is already empty."
+msgstr "Preview cache is already empty."
