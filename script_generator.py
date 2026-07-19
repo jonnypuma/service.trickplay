@@ -150,8 +150,8 @@ def _offer_batch_retry(failed_paths: list[str], settings: GeneratorSettings) -> 
     if not xbmcgui.Dialog().yesno(
         _ADDON.getLocalizedString(32063),
         _ADDON.getLocalizedString(32182) % len(failed_paths),
-        yeslabel=_ADDON.getLocalizedString(32164),
-        nolabel=_ADDON.getLocalizedString(32100),
+        yeslabel=_ADDON.getLocalizedString(32223),
+        nolabel=_ADDON.getLocalizedString(32224),
     ):
         return
     _log(f"Retrying {len(failed_paths)} failed file(s)")

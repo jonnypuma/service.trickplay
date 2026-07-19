@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.5] - 2026-07-19
+
+### Fixed
+
+- **HLG HDR generation** — HLG (`arib-std-b67`) tonemap no longer requests `bt2390`, which stock ffmpeg `tonemap` does not support (only libplacebo/jellyfin-ffmpeg forks do). Uses `hable` like HDR10 so batch generation no longer aborts immediately on HLG WEB releases.
+- **Batch retry dialog buttons** — failed-file retry prompt now shows **Retry** / **Cancel** instead of reusing the Install / Continue without labels from the tools installer.
+
 ## [6.4.4] - 2026-07-18
 
 ### Added

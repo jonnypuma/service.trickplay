@@ -359,8 +359,10 @@ def _hdr_setparams_prefix(transfer: str) -> str:
 
 
 def _tonemap_algorithm(transfer: str) -> str:
-    if _normalize_hdr_transfer(transfer) == _TONEMAP_TRANSFER_HLG:
-        return "bt2390"
+    # Stock ffmpeg vf_tonemap only supports none/linear/gamma/clip/reinhard/hable/mobius.
+    # bt2390 exists on libplacebo (and jellyfin-ffmpeg forks), not on the CPU tonemap filter —
+    # requesting it aborts HLG (arib-std-b67) generation with "Unable to parse tonemap=bt2390".
+    _ = transfer
     return "hable"
 
 
@@ -389,10 +391,7 @@ def _libplacebo_tonemap_chain(*, dolby_vision: bool = False) -> str:
 def _simple_tonemap_chain(transfer: str) -> str:
     """Best-effort when zscale/libplacebo are unavailable (quality may vary)."""
     algorithm = _tonemap_algorithm(transfer)
-    if algorithm == "bt2390":
-        tonemap_filter = f"tonemap=tonemap={algorithm}:desat=0"
-    else:
-        tonemap_filter = f"tonemap=tonemap={algorithm}:desat=0:peak=100"
+    tonemap_filter = f"tonemap=tonemap={algorithm}:desat=0:peak=100"
     return (
         f"{_hdr_setparams_prefix(transfer)}"
         "format=gbrpf32le,"

@@ -880,3 +880,11 @@ msgstr "Cleared %d thumbs (%s) and %d tile copies (%s)."
 msgctxt "#32222"
 msgid "Preview cache is already empty."
 msgstr "Preview cache is already empty."
+
+msgctxt "#32223"
+msgid "Retry"
+msgstr "Retry"
+
+msgctxt "#32224"
+msgid "Cancel"
+msgstr "Cancel"
