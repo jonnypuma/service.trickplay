@@ -51,6 +51,7 @@ from trickplay_resolver import (
     resolve_media_path,
     trickplay_root_for_media,
 )
+from vfs_paths import normalize_vfs_path, vfs_join
 from temp_cleanup import (
     GENERATE_TEMP_ROOT,
     cleanup_orphaned_generator_temp,
@@ -200,7 +201,7 @@ def _list_jpg_files(directory: str) -> list[str]:
         files = entries[1] if isinstance(entries, (list, tuple)) and len(entries) == 2 else entries
         for name in files:
             if str(name).lower().endswith(".jpg"):
-                paths.append(os.path.join(directory, name))
+                paths.append(vfs_join(directory, name))
     return sorted(paths, key=_jpg_sort_key)
 
 
@@ -293,9 +294,9 @@ def _remove_directory_tree(directory: str) -> None:
 
     subdirs, files = _list_immediate_entries(directory)
     for name in files:
-        _delete_path(os.path.join(directory, name))
+        _delete_path(vfs_join(directory, name))
     for name in subdirs:
-        _remove_directory_tree(os.path.join(directory, name))
+        _remove_directory_tree(vfs_join(directory, name))
     try:
         xbmcvfs.rmdir(directory)
     except OSError:
@@ -372,7 +373,7 @@ def sidecar_dir_for_grid(
     cols, rows = grid_tuple(grid)
     root = trickplay_root_for_media(media_path)
     folder = format_resolution_dir_name(tile_width, cols, rows, interval_ms)
-    return os.path.join(root, folder)
+    return vfs_join(root, folder)
 
 
 def has_generated_sidecar(
@@ -1169,6 +1170,7 @@ def generate_trickplay_for_media(
         return False
 
     media_path = resolve_media_path(media_path) or media_path
+    media_path = normalize_vfs_path(media_path) if media_path else media_path
     if not media_path or not xbmcvfs.exists(media_path):
         _log(f"Media not found: {media_path!r}", xbmc.LOGWARNING)
         return False
@@ -1760,6 +1762,7 @@ def iter_library_videos(
     if not root or not xbmcvfs.exists(root):
         return []
 
+    root = normalize_vfs_path(root) if "://" in root else root
     results: list[str] = []
     stack = [_local_path(root) if root.startswith("special://") else root]
     dirs_seen = 0
@@ -1787,14 +1790,14 @@ def iter_library_videos(
             ext = os.path.splitext(str(name))[1].lower()
             if ext not in _VIDEO_EXTENSIONS:
                 continue
-            results.append(os.path.join(current, name))
+            results.append(vfs_join(current, name))
             if on_progress and len(results) % 100 == 0:
                 on_progress(len(results))
 
         for name in dirs:
             if str(name) in (".", ".."):
                 continue
-            stack.append(os.path.join(current, name))
+            stack.append(vfs_join(current, name))
 
     return sorted(results)
 

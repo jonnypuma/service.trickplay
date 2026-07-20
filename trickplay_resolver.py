@@ -15,6 +15,7 @@ from vfs_paths import (
     network_url_to_local,
     path_variants,
     vfs_is_dir as _path_is_dir,
+    vfs_join,
     vfs_list_file_names,
     vfs_list_subdir_names,
 )
@@ -80,10 +81,7 @@ def _log_debug(debug: bool, message: str) -> None:
 
 
 def _vfs_join(base: str, *parts: str) -> str:
-    path = base
-    for part in parts:
-        path = os.path.join(path, part)
-    return path
+    return vfs_join(base, *parts)
 
 
 def _list_immediate_subdir_names(directory: str) -> list[str]:

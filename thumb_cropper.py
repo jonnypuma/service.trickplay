@@ -57,11 +57,24 @@ _TILE_FP_TTL_SEC = 2.0
 
 # Keep fully-decoded sprite tiles in RAM so same-tile scrub/prefetch does not
 # re-decode the JPG for every cell. Cap avoids unbounded memory on long sessions.
-_DECODED_TILE_MAX = 2
+# ~16.5 MiB/tile for default Jellyfin 320@10x10 (3200x1800 RGB); 8 ≈ ~132 MiB peak.
+_DECODED_TILE_MAX = 8
 _decoded_tile_lock = threading.Lock()
 # source_path -> (mtime, size, PIL Image)
 _decoded_tiles: dict[str, tuple[float, int, object]] = {}
 _decoded_tile_order: list[str] = []
+
+# Ping-pong live preview JPEGs so Kodi reloads textures while durable cache
+# is written asynchronously after the first RAM crop.
+_LIVE_SLOT_COUNT = 2
+_live_slot = 0
+_live_slot_lock = threading.Lock()
+_live_preview_by_key: dict[ThumbCacheKey, str] = {}
+_live_preview_lock = threading.Lock()
+
+
+def _live_dir() -> str:
+    return os.path.join(TEMP_DIR, "live")
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -138,7 +151,13 @@ def _file_size(path: str) -> int:
 
 
 def _has_file_content(path: str) -> bool:
-    return xbmcvfs.exists(path) and _file_size(path) > 0
+    local = _local_path(path)
+    if local:
+        try:
+            return os.path.isfile(local) and os.path.getsize(local) > 0
+        except OSError:
+            pass
+    return bool(xbmcvfs.exists(path) and _file_size(path) > 0)
 
 
 def _touch_cached_file(path: str) -> None:
@@ -209,6 +228,70 @@ def clear_decoded_tile_cache() -> None:
         _decoded_tile_order.clear()
 
 
+def _next_live_preview_path() -> str:
+    """Return the next ping-pong live JPEG path under special://temp."""
+    global _live_slot
+    live_root = _live_dir()
+    try:
+        os.makedirs(live_root, exist_ok=True)
+    except OSError:
+        _ensure_dir(live_root)
+    with _live_slot_lock:
+        slot = _live_slot
+        _live_slot = (_live_slot + 1) % _LIVE_SLOT_COUNT
+    return os.path.join(live_root, f"preview_{slot}.jpg")
+
+
+def _remember_live_preview(key: ThumbCacheKey, live_path: str) -> None:
+    with _live_preview_lock:
+        _live_preview_by_key[key] = live_path
+
+
+def _forget_live_preview(key: ThumbCacheKey) -> None:
+    with _live_preview_lock:
+        _live_preview_by_key.pop(key, None)
+
+
+def _live_preview_for_key(key: ThumbCacheKey) -> str | None:
+    with _live_preview_lock:
+        path = _live_preview_by_key.get(key)
+    if path and _has_file_content(path):
+        return path
+    return None
+
+
+def _persist_live_to_durable_cache(
+    live_path: str,
+    durable_path: str,
+    key: ThumbCacheKey,
+) -> None:
+    """Copy the live JPEG into the durable thumb cache (background-safe)."""
+    try:
+        if not _has_file_content(live_path):
+            return
+        if _has_file_content(durable_path):
+            _mark_thumb_cached(key, durable_path)
+            _forget_live_preview(key)
+            return
+        durable_local = _local_path(durable_path)
+        if not durable_local:
+            return
+        os.makedirs(os.path.dirname(durable_local), exist_ok=True)
+        live_local = _local_path(live_path) or live_path
+        shutil.copy2(live_local, durable_local)
+        if _has_file_content(durable_path):
+            _mark_thumb_cached(key, durable_path)
+            _forget_live_preview(key)
+            try:
+                from prefetch_settings import read_prefetch_settings
+
+                maybe_prune_thumb_cache(read_prefetch_settings().cache_max_mb)
+            except ImportError:  # pragma: no cover
+                pass
+    except OSError as exc:
+        _log(f"Live→durable cache copy failed: {exc}", xbmc.LOGWARNING)
+
+
 @dataclass(frozen=True)
 class PreviewCacheClearResult:
     thumb_files: int = 0
@@ -271,6 +354,11 @@ def clear_preview_cache() -> PreviewCacheClearResult:
     _clear_memory_cache_index()
     with _prepared_temp_lock:
         _prepared_temp_tiles.clear()
+    with _live_preview_lock:
+        _live_preview_by_key.clear()
+    live_files, live_bytes = _delete_jpg_files(_live_dir(), top_level_only=True)
+    tile_files += live_files
+    tile_bytes += live_bytes
     _estimated_cache_bytes = 0
     _estimate_valid = True
     _crops_since_prune = 0
@@ -521,6 +609,10 @@ def get_cached_thumb_path(
         _memory_cache_keys.add(key)
         _touch_cached_file(cached)
         return cached
+
+    live = _live_preview_for_key(key)
+    if live:
+        return live
 
     legacy = _legacy_cache_path_for_thumb(tile_path, col, row, thumb_w, thumb_h)
     if _has_file_content(legacy) and not _source_newer_than_cache(tile_path, legacy):
@@ -838,11 +930,69 @@ def _crop_with_pillow(
         mtime, size = _source_fingerprint(tile_path)
         img = _get_decoded_tile_image(source, mtime, size)
         cropped = img.crop((left, top, left + crop_w, top + crop_h))
-        cropped.save(output_local, "JPEG", quality=_jpeg_quality())
+        cropped.save(
+            output_local,
+            "JPEG",
+            quality=_jpeg_quality(),
+            optimize=False,
+            progressive=False,
+        )
     except (OSError, ValueError) as exc:
         _log(f"Pillow crop failed for {tile_path} cell ({col},{row}): {exc}", xbmc.LOGWARNING)
         return False
 
+    return _has_file_content(output_path)
+
+
+def _crop_cell_from_decoded_tile(
+    tile_path: str,
+    col: int,
+    row: int,
+    thumb_w: int,
+    thumb_h: int,
+    debug: bool = False,
+):
+    """Decode (or reuse) sprite in RAM and return a cropped PIL Image, or None."""
+    if not ensure_pillow_loaded():
+        return None
+
+    source = temp_tile_copy(tile_path)
+    if not source:
+        _log(f"Could not copy sprite tile locally for Pillow: {tile_path}", xbmc.LOGWARNING)
+        return None
+
+    left, top, crop_w, crop_h = cell_crop_rect(col, row, thumb_w, thumb_h)
+    if debug:
+        _log(
+            f"Crop {crop_w}x{crop_h}:{left}:{top} from {os.path.basename(tile_path)} "
+            f"cell ({col},{row})"
+        )
+
+    try:
+        mtime, size = _source_fingerprint(tile_path)
+        img = _get_decoded_tile_image(source, mtime, size)
+        return img.crop((left, top, left + crop_w, top + crop_h))
+    except (OSError, ValueError) as exc:
+        _log(f"Pillow crop failed for {tile_path} cell ({col},{row}): {exc}", xbmc.LOGWARNING)
+        return None
+
+
+def _save_jpeg(image, output_path: str) -> bool:
+    output_local = _local_path(output_path)
+    if not output_local:
+        return False
+    try:
+        os.makedirs(os.path.dirname(output_local), exist_ok=True)
+        image.save(
+            output_local,
+            "JPEG",
+            quality=_jpeg_quality(),
+            optimize=False,
+            progressive=False,
+        )
+    except (OSError, ValueError) as exc:
+        _log(f"JPEG save failed for {output_path}: {exc}", xbmc.LOGWARNING)
+        return False
     return _has_file_content(output_path)
 
 
@@ -872,7 +1022,12 @@ def get_cropped_thumb_path(
     thumb_h: int,
     debug: bool = False,
 ) -> str | None:
-    """Return a cached local JPEG path for one sprite cell, or None if cropping failed."""
+    """Return a JPEG path for one sprite cell, or None if cropping failed.
+
+    On cache miss: crop from the in-RAM decoded sprite, write a live ping-pong
+    JPEG for immediate skin display, then persist the durable cache copy in a
+    background thread.
+    """
     if not tile_path or thumb_w <= 0 or thumb_h <= 0:
         return None
 
@@ -882,7 +1037,7 @@ def get_cropped_thumb_path(
         return cached
 
     key = thumb_cache_key(tile_path, col, row, thumb_w, thumb_h)
-    cached = cache_path_for_thumb(tile_path, col, row, thumb_w, thumb_h)
+    durable = cache_path_for_thumb(tile_path, col, row, thumb_w, thumb_h)
 
     with _inflight_lock:
         inflight = _inflight_crops.get(key)
@@ -900,18 +1055,10 @@ def get_cropped_thumb_path(
 
     result: str | None = None
     try:
-        if _crop_thumb_to_cache(
-            tile_path, col, row, thumb_w, thumb_h, cached, debug=debug
-        ):
-            _mark_thumb_cached(key, cached)
-            try:
-                from prefetch_settings import read_prefetch_settings
-
-                maybe_prune_thumb_cache(read_prefetch_settings().cache_max_mb)
-            except ImportError:  # pragma: no cover
-                pass
-            result = cached
-        else:
+        cropped = _crop_cell_from_decoded_tile(
+            tile_path, col, row, thumb_w, thumb_h, debug=debug
+        )
+        if cropped is None:
             if ensure_pillow_loaded():
                 _log(
                     f"Pillow present but crop failed for {tile_path} cell ({col},{row})",
@@ -922,6 +1069,27 @@ def get_cropped_thumb_path(
                     "Pillow is not available; use Install preview tools in add-on settings",
                     xbmc.LOGWARNING,
                 )
+        else:
+            live_path = _next_live_preview_path()
+            if _save_jpeg(cropped, live_path):
+                _remember_live_preview(key, live_path)
+                result = live_path
+                threading.Thread(
+                    target=_persist_live_to_durable_cache,
+                    args=(live_path, durable, key),
+                    daemon=True,
+                    name="trickplay-cache-persist",
+                ).start()
+            elif _save_jpeg(cropped, durable):
+                # Live write failed; fall back to durable path only.
+                _mark_thumb_cached(key, durable)
+                try:
+                    from prefetch_settings import read_prefetch_settings
+
+                    maybe_prune_thumb_cache(read_prefetch_settings().cache_max_mb)
+                except ImportError:  # pragma: no cover
+                    pass
+                result = durable
     finally:
         with _inflight_lock:
             _inflight_crops.pop(key, None)

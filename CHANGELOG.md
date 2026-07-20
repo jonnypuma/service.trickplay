@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - 2026-07-20
+
+### Changed
+
+- **RAM-first scrub crops** — on cache miss, cells are cropped from the in-memory decoded sprite and written to a ping-pong live JPEG under `special://temp/service.trickplay/live/` for immediate skin display. The durable thumb-cache copy is filled asynchronously afterward.
+- **Decoded sprite LRU** — raised from 2 to **8** tiles (~33 MiB → ~132 MiB peak for default Jellyfin `320` / 10×10 sprites), so scrubbing across more tile boundaries reuses RAM instead of re-decoding.
+
+## [6.5.1] - 2026-07-20
+
+### Fixed
+
+- **NFS/SMB generation on Windows** — library scans and sidecar paths no longer use `os.path.join` on `nfs://` / `smb://` URLs, which injected `\` (e.g. `February\Season 1\…`) and broke VFS reads (`write to closed file`, empty pipe probes, “Could not determine duration”). Paths are now joined and normalized with forward slashes.
+
+## [6.5.0] - 2026-07-20
+
+### Added
+
+- **European language localizations** — full settings/dialog translations for French (`fr_fr`), Dutch (`nl_nl`), German (`de_de`), Spanish (`es_es`), Italian (`it_it`), Greek (`el_gr`), Norwegian Bokmål (`nb_no`), Danish (`da_dk`), and Swedish (`sv_se`). English remains the default fallback.
+
 ## [6.4.5] - 2026-07-19
 
 ### Fixed

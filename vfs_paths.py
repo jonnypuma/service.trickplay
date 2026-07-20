@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import os
+import re
 
 import xbmcvfs
+
+_REMOTE_URL_RE = re.compile(
+    r"^(nfs|smb|smb2|smb3|ftp|http|https|dav|davs|upnp|zip|vfs)://",
+    re.IGNORECASE,
+)
 
 
 def local_path(path: str) -> str:
@@ -15,6 +21,41 @@ def local_path(path: str) -> str:
             return xbmcvfs.translatePath(path)
         except (RuntimeError, TypeError, ValueError):
             return path
+    return path
+
+
+def is_remote_vfs_url(path: str) -> bool:
+    """True for Kodi network/VFS URLs that must keep forward slashes on Windows."""
+    return bool(path) and bool(_REMOTE_URL_RE.match(path.strip()))
+
+
+def normalize_vfs_path(path: str) -> str:
+    """Normalize separators in VFS URLs so Windows never keeps '\\' in nfs/smb paths."""
+    cleaned = (path or "").strip()
+    if not cleaned or "://" not in cleaned:
+        return cleaned
+    scheme, _, rest = cleaned.partition("://")
+    rest = rest.replace("\\", "/")
+    while "//" in rest:
+        rest = rest.replace("//", "/")
+    return f"{scheme}://{rest}"
+
+
+def vfs_join(base: str, *parts: str) -> str:
+    """Join path segments without using os.path.join on remote VFS URLs."""
+    if not base:
+        base = ""
+    if is_remote_vfs_url(base) or ("://" in base and not base.lower().startswith("special://")):
+        path = normalize_vfs_path(base).rstrip("/")
+        for part in parts:
+            piece = str(part).replace("\\", "/").strip("/")
+            if piece:
+                path = f"{path}/{piece}"
+        return path
+
+    path = base
+    for part in parts:
+        path = os.path.join(path, part)
     return path
 
 
@@ -50,11 +91,14 @@ def path_variants(path: str) -> tuple[str, ...]:
     if not path:
         return tuple()
 
+    if "://" in path:
+        add(normalize_vfs_path(path))
+
     translated = local_path(path)
     if translated:
         add(translated)
 
-    mapped = network_url_to_local(path)
+    mapped = network_url_to_local(normalize_vfs_path(path) if "://" in path else path)
     if mapped:
         add(mapped)
 

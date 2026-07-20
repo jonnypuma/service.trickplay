@@ -193,6 +193,9 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 - **Prefetch radius** — indices ahead/behind to pre-crop (default 5)
 - **Prefetch queue size** — max pending background crops (default 48)
 - **Crop cache limit (MB)** — LRU cap for cropped JPEGs (default 500; 0 = unlimited)
+- **Cached thumb JPEG quality** — compression for cropped preview JPEGs (50–95, default 90)
+
+Scrub crops reuse up to **8** decoded sprite tiles in RAM and publish via a live temp JPEG first; durable cache writes finish in the background.
 
 ### Trickplay generator (Settings → Trickplay generator)
 

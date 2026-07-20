@@ -1,0 +1,890 @@
+# Kodi language file
+# Addon: service.trickplay
+msgid ""
+msgstr ""
+"Language: es\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "General"
+
+msgctxt "#32001"
+msgid "Trickplay"
+msgstr "Trickplay"
+
+msgctxt "#32002"
+msgid "Preferred tile width (px)"
+msgstr "Ancho preferido de mosaico (px)"
+
+msgctxt "#32003"
+msgid "Resolution subfolder to prefer inside the .trickplay directory (e.g. 320 for '320 - 10x10 - 10000'). Falls back to the first resolution found."
+msgstr "Subcarpeta de resolución preferida dentro del directorio .trickplay (ej. 320 para '320 - 10x10 - 10000'). Se usa la primera resolución encontrada si no existe."
+
+msgctxt "#32004"
+msgid "Thumbnail interval (ms)"
+msgstr "Intervalo de miniaturas (ms)"
+
+msgctxt "#32005"
+msgid "Preferred interval when selecting a sidecar folder and fallback when the folder name has no interval suffix (legacy '320 - 10x10' uses 10000 ms)."
+msgstr "Intervalo preferido al seleccionar una carpeta sidecar y valor predeterminado cuando el nombre no tiene sufijo de intervalo (legacy '320 - 10x10' usa 10000 ms)."
+
+msgctxt "#32006"
+msgid "Seek poll interval (ms)"
+msgstr "Intervalo de actualización de búsqueda (ms)"
+
+msgctxt "#32007"
+msgid "How often to refresh the preview while the seek bar is active. Lower values feel smoother but use more CPU."
+msgstr "Frecuencia de actualización de la vista previa mientras la barra de búsqueda está activa. Valores más bajos son más fluidos pero usan más CPU."
+
+msgctxt "#32008"
+msgid "Enable debug logging"
+msgstr "Activar registro de depuración"
+
+msgctxt "#32009"
+msgid "Write detailed trickplay resolution messages to the Kodi log."
+msgstr "Escribir mensajes detallados de resolución trickplay en el registro de Kodi."
+
+msgctxt "#32010"
+msgid "Automatic tile calculation (legacy)"
+msgstr "Cálculo automático de mosaicos (legacy)"
+
+msgctxt "#32011"
+msgid "Deprecated; use Preview tile grid layout instead."
+msgstr "Obsoleto; usar Diseño de cuadrícula de mosaicos de vista previa en su lugar."
+
+msgctxt "#32012"
+msgid "Number of tiles"
+msgstr "Número de mosaicos"
+
+msgctxt "#32013"
+msgid "Manual grid layout per sprite JPG, e.g. 10x10 or 20x20. Each cell size is still calculated from the JPG width and height divided by these counts."
+msgstr "Diseño de cuadrícula manual por JPG sprite, ej. 10x10 o 20x20. El tamaño de cada celda se calcula dividiendo el ancho y alto del JPG por estos valores."
+
+msgctxt "#32014"
+msgid "Skin profile"
+msgstr "Perfil de skin"
+
+msgctxt "#32015"
+msgid "Seek bar geometry and focus IDs for preview placement. Auto detects your active Kodi skin; override if detection fails."
+msgstr "Geometría de barra de búsqueda e IDs de foco para colocación de vista previa. Detecta automáticamente el skin activo de Kodi; anular si la detección falla."
+
+msgctxt "#32016"
+msgid "Auto (detect active skin)"
+msgstr "Auto (detectar skin activo)"
+
+msgctxt "#32017"
+msgid "Estuary Mod v2"
+msgstr "Estuary Mod v2"
+
+msgctxt "#32018"
+msgid "Arctic Fuse 3"
+msgstr "Arctic Fuse 3"
+
+msgctxt "#32019"
+msgid "Preview hold time (seconds)"
+msgstr "Tiempo de retención de vista previa (segundos)"
+
+msgctxt "#32020"
+msgid "How long to keep the preview visible after seeking stops. 0 = until the OSD closes; the thumbnail follows playback while playing."
+msgstr "Tiempo que se mantiene visible la vista previa después de detener la búsqueda. 0 = hasta que se cierre el OSD; la miniatura sigue la reproducción mientras se reproduce."
+
+msgctxt "#32021"
+msgid "Show timestamp"
+msgstr "Mostrar marca de tiempo"
+
+msgctxt "#32022"
+msgid "Show the seek position timestamp below the preview thumbnail."
+msgstr "Mostrar la marca de tiempo de la posición de búsqueda debajo de la miniatura de vista previa."
+
+msgctxt "#32023"
+msgid "Enable prefetch"
+msgstr "Activar precarga"
+
+msgctxt "#32024"
+msgid "Pre-crop neighbouring trickplay cells in the background so scrubbing feels faster."
+msgstr "Prerecortar celdas trickplay vecinas en segundo plano para que la búsqueda sea más rápida."
+
+msgctxt "#32200"
+msgid "Prefetch during playback"
+msgstr "Precarga durante reproducción"
+
+msgctxt "#32201"
+msgid "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
+msgstr "Mientras se reproduce un vídeo, mantener el radio de precarga (índices de miniaturas) activo en ambos lados de la posición actual — no solo cuando se abre la barra de búsqueda."
+
+msgctxt "#32202"
+msgid "Arctic Fuse 2"
+msgstr "Arctic Fuse 2"
+
+msgctxt "#32203"
+msgid "Arctic Horizon 2"
+msgstr "Arctic Horizon 2"
+
+msgctxt "#32204"
+msgid "Arctic Zephyr 2 Resurrection"
+msgstr "Arctic Zephyr 2 Resurrection"
+
+msgctxt "#32205"
+msgid "Bello"
+msgstr "Bello"
+
+msgctxt "#32206"
+msgid "Arctic Horizon 2.1 Arizen"
+msgstr "Arctic Horizon 2.1 Arizen"
+
+msgctxt "#32207"
+msgid "Bingie"
+msgstr "Bingie"
+
+msgctxt "#32208"
+msgid "Arctic Zephyr Rounded"
+msgstr "Arctic Zephyr Rounded"
+
+msgctxt "#32209"
+msgid "DialogSeekBar.xml has no seek-bar content (no controls or includes); skipped"
+msgstr "DialogSeekBar.xml no tiene contenido de barra de búsqueda (sin controles o includes); omitido"
+
+msgctxt "#32210"
+msgid "Skin snippet target XML not found"
+msgstr "XML objetivo del fragmento de skin no encontrado"
+
+msgctxt "#32025"
+msgid "Prefetch on playback start"
+msgstr "Precarga al iniciar reproducción"
+
+msgctxt "#32026"
+msgid "Warm the cache around the current playhead when a video loads."
+msgstr "Precalentar la caché alrededor de la posición actual cuando se carga un vídeo."
+
+msgctxt "#32027"
+msgid "Prefetch whole sprite tile"
+msgstr "Precargar mosaico sprite completo"
+
+msgctxt "#32028"
+msgid "Also queue uncached cells from the current sprite JPG (up to 20 per preview update)."
+msgstr "También encolar celdas no cacheadas del JPG sprite actual (hasta 20 por actualización de vista previa)."
+
+msgctxt "#32029"
+msgid "Prefetch idle sprite tile"
+msgstr "Precargar mosaico sprite inactivo"
+
+msgctxt "#32030"
+msgid "While the seek OSD is open and idle, pre-crop remaining cells in the current sprite tile."
+msgstr "Mientras el OSD de búsqueda está abierto e inactivo, prerecortar celdas restantes del mosaico sprite actual."
+
+msgctxt "#32031"
+msgid "Prefetch radius (indices)"
+msgstr "Radio de precarga (índices)"
+
+msgctxt "#32032"
+msgid "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
+msgstr "Cuántos índices de miniaturas trickplay prerecortar antes y después de la posición actual (simétrico). Con intervalo de 10 s, 5 significa aproximadamente ±50 s. Valores más altos usan más CPU y disco."
+
+msgctxt "#32033"
+msgid "Prefetch queue size"
+msgstr "Tamaño de cola de precarga"
+
+msgctxt "#32034"
+msgid "Maximum pending background crops. Neighbour previews can bump lower-priority jobs when full."
+msgstr "Máximo de recortes pendientes en segundo plano. Las vistas previas vecinas pueden desplazar trabajos de menor prioridad cuando está lleno."
+
+msgctxt "#32035"
+msgid "Crop cache limit (MB)"
+msgstr "Límite de caché de recortes (MB)"
+
+msgctxt "#32036"
+msgid "Maximum disk space for cropped preview JPEGs. Oldest files are removed first. 0 = unlimited."
+msgstr "Espacio máximo en disco para JPEGs de vista previa recortados. Los archivos más antiguos se eliminan primero. 0 = ilimitado."
+
+msgctxt "#32037"
+msgid "Prefetch"
+msgstr "Precarga"
+
+msgctxt "#32038"
+msgid "Preview opacity (%)"
+msgstr "Opacidad de vista previa (%)"
+
+msgctxt "#32039"
+msgid "Overall preview transparency (0 = invisible, 100 = fully opaque). Default 100."
+msgstr "Transparencia general de vista previa (0 = invisible, 100 = totalmente opaco). Predeterminado 100."
+
+msgctxt "#32040"
+msgid "Trickplay generator"
+msgstr "Generador Trickplay"
+
+msgctxt "#32041"
+msgid "Custom…"
+msgstr "Personalizado…"
+
+msgctxt "#32042"
+msgid "Preview tile grid layout"
+msgstr "Diseño de cuadrícula de mosaicos de vista previa"
+
+msgctxt "#32043"
+msgid "How to divide each sprite JPG when cropping preview thumbnails. Use From folder name for Jellyfin or generator sidecars; pick 20×20 (etc.) if your tiles use a different grid than the folder name."
+msgstr "Cómo dividir cada JPG sprite al recortar miniaturas de vista previa. Usar Desde nombre de carpeta para Jellyfin o sidecars del generador; elegir 20×20 (etc.) si los mosaicos usan una cuadrícula diferente al nombre de carpeta."
+
+msgctxt "#32044"
+msgid "10×10"
+msgstr "10×10"
+
+msgctxt "#32045"
+msgid "20×20"
+msgstr "20×20"
+
+msgctxt "#32046"
+msgid "5×5"
+msgstr "5×5"
+
+msgctxt "#32047"
+msgid "15×15"
+msgstr "15×15"
+
+msgctxt "#32050"
+msgid "Enable trickplay generator"
+msgstr "Activar generador trickplay"
+
+msgctxt "#32051"
+msgid "Generate Jellyfin-compatible .trickplay sprite sidecars with ffmpeg. When disabled, all generator options are hidden."
+msgstr "Generar sidecars sprite .trickplay compatibles con Jellyfin usando ffmpeg. Cuando está desactivado, todas las opciones del generador están ocultas."
+
+msgctxt "#32052"
+msgid "Generate while idle"
+msgstr "Generar en reposo"
+
+msgctxt "#32053"
+msgid "When Kodi is not playing video, generate trickplay for one library file at a time from the library folder below."
+msgstr "Cuando Kodi no está reproduciendo vídeo, generar trickplay para un archivo de biblioteca a la vez desde la carpeta de biblioteca siguiente."
+
+msgctxt "#32054"
+msgid "Overwrite existing sidecars"
+msgstr "Sobrescribir sidecars existentes"
+
+msgctxt "#32055"
+msgid "Regenerate and replace trickplay when a matching .trickplay folder already exists for the preferred width and grid. Off by default."
+msgstr "Regenerar y reemplazar trickplay cuando ya existe una carpeta .trickplay coincidente para el ancho y cuadrícula preferidos. Desactivado por defecto."
+
+msgctxt "#32056"
+msgid "Library folder"
+msgstr "Carpeta de biblioteca"
+
+msgctxt "#32057"
+msgid "Root folder scanned for batch generation and idle generation. Uses the preferred tile width, interval, and generator grid above. Press OK when leaving Configure to save changes. Start batch generation from the add-on Information page (Run), not from inside Configure."
+msgstr "Carpeta raíz escaneada para generación por lotes y generación en reposo. Usa el ancho de mosaico, intervalo y cuadrícula del generador preferidos arriba. Presionar OK al salir de Configurar para guardar cambios. Iniciar generación por lotes desde la página de Información del complemento (Ejecutar), no desde dentro de Configurar."
+
+msgctxt "#32058"
+msgid "Grid used when writing new .trickplay sidecars (folder name e.g. '320 - 10x10 - 10000')."
+msgstr "Cuadrícula usada al escribir nuevos sidecars .trickplay (nombre de carpeta ej. '320 - 10x10 - 10000')."
+
+msgctxt "#32059"
+msgid "Run library batch generation…"
+msgstr "Ejecutar generación por lotes de biblioteca…"
+
+msgctxt "#32060"
+msgid "Scan the library folder and generate trickplay for all videos missing sidecars. Shows a progress dialog. Run from the add-on Information page after saving Configure with OK."
+msgstr "Escanear la carpeta de biblioteca y generar trickplay para todos los vídeos sin sidecars. Muestra un diálogo de progreso. Ejecutar desde la página de Información del complemento después de guardar Configurar con OK."
+
+msgctxt "#32061"
+msgid "Select library folder"
+msgstr "Seleccionar carpeta de biblioteca"
+
+msgctxt "#32062"
+msgid "Enable the trickplay generator in settings first."
+msgstr "Activar primero el generador trickplay en configuración."
+
+msgctxt "#32063"
+msgid "Batch trickplay generation"
+msgstr "Generación trickplay por lotes"
+
+msgctxt "#32064"
+msgid "Generate trickplay for all videos under:\n%s"
+msgstr "Generar trickplay para todos los vídeos en:\n%s"
+
+msgctxt "#32065"
+msgid "Use this folder"
+msgstr "Usar esta carpeta"
+
+msgctxt "#32066"
+msgid "Choose another…"
+msgstr "Elegir otra…"
+
+msgctxt "#32067"
+msgid "No videos need trickplay generation in that folder."
+msgstr "Ningún vídeo necesita generación trickplay en esa carpeta."
+
+msgctxt "#32068"
+msgid "Generate trickplay for %d video(s)? This may take a long time."
+msgstr "¿Generar trickplay para %d vídeo(s)? Esto puede tardar mucho tiempo."
+
+msgctxt "#32083"
+msgid "Generate trickplay for %d of %d video(s)? %d already have matching sidecars and will be skipped."
+msgstr "¿Generar trickplay para %d de %d vídeo(s)? %d ya tienen sidecars coincidentes y se omitirán."
+
+msgctxt "#32069"
+msgid "Generating trickplay…"
+msgstr "Generando trickplay…"
+
+msgctxt "#32070"
+msgid "File %d of %d"
+msgstr "Archivo %d de %d"
+
+msgctxt "#32071"
+msgid "Done. Success: %d  Failed: %d"
+msgstr "Hecho. Éxito: %d  Fallos: %d"
+
+msgctxt "#32072"
+msgid "From folder name"
+msgstr "Desde nombre de carpeta"
+
+msgctxt "#32073"
+msgid "Generator tile grid layout"
+msgstr "Diseño de cuadrícula de mosaicos del generador"
+
+msgctxt "#32074"
+msgid "Generator thumbnail interval (ms)"
+msgstr "Intervalo de miniaturas del generador (ms)"
+
+msgctxt "#32075"
+msgid "Time between generated preview frames. Written into the sidecar folder name (e.g. '320 - 10x10 - 1000'). Playback preview uses the interval from the folder when present; legacy folders without an interval use 10000 ms."
+msgstr "Tiempo entre fotogramas de vista previa generados. Escrito en el nombre de carpeta sidecar (ej. '320 - 10x10 - 1000'). La vista previa de reproducción usa el intervalo de la carpeta cuando está presente; carpetas legacy sin intervalo usan 10000 ms."
+
+msgctxt "#32076"
+msgid "Frame extraction mode"
+msgstr "Modo de extracción de fotogramas"
+
+msgctxt "#32077"
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Experimental: one file open with seek between captures (PyAV when available, otherwise one ffmpeg process with many seeks per tile)."
+msgstr "Preciso: una llamada ffmpeg por miniatura, búsqueda después de entrada (lento, precisión de fotograma). Rápido: búsqueda antes de entrada por miniatura para intervalos amplios, o una pasada de decodificación fps por mosaico para intervalos de 5s o menos. Experimental: un archivo abierto con búsqueda entre capturas (PyAV cuando esté disponible, de lo contrario un proceso ffmpeg con muchas búsquedas por mosaico)."
+
+msgctxt "#32080"
+msgid "Accurate (slow)"
+msgstr "Preciso (lento)"
+
+msgctxt "#32081"
+msgid "Fast"
+msgstr "Rápido"
+
+msgctxt "#32082"
+msgid "Experimental"
+msgstr "Experimental"
+
+msgctxt "#32078"
+msgid "Stop batch on first failure"
+msgstr "Detener lote en primer fallo"
+
+msgctxt "#32079"
+msgid "When running Generate trickplay for library, stop the batch after the first file that fails instead of continuing with the remaining videos."
+msgstr "Al ejecutar Generar trickplay para biblioteca, detener el lote después del primer archivo que falle en lugar de continuar con los vídeos restantes."
+
+msgctxt "#32084"
+msgid "Generate on library update"
+msgstr "Generar en actualización de biblioteca"
+
+msgctxt "#32085"
+msgid "After a video library scan finishes, generate trickplay for videos added during that scan. Listens for VideoLibrary.OnAdd and OnUpdate (added) notifications."
+msgstr "Después de que finalice un escaneo de biblioteca de vídeo, generar trickplay para vídeos agregados durante ese escaneo. Escucha notificaciones VideoLibrary.OnAdd y OnUpdate (added)."
+
+msgctxt "#32086"
+msgid "Library update: only when not playing"
+msgstr "Actualización de biblioteca: solo cuando no se reproduce"
+
+msgctxt "#32087"
+msgid "Wait until Kodi is not playing video before starting trickplay generation for newly added library items."
+msgstr "Esperar hasta que Kodi no esté reproduciendo vídeo antes de iniciar la generación trickplay para elementos de biblioteca recién agregados."
+
+msgctxt "#32088"
+msgid "That folder is not a valid library path. Choose a folder that contains your video files (for example an NFS share or /storage/remote-shares/…)."
+msgstr "Esa carpeta no es una ruta de biblioteca válida. Elegir una carpeta que contenga los archivos de vídeo (por ejemplo un compartido NFS o /storage/remote-shares/…)."
+
+msgctxt "#32089"
+msgid "Interval selection"
+msgstr "Selección de intervalo"
+
+msgctxt "#32090"
+msgid "When multiple sidecar folders exist for the same tile width (e.g. 320 - 10x10 - 5000 and 320 - 10x10 - 10000), choose which interval to use during playback. Preferred uses the Preview thumbnail interval setting; Shortest uses the smallest interval available."
+msgstr "Cuando existen múltiples carpetas sidecar para el mismo ancho de mosaico (ej. 320 - 10x10 - 5000 y 320 - 10x10 - 10000), elegir qué intervalo usar durante la reproducción. Preferido usa la configuración Intervalo de miniaturas de vista previa; Más corto usa el intervalo más pequeño disponible."
+
+msgctxt "#32091"
+msgid "Preferred interval"
+msgstr "Intervalo preferido"
+
+msgctxt "#32092"
+msgid "Shortest interval"
+msgstr "Intervalo más corto"
+
+msgctxt "#32093"
+msgid "HDR tone mapping for previews"
+msgstr "Mapeo de tonos HDR para vistas previas"
+
+msgctxt "#32094"
+msgid "Tone-map HDR and Dolby Vision sources to SDR when generating trickplay JPEGs so colours match normal playback (similar to Jellyfin). Only applies to HDR/DV files; SDR generation is unchanged. Significantly slower on 4K HEVC — often several times longer per file — and requires ffmpeg tonemap support. Leave off if Jellyfin already generates sidecars or generation time matters."
+msgstr "Mapear tonos de fuentes HDR y Dolby Vision a SDR al generar JPEGs trickplay para que los colores coincidan con la reproducción normal (similar a Jellyfin). Solo se aplica a archivos HDR/DV; la generación SDR no cambia. Significativamente más lento en 4K HEVC — a menudo varias veces más por archivo — y requiere soporte de tonemap ffmpeg. Dejar desactivado si Jellyfin ya genera sidecars o el tiempo de generación importa."
+
+msgctxt "#32095"
+msgid "HDR dovi_tool fallback"
+msgstr "Alternativa HDR dovi_tool"
+
+msgctxt "#32096"
+msgid "When HDR tone mapping is on, run dovi_tool on the first seconds of HEVC if ffprobe finds no HDR signals. Slower; place dovi_tool in generator ffmpeg bin/ (same folder as HDR ffmpeg) or on PATH. Use for stubborn Dolby Vision remuxes. Skipped for VFS stream paths. With fallback on, Run can offer to download dovi_tool there."
+msgstr "Cuando el mapeo de tonos HDR está activado, ejecutar dovi_tool en los primeros segundos de HEVC si ffprobe no encuentra señales HDR. Más lento; colocar dovi_tool en generator ffmpeg bin/ (misma carpeta que HDR ffmpeg) o en PATH. Usar para remuxes Dolby Vision difíciles. Omitido para rutas de stream VFS. Con alternativa activada, Ejecutar puede ofrecer descargar dovi_tool allí."
+
+msgctxt "#32097"
+msgid "Generator ffmpeg path"
+msgstr "Ruta ffmpeg del generador"
+
+msgctxt "#32098"
+msgid "Optional folder or ffmpeg binary for trickplay generation (needs zscale or libplacebo for HDR tone mapping). Preview cropping uses Pillow separately. Leave empty to use /storage/.kodi/system/ffmpeg/ on Linux Kodi, or addon_data/service.trickplay/system/ffmpeg/ on Windows, when present; otherwise PATH. Use Install preview tools when the generator or HDR tone mapping is enabled, or batch Run when generating."
+msgstr "Carpeta opcional o binario ffmpeg para generación trickplay (necesita zscale o libplacebo para mapeo de tonos HDR). El recorte de vista previa usa Pillow por separado. Dejar vacío para usar /storage/.kodi/system/ffmpeg/ en Linux Kodi, o addon_data/service.trickplay/system/ffmpeg/ en Windows, cuando esté presente; de lo contrario PATH. Usar Instalar herramientas de vista previa cuando el generador o mapeo de tonos HDR esté activado, o lote Ejecutar al generar."
+
+msgctxt "#32099"
+msgid "HDR tone mapping needs a capable ffmpeg build. Download and install now?\n\nLinux: BtbN gpl-8.1 (zscale). Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nOn devices without Vulkan (e.g. CoreELEC), Profile 5 Dolby Vision uses dovi_tool instead of libplacebo.\n\nInstall location: %s"
+msgstr "El mapeo de tonos HDR necesita una compilación ffmpeg capaz. ¿Descargar e instalar ahora?\n\nLinux: BtbN gpl-8.1 (zscale). Windows: Gyan full build (zscale + libplacebo para Dolby Vision vía Vulkan).\n\nEn dispositivos sin Vulkan (ej. CoreELEC), Profile 5 Dolby Vision usa dovi_tool en lugar de libplacebo.\n\nUbicación de instalación: %s"
+
+msgctxt "#32100"
+msgid "Continue without"
+msgstr "Continuar sin"
+
+msgctxt "#32101"
+msgid "Installing HDR ffmpeg…"
+msgstr "Instalando HDR ffmpeg…"
+
+msgctxt "#32102"
+msgid "Automatic HDR ffmpeg install is not supported on this platform. Install a BtbN build manually (see README)."
+msgstr "La instalación automática de HDR ffmpeg no es compatible con esta plataforma. Instalar una compilación BtbN manualmente (ver README)."
+
+msgctxt "#32103"
+msgid "HDR ffmpeg install failed:\n%s\n\nYou can install manually or continue with the current ffmpeg (HDR previews may look washed out)."
+msgstr "La instalación de HDR ffmpeg falló:\n%s\n\nPuede instalar manualmente o continuar con el ffmpeg actual (las vistas previas HDR pueden verse descoloridas)."
+
+msgctxt "#32104"
+msgid "HDR ffmpeg installed (%s)."
+msgstr "HDR ffmpeg instalado (%s)."
+
+msgctxt "#32105"
+msgid "Download"
+msgstr "Descargar"
+
+msgctxt "#32106"
+msgid "dovi_tool is required on this device for Dolby Vision trickplay (no Vulkan / libvulkan) or when HDR dovi_tool fallback is enabled. Download and install dovi_tool beside generator ffmpeg now?\n\nInstall location: %s"
+msgstr "dovi_tool es necesario en este dispositivo para trickplay Dolby Vision (sin Vulkan / libvulkan) o cuando la alternativa HDR dovi_tool está activada. ¿Descargar e instalar dovi_tool junto al ffmpeg del generador ahora?\n\nUbicación de instalación: %s"
+
+msgctxt "#32107"
+msgid "Installing dovi_tool…"
+msgstr "Instalando dovi_tool…"
+
+msgctxt "#32108"
+msgid "Automatic dovi_tool install is not supported on this platform. Download from quietvoid/dovi_tool releases and place dovi_tool in generator ffmpeg bin/ (see README)."
+msgstr "La instalación automática de dovi_tool no es compatible con esta plataforma. Descargar desde quietvoid/dovi_tool releases y colocar dovi_tool en generator ffmpeg bin/ (ver README)."
+
+msgctxt "#32109"
+msgid "dovi_tool install failed:\n%s\n\nYou can install manually in generator ffmpeg bin/ or continue without Dolby Vision fallback."
+msgstr "La instalación de dovi_tool falló:\n%s\n\nPuede instalar manualmente en generator ffmpeg bin/ o continuar sin alternativa Dolby Vision."
+
+msgctxt "#32110"
+msgid "dovi_tool installed (%s)."
+msgstr "dovi_tool instalado (%s)."
+
+msgctxt "#32111"
+msgid "Run batch in background"
+msgstr "Ejecutar lote en segundo plano"
+
+msgctxt "#32112"
+msgid "When enabled, batch Run shows a start notification and runs without the progress dialog. Progress is written to the Kodi log. You cannot cancel from the UI (stop Kodi or wait for completion). A notification is shown when the batch finishes."
+msgstr "Cuando está activado, lote Ejecutar muestra una notificación de inicio y se ejecuta sin el diálogo de progreso. El progreso se escribe en el registro de Kodi. No se puede cancelar desde la interfaz (detener Kodi o esperar a que termine). Se muestra una notificación cuando el lote finaliza."
+
+msgctxt "#32113"
+msgid "Generating trickplay for %d file(s) — see log for progress"
+msgstr "Generando trickplay para %d archivo(s) — ver registro para el progreso"
+
+msgctxt "#32114"
+msgid "Skip Dolby Vision Profile 5"
+msgstr "Omitir Dolby Vision Profile 5"
+
+msgctxt "#32115"
+msgid "When enabled, batch generation skips web-style Dolby Vision Profile 5 files (e.g. .DV. releases). Profile 5 needs a full dovi_tool convert before tonemapping — often hours plus ~1× video size temp space on devices like CoreELEC. Use a desktop with Vulkan or leave this off to process them."
+msgstr "Cuando está activado, la generación por lotes omite archivos Dolby Vision Profile 5 estilo web (ej. releases .DV.). Profile 5 necesita una conversión completa dovi_tool antes del mapeo de tonos — a menudo horas más ~1× tamaño de vídeo de espacio temporal en dispositivos como CoreELEC. Usar un escritorio con Vulkan o dejar esto desactivado para procesarlos."
+
+msgctxt "#32116"
+msgid "Generate trickplay for %d of %d video(s)? %d skipped (matching sidecars), %d skipped (Dolby Vision Profile 5)."
+msgstr "¿Generar trickplay para %d de %d vídeo(s)? %d omitidos (sidecars coincidentes), %d omitidos (Dolby Vision Profile 5)."
+
+msgctxt "#32117"
+msgid "Generate trickplay for %d of %d video(s)? %d skipped (Dolby Vision Profile 5)."
+msgstr "¿Generar trickplay para %d de %d vídeo(s)? %d omitidos (Dolby Vision Profile 5)."
+
+msgctxt "#32118"
+msgid "Vulkan (vulkan-1.dll) is missing on this PC. Dolby Vision via libplacebo needs it. Download and install the Vulkan loader next to ffmpeg?\n\nInstall location: %s"
+msgstr "Vulkan (vulkan-1.dll) falta en este PC. Dolby Vision vía libplacebo lo necesita. ¿Descargar e instalar el cargador Vulkan junto a ffmpeg?\n\nUbicación de instalación: %s"
+
+msgctxt "#32119"
+msgid "Vulkan loader installed (%s)."
+msgstr "Cargador Vulkan instalado (%s)."
+
+msgctxt "#32120"
+msgid "Windows hardware decode"
+msgstr "Decodificación por hardware Windows"
+
+msgctxt "#32121"
+msgid "On Windows only: D3D11VA (GPU) for 10-bit / HDR / Dolby Vision HEVC (~25–30% faster on 4K HDR/DV). Not for general use — 1080p H.264 SDR should use software decode (often faster, especially on deep seeks); long-interval SDR uses fps-batch per tile. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). No effect on Linux or CoreELEC."
+msgstr "Solo en Windows: D3D11VA (GPU) para HEVC de 10-bit / HDR / Dolby Vision (~25–30% más rápido en 4K HDR/DV). No para uso general — 1080p H.264 SDR debería usar decodificación por software (a menudo más rápido, especialmente en búsquedas profundas); SDR de intervalo largo usa fps-batch por mosaico. Omitido para AVC y SDR HEVC de 8-bit. Después del primer fallo HW en un archivo, se usa decodificación por software para el resto de ese trabajo. Requiere una compilación completa ffmpeg de Windows (ej. Gyan full de Ejecutar). Sin efecto en Linux o CoreELEC."
+
+msgctxt "#32122"
+msgid "Preview tools"
+msgstr "Herramientas de vista previa"
+
+msgctxt "#32123"
+msgid "Install preview tools"
+msgstr "Instalar herramientas de vista previa"
+
+msgctxt "#32124"
+msgid "Download Pillow for preview cropping (into add-on site-packages). When the generator is enabled or HDR tone mapping is on, also offers ffmpeg/ffprobe and optional HDR extras (zscale/libplacebo, Vulkan loader on Windows, dovi_tool). Batch Run installs generator ffmpeg separately when generating sidecars."
+msgstr "Descargar Pillow para recorte de vista previa (en site-packages del complemento). Cuando el generador está activado o el mapeo de tonos HDR está activado, también ofrece ffmpeg/ffprobe y extras HDR opcionales (zscale/libplacebo, cargador Vulkan en Windows, dovi_tool). Lote Ejecutar instala generator ffmpeg por separado al generar sidecars."
+
+msgctxt "#32125"
+msgid "Trickplay generation needs ffmpeg and ffprobe. Download and install a pinned build now?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo for Dolby Vision via Vulkan).\n\nInstall location: %s"
+msgstr "La generación trickplay necesita ffmpeg y ffprobe. ¿Descargar e instalar una compilación fijada ahora?\n\nLinux: BtbN gpl-8.1. Windows: Gyan full build (zscale + libplacebo para Dolby Vision vía Vulkan).\n\nUbicación de instalación: %s"
+
+msgctxt "#32126"
+msgid "Installing ffmpeg…"
+msgstr "Instalando ffmpeg…"
+
+msgctxt "#32127"
+msgid "ffmpeg install failed:\n%s\n\nYou can install manually or set Generator ffmpeg path in add-on settings."
+msgstr "La instalación de ffmpeg falló:\n%s\n\nPuede instalar manualmente o establecer Ruta ffmpeg del generador en la configuración del complemento."
+
+msgctxt "#32128"
+msgid "ffmpeg installed (%s)."
+msgstr "ffmpeg instalado (%s)."
+
+msgctxt "#32129"
+msgid "Preview tools are already installed."
+msgstr "Las herramientas de vista previa ya están instaladas."
+
+msgctxt "#32130"
+msgid "This file has trickplay sidecars but preview thumbnails need Pillow to crop tiles from sprite sheets.\n\nDownload and install Pillow now? You can also use Install preview tools in add-on settings anytime."
+msgstr "Este archivo tiene sidecars trickplay pero las miniaturas de vista previa necesitan Pillow para recortar mosaicos de hojas sprite.\n\n¿Descargar e instalar Pillow ahora? También puede usar Instalar herramientas de vista previa en la configuración del complemento en cualquier momento."
+
+msgctxt "#32131"
+msgid "Install preview tools"
+msgstr "Instalar herramientas de vista previa"
+
+msgctxt "#32132"
+msgid "Calculating number of videos…"
+msgstr "Calculando número de vídeos…"
+
+msgctxt "#32133"
+msgid "Please wait while the folder is scanned for videos missing trickplay preview files based on your current settings."
+msgstr "Por favor espere mientras se escanea la carpeta en busca de vídeos sin archivos de vista previa trickplay según su configuración actual."
+
+msgctxt "#32134"
+msgid "Checking %d of %d videos…"
+msgstr "Comprobando %d de %d vídeos…"
+
+msgctxt "#32135"
+msgid "Scanning for video files… (%d found)"
+msgstr "Escaneando archivos de vídeo… (%d encontrados)"
+
+msgctxt "#32136"
+msgid "Preview adjustment"
+msgstr "Ajuste de vista previa"
+
+msgctxt "#32137"
+msgid "Preview scale (%)"
+msgstr "Escala de vista previa (%)"
+
+msgctxt "#32138"
+msgid "Scale the scrub preview thumbnail relative to the default size (100 = normal). Useful on 4K displays or with custom skin layouts."
+msgstr "Escalar la miniatura de vista previa de búsqueda relativa al tamaño predeterminado (100 = normal). Útil en pantallas 4K o con diseños de skin personalizados."
+
+msgctxt "#32139"
+msgid "Preview horizontal offset (px)"
+msgstr "Desplazamiento horizontal de vista previa (px)"
+
+msgctxt "#32140"
+msgid "Estuary (stock)"
+msgstr "Estuary (stock)"
+
+msgctxt "#32141"
+msgid "Aeon Nox SiLVO"
+msgstr "Aeon Nox SiLVO"
+
+msgctxt "#32142"
+msgid "Arctic Zephyr"
+msgstr "Arctic Zephyr"
+
+msgctxt "#32143"
+msgid "Arctic Horizon"
+msgstr "Arctic Horizon"
+
+msgctxt "#32144"
+msgid "Shift the preview left (negative) or right (positive) in pixels @ 1080p."
+msgstr "Desplazar la vista previa a la izquierda (negativo) o derecha (positivo) en píxeles @ 1080p."
+
+msgctxt "#32145"
+msgid "Preview vertical offset (px)"
+msgstr "Desplazamiento vertical de vista previa (px)"
+
+msgctxt "#32146"
+msgid "Shift the preview up (negative) or down (positive) in pixels @ 1080p."
+msgstr "Desplazar la vista previa hacia arriba (negativo) o abajo (positivo) en píxeles @ 1080p."
+
+msgctxt "#32147"
+msgid "Show preview when play controls focused"
+msgstr "Mostrar vista previa cuando los controles de reproducción están enfocados"
+
+msgctxt "#32148"
+msgid "Keep the trickplay preview visible while the video OSD play/pause button row has focus (not only when the seek bar is focused)."
+msgstr "Mantener la vista previa trickplay visible mientras la fila de botones de reproducción/pausa del OSD de vídeo tiene el foco (no solo cuando la barra de búsqueda está enfocada)."
+
+msgctxt "#32149"
+msgid "Preview cropping needs Pillow (Python imaging library). Download and install a pinned wheel now?\n\nInstall location: %s"
+msgstr "El recorte de vista previa necesita Pillow (biblioteca de imágenes Python). ¿Descargar e instalar un wheel fijado ahora?\n\nUbicación de instalación: %s"
+
+msgctxt "#32150"
+msgid "Installing Pillow…"
+msgstr "Instalando Pillow…"
+
+msgctxt "#32151"
+msgid "Automatic Pillow install is not available on this Kodi platform/Python version.\n\nInstall Pillow manually into the add-on site-packages folder or use a Kodi build that includes Pillow."
+msgstr "La instalación automática de Pillow no está disponible en esta plataforma Kodi/versión Python.\n\nInstalar Pillow manualmente en la carpeta site-packages del complemento o usar una compilación Kodi que incluya Pillow."
+
+msgctxt "#32152"
+msgid "Pillow install failed:\n%s\n\nYou can install manually into the add-on site-packages folder shown in the prompt."
+msgstr "La instalación de Pillow falló:\n%s\n\nPuede instalar manualmente en la carpeta site-packages del complemento mostrada en el mensaje."
+
+msgctxt "#32153"
+msgid "Pillow installed (%s)."
+msgstr "Pillow instalado (%s)."
+
+msgctxt "#32154"
+msgid "Install skin snippet (current skin)"
+msgstr "Instalar fragmento de skin (skin actual)"
+
+msgctxt "#32155"
+msgid "Back up and install the trickplay preview block into the active skin (DialogSeekBar.xml, or VideoFullScreen.xml for Bello). Merge overlay or replace full file for supported skins. Reloads the skin when done. Stale overlays are updated automatically."
+msgstr "Respaldar e instalar el bloque de vista previa trickplay en el skin activo (DialogSeekBar.xml, o VideoFullScreen.xml para Bello). Fusionar overlay o reemplazar archivo completo para skins compatibles. Recarga el skin cuando termina. Los overlays obsoletos se actualizan automáticamente."
+
+msgctxt "#32156"
+msgid "Install skin snippet (all skins)"
+msgstr "Instalar fragmento de skin (todos los skins)"
+
+msgctxt "#32157"
+msgid "Back up and install the trickplay preview block for every installed skin that has a matching target XML (DialogSeekBar.xml, or VideoFullScreen.xml for Bello). Skins without a target are reported as failed."
+msgstr "Respaldar e instalar el bloque de vista previa trickplay para cada skin instalado que tenga un XML objetivo coincidente (DialogSeekBar.xml, o VideoFullScreen.xml para Bello). Los skins sin objetivo se informan como fallidos."
+
+msgctxt "#32158"
+msgid "Install skin snippet"
+msgstr "Instalar fragmento de skin"
+
+msgctxt "#32159"
+msgid "Skins identified:\n%s\n\nInstall trickplay preview controls now?"
+msgstr "Skins identificados:\n%s\n\n¿Instalar controles de vista previa trickplay ahora?"
+
+msgctxt "#32161"
+msgid "DialogSeekBar.xml not found"
+msgstr "DialogSeekBar.xml no encontrado"
+
+msgctxt "#32162"
+msgid "Installed: %d path(s) ok, %d failed (%d skin(s) processed)."
+msgstr "Instalado: %d ruta(s) ok, %d fallidas (%d skin(s) procesados)."
+
+msgctxt "#32163"
+msgid "No skin could be identified. Set a skin under Settings → Interface → Skin or install a skin add-on first."
+msgstr "No se pudo identificar ningún skin. Establecer un skin en Configuración → Interfaz → Skin o instalar un complemento de skin primero."
+
+msgctxt "#32164"
+msgid "Install"
+msgstr "Instalar"
+
+msgctxt "#32165"
+msgid "DialogSeekBar.xml is not writable (check skin folder permissions)"
+msgstr "DialogSeekBar.xml no es escribible (verificar permisos de carpeta de skin)"
+
+msgctxt "#32166"
+msgid "Could not resolve skin add-on folder"
+msgstr "No se pudo resolver la carpeta del complemento de skin"
+
+msgctxt "#32167"
+msgid "Snippet file missing from add-on package"
+msgstr "Archivo de fragmento faltante del paquete del complemento"
+
+msgctxt "#32168"
+msgid "Backup failed: %s"
+msgstr "Respaldo falló: %s"
+
+msgctxt "#32170"
+msgid "OK (existing .bak kept)"
+msgstr "OK (.bak existente conservado)"
+
+msgctxt "#32171"
+msgid "OK"
+msgstr "OK"
+
+msgctxt "#32172"
+msgid "Install Pillow (preview)"
+msgstr "Instalar Pillow (vista previa)"
+
+msgctxt "#32173"
+msgid "Download Pillow into add-on site-packages for preview thumbnail cropping."
+msgstr "Descargar Pillow en site-packages del complemento para recorte de miniaturas de vista previa."
+
+msgctxt "#32174"
+msgid "Install generator tools (ffmpeg)"
+msgstr "Instalar herramientas del generador (ffmpeg)"
+
+msgctxt "#32175"
+msgid "Download ffmpeg/ffprobe and optional HDR extras (zscale/libplacebo, Vulkan loader on Windows, dovi_tool) for trickplay generation."
+msgstr "Descargar ffmpeg/ffprobe y extras HDR opcionales (zscale/libplacebo, cargador Vulkan en Windows, dovi_tool) para generación trickplay."
+
+msgctxt "#32176"
+msgid "Install preview tools (all)"
+msgstr "Instalar herramientas de vista previa (todas)"
+
+msgctxt "#32177"
+msgid "Install Pillow for preview cropping, and when the generator is enabled or HDR tone mapping is on, also offers ffmpeg/ffprobe and optional HDR extras."
+msgstr "Instalar Pillow para recorte de vista previa, y cuando el generador está activado o el mapeo de tonos HDR está activado, también ofrece ffmpeg/ffprobe y extras HDR opcionales."
+
+msgctxt "#32178"
+msgid "Restore skin snippet (current skin)"
+msgstr "Restaurar fragmento de skin (skin actual)"
+
+msgctxt "#32179"
+msgid "Restore the active skin's DialogSeekBar.xml from DialogSeekBar.xml.bak when a backup exists. Reloads the skin when done."
+msgstr "Restaurar DialogSeekBar.xml del skin activo desde DialogSeekBar.xml.bak cuando existe un respaldo. Recarga el skin cuando termina."
+
+msgctxt "#32180"
+msgid "Result: %d ok, %d failed, %d skipped (already installed) (%d skin(s) processed)."
+msgstr "Resultado: %d ok, %d fallidos, %d omitidos (ya instalados) (%d skin(s) procesados)."
+
+msgctxt "#32181"
+msgid "Other installed skins were updated. Switch to each skin and reload, or restart Kodi, before previews will appear there."
+msgstr "Otros skins instalados fueron actualizados. Cambiar a cada skin y recargar, o reiniciar Kodi, antes de que las vistas previas aparezcan allí."
+
+msgctxt "#32182"
+msgid "%d file(s) failed during batch generation. Retry failed files now?"
+msgstr "%d archivo(s) fallaron durante la generación por lotes. ¿Reintentar archivos fallidos ahora?"
+
+msgctxt "#32183"
+msgid "Retrying failed files…"
+msgstr "Reintentando archivos fallidos…"
+
+msgctxt "#32184"
+msgid "Retry complete: %d ok, %d failed."
+msgstr "Reintento completo: %d ok, %d fallidos."
+
+msgctxt "#32185"
+msgid "Pillow is already available."
+msgstr "Pillow ya está disponible."
+
+msgctxt "#32186"
+msgid "Generator tools are already installed."
+msgstr "Las herramientas del generador ya están instaladas."
+
+msgctxt "#32187"
+msgid "No DialogSeekBar.xml.bak backup found"
+msgstr "No se encontró respaldo DialogSeekBar.xml.bak"
+
+msgctxt "#32188"
+msgid "Already installed (skipped)"
+msgstr "Ya instalado (omitido)"
+
+msgctxt "#32189"
+msgid "Restored from backup"
+msgstr "Restaurado desde respaldo"
+
+msgctxt "#32190"
+msgid "Working…"
+msgstr "Trabajando…"
+
+msgctxt "#32191"
+msgid "Restore DialogSeekBar snippet"
+msgstr "Restaurar fragmento DialogSeekBar"
+
+msgctxt "#32192"
+msgid "Skins identified:\n%s\n\nNo restorable backups were found."
+msgstr "Skins identificados:\n%s\n\nNo se encontraron respaldos restaurables."
+
+msgctxt "#32193"
+msgid "Skins identified:\n%s\n\nRestore DialogSeekBar.xml from .bak backup now?"
+msgstr "Skins identificados:\n%s\n\n¿Restaurar DialogSeekBar.xml desde respaldo .bak ahora?"
+
+msgctxt "#32194"
+msgid "Restore skin snippet (all skins)"
+msgstr "Restaurar fragmento de skin (todos los skins)"
+
+msgctxt "#32195"
+msgid "Restore DialogSeekBar.xml from DialogSeekBar.xml.bak for every installed skin that has a backup. Reloads the active skin when done."
+msgstr "Restaurar DialogSeekBar.xml desde DialogSeekBar.xml.bak para cada skin instalado que tenga un respaldo. Recarga el skin activo cuando termina."
+
+msgctxt "#32196"
+msgid "(unused)"
+msgstr "(sin usar)"
+
+msgctxt "#32197"
+msgid "(unused)"
+msgstr "(sin usar)"
+
+msgctxt "#32198"
+msgid "(unused)"
+msgstr "(sin usar)"
+
+msgctxt "#32199"
+msgid "(unused)"
+msgstr "(sin usar)"
+
+msgctxt "#32211"
+msgid "Show addon status"
+msgstr "Mostrar estado del complemento"
+
+msgctxt "#32212"
+msgid "Show active skin, snippet install status (missing/stale/ok), Pillow, and ffmpeg paths."
+msgstr "Mostrar skin activo, estado de instalación de fragmento (faltante/obsoleto/ok), Pillow y rutas ffmpeg."
+
+msgctxt "#32213"
+msgid "Stale overlay (will update)"
+msgstr "Overlay obsoleto (se actualizará)"
+
+msgctxt "#32214"
+msgid "Force reinstall skin snippet"
+msgstr "Forzar reinstalación de fragmento de skin"
+
+msgctxt "#32215"
+msgid "Reinstall the trickplay overlay even if the installer thinks it is already up to date. Use after manual skin edits or if the preview position looks wrong."
+msgstr "Reinstalar el overlay trickplay incluso si el instalador piensa que ya está actualizado. Usar después de ediciones manuales del skin o si la posición de vista previa se ve incorrecta."
+
+msgctxt "#32216"
+msgid "Cached thumb JPEG quality"
+msgstr "Calidad JPEG de miniaturas en caché"
+
+msgctxt "#32217"
+msgid "Compression quality for cropped preview JPEGs saved on disk (50–95). Lower is smaller/faster to write; higher looks sharper. Default 90. Does not change source trickplay sprites."
+msgstr "Calidad de compresión para JPEGs de vista previa recortados guardados en disco (50–95). Más bajo es más pequeño/más rápido de escribir; más alto se ve más nítido. Predeterminado 90. No cambia sprites trickplay de origen."
+
+msgctxt "#32218"
+msgid "Clear preview cache"
+msgstr "Borrar caché de vista previa"
+
+msgctxt "#32219"
+msgid "Deletes cropped seek thumbs and local sprite tile copies used while scrubbing. Does not remove .trickplay sidecars on your media or generator work folders."
+msgstr "Elimina miniaturas de búsqueda recortadas y copias de mosaicos sprite locales usadas durante la búsqueda. No elimina sidecars .trickplay en su biblioteca de medios o carpetas de trabajo del generador."
+
+msgctxt "#32220"
+msgid "Clear cropped preview thumbs and local tile copies? Source trickplay sprites on your media library are not deleted."
+msgstr "¿Borrar miniaturas de vista previa recortadas y copias de mosaicos locales? Los sprites trickplay de origen en su biblioteca de medios no se eliminan."
+
+msgctxt "#32221"
+msgid "Cleared %d thumbs (%s) and %d tile copies (%s)."
+msgstr "Borradas %d miniaturas (%s) y %d copias de mosaicos (%s)."
+
+msgctxt "#32222"
+msgid "Preview cache is already empty."
+msgstr "La caché de vista previa ya está vacía."
+
+msgctxt "#32223"
+msgid "Retry"
+msgstr "Reintentar"
+
+msgctxt "#32224"
+msgid "Cancel"
+msgstr "Cancelar"

@@ -155,7 +155,9 @@ def resolve_ffmpeg_media_path(media_path: str) -> tuple[str, bool]:
     When use_vfs_stream is False, ffmpeg_input is a local path ffmpeg can open directly.
     When True, ffmpeg_input is the VFS URL/path and media must be streamed via xbmcvfs.
     """
-    path = (media_path or "").strip()
+    from vfs_paths import normalize_vfs_path
+
+    path = normalize_vfs_path((media_path or "").strip())
     if not path:
         return path, False
 
@@ -213,6 +215,9 @@ def _stream_to_pipe(
     proc: subprocess.Popen,
     chunk_size: int = 1024 * 1024,
 ) -> None:
+    from vfs_paths import normalize_vfs_path
+
+    media_path = normalize_vfs_path(media_path)
     try:
         handle = xbmcvfs.File(media_path, "rb")
     except (OSError, RuntimeError, ValueError) as exc:
