@@ -1,4 +1,8 @@
-"""Experimental single-process tile extraction (PyAV seek loop or ffmpeg multi-seek)."""
+"""Fast (batch seeks) tile extraction: multi-seek ffmpeg chunks + optional PyAV.
+
+Hardened path: small ffmpeg input chunks, per-frame Fast fallback on misses,
+optional PyAV seek-loop for local SDR when installed.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +11,11 @@ from collections.abc import Callable
 
 import xbmc
 
-_EXPERIMENTAL_FFMPEG_CHUNK = 25
+# Keep multi-input ffmpeg commands modest (Windows cmdline / demuxer stability).
+_BATCH_SEEKS_FFMPEG_CHUNK = 8
 _FAST_FRAME_TIMEOUT_SEC = 120.0
+
+FrameFallback = Callable[[float, str], bool]
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -43,7 +50,27 @@ def _write_av_frame_jpeg(frame, output_path: str) -> None:
         out.close()
 
 
-def _extract_tile_experimental_pyav(
+def _fallback_frame(
+    frame_fallback: FrameFallback | None,
+    timestamp: float,
+    output_path: str,
+    *,
+    reason: str,
+) -> bool:
+    if frame_fallback is None:
+        return False
+    _log(
+        f"Batch seeks: {reason} at {timestamp:.1f}s — Fast single-frame fallback",
+        xbmc.LOGWARNING,
+    )
+    try:
+        return bool(frame_fallback(timestamp, output_path))
+    except Exception as exc:
+        _log(f"Batch seeks Fast fallback failed at {timestamp:.1f}s: {exc}", xbmc.LOGWARNING)
+        return False
+
+
+def _extract_tile_batch_seeks_pyav(
     ffmpeg_input: str,
     start_index: int,
     frame_count: int,
@@ -54,13 +81,14 @@ def _extract_tile_experimental_pyav(
     tile_count: int,
     debug: bool,
     should_cancel: Callable[[], bool] | None,
+    frame_fallback: FrameFallback | None,
 ) -> list[str]:
     import av
 
     thumb_height = max(int(round(tile_width * 9 / 16)), 2)
     tile_start = start_index * interval_sec
     _log(
-        f"Tile {tile_index + 1}/{tile_count}: experimental PyAV "
+        f"Tile {tile_index + 1}/{tile_count}: batch seeks PyAV "
         f"{frame_count} frame(s) every {interval_sec:.1f}s from {tile_start:.1f}s"
     )
 
@@ -92,25 +120,33 @@ def _extract_tile_experimental_pyav(
                 frame_paths.append(frame_path)
                 saved = True
                 if debug:
-                    _log(f"Experimental PyAV frame at {timestamp:.1f}s -> {frame_path}")
+                    _log(f"Batch seeks PyAV frame at {timestamp:.1f}s -> {frame_path}")
                 break
             if not saved:
-                _log(
-                    f"Experimental PyAV: no frame at {timestamp:.1f}s",
-                    xbmc.LOGWARNING,
-                )
-                return frame_paths
+                if _fallback_frame(
+                    frame_fallback,
+                    timestamp,
+                    frame_path,
+                    reason="PyAV miss",
+                ) and os.path.isfile(frame_path):
+                    frame_paths.append(frame_path)
+                else:
+                    _log(
+                        f"Batch seeks PyAV: no frame at {timestamp:.1f}s",
+                        xbmc.LOGWARNING,
+                    )
+                    return frame_paths
     finally:
         container.close()
 
     _log(
-        f"Tile {tile_index + 1}/{tile_count}: experimental PyAV extracted "
+        f"Tile {tile_index + 1}/{tile_count}: batch seeks PyAV extracted "
         f"{len(frame_paths)} frame(s)"
     )
     return frame_paths
 
 
-def _extract_tile_experimental_ffmpeg(
+def _extract_tile_batch_seeks_ffmpeg(
     ffmpeg: str,
     env: dict[str, str],
     ffmpeg_input: str,
@@ -124,24 +160,30 @@ def _extract_tile_experimental_ffmpeg(
     debug: bool,
     should_cancel: Callable[[], bool] | None,
     run_subprocess: Callable[..., tuple[int | None, str]],
+    frame_fallback: FrameFallback | None,
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
 ) -> list[str]:
     tile_start = start_index * interval_sec
     _log(
-        f"Tile {tile_index + 1}/{tile_count}: experimental ffmpeg multi-seek "
-        f"{frame_count} frame(s) every {interval_sec:.1f}s from {tile_start:.1f}s"
+        f"Tile {tile_index + 1}/{tile_count}: batch seeks ffmpeg "
+        f"{frame_count} frame(s) every {interval_sec:.1f}s from {tile_start:.1f}s "
+        f"(chunk={_BATCH_SEEKS_FFMPEG_CHUNK})"
     )
 
     frame_paths: list[str] = []
-    for chunk_start in range(0, frame_count, _EXPERIMENTAL_FFMPEG_CHUNK):
+    for chunk_start in range(0, frame_count, _BATCH_SEEKS_FFMPEG_CHUNK):
         if should_cancel and should_cancel():
             return frame_paths
-        chunk_end = min(chunk_start + _EXPERIMENTAL_FFMPEG_CHUNK, frame_count)
+        chunk_end = min(chunk_start + _BATCH_SEEKS_FFMPEG_CHUNK, frame_count)
         chunk_len = chunk_end - chunk_start
+        chunk_offsets = list(range(chunk_start, chunk_end))
+        chunk_outputs = [
+            os.path.join(output_dir, f"{offset:05d}.jpg") for offset in chunk_offsets
+        ]
+
         cmd = [ffmpeg, "-y", "-loglevel", "error", *ffmpeg_input_args]
-        chunk_outputs: list[str] = []
-        for offset in range(chunk_start, chunk_end):
+        for offset in chunk_offsets:
             timestamp = (start_index + offset) * interval_sec
             cmd.extend(
                 [
@@ -151,9 +193,7 @@ def _extract_tile_experimental_ffmpeg(
                     ffmpeg_input,
                 ]
             )
-        for input_index, offset in enumerate(range(chunk_start, chunk_end)):
-            output_path = os.path.join(output_dir, f"{offset:05d}.jpg")
-            chunk_outputs.append(output_path)
+        for input_index, output_path in enumerate(chunk_outputs):
             cmd.extend(
                 [
                     "-map",
@@ -175,36 +215,51 @@ def _extract_tile_experimental_ffmpeg(
         returncode, detail = run_subprocess(cmd, env, timeout, should_cancel)
         if returncode is None:
             return frame_paths
-        if returncode != 0:
+
+        chunk_ok = returncode == 0
+        if not chunk_ok:
             _log(
-                f"Experimental ffmpeg multi-seek failed "
+                f"Batch seeks ffmpeg chunk failed "
                 f"(frames {chunk_start}-{chunk_end - 1}): {detail[:500]}",
                 xbmc.LOGWARNING,
             )
-            return frame_paths
-        for output_path in chunk_outputs:
+
+        for offset, output_path in zip(chunk_offsets, chunk_outputs):
+            if should_cancel and should_cancel():
+                return frame_paths
+            timestamp = (start_index + offset) * interval_sec
             if os.path.isfile(output_path):
+                frame_paths.append(output_path)
+                continue
+            if _fallback_frame(
+                frame_fallback,
+                timestamp,
+                output_path,
+                reason="ffmpeg chunk miss" if chunk_ok else "ffmpeg chunk fail",
+            ) and os.path.isfile(output_path):
                 frame_paths.append(output_path)
             else:
                 _log(
-                    f"Experimental ffmpeg: missing {output_path!r}",
+                    f"Batch seeks: missing frame at {timestamp:.1f}s "
+                    f"({output_path!r})",
                     xbmc.LOGWARNING,
                 )
                 return frame_paths
+
         if debug:
             _log(
-                f"Experimental ffmpeg chunk {chunk_start}-{chunk_end - 1} "
+                f"Batch seeks ffmpeg chunk {chunk_start}-{chunk_end - 1} "
                 f"({len(chunk_outputs)} frame(s))"
             )
 
     _log(
-        f"Tile {tile_index + 1}/{tile_count}: experimental ffmpeg extracted "
+        f"Tile {tile_index + 1}/{tile_count}: batch seeks ffmpeg extracted "
         f"{len(frame_paths)} frame(s)"
     )
     return frame_paths
 
 
-def extract_tile_experimental(
+def extract_tile_batch_seeks(
     ffmpeg: str,
     env: dict[str, str],
     ffmpeg_input: str,
@@ -220,10 +275,15 @@ def extract_tile_experimental(
     should_cancel: Callable[[], bool] | None = None,
     run_subprocess: Callable[..., tuple[int | None, str]] | None = None,
     force_ffmpeg: bool = False,
+    frame_fallback: FrameFallback | None = None,
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
 ) -> list[str]:
-    """One open + seek loop (PyAV) or one ffmpeg process with many seeks per chunk."""
+    """Extract one tile via batch seeks (PyAV when safe, else chunked ffmpeg).
+
+    ``frame_fallback(timestamp, output_path)`` should run a single Fast seek extract
+    when a batch/PyAV capture misses.
+    """
     if should_cancel and should_cancel() or frame_count <= 0:
         return []
 
@@ -234,7 +294,7 @@ def extract_tile_experimental(
 
     if not force_ffmpeg and _pyav_available():
         try:
-            paths = _extract_tile_experimental_pyav(
+            paths = _extract_tile_batch_seeks_pyav(
                 ffmpeg_input,
                 start_index,
                 frame_count,
@@ -245,19 +305,20 @@ def extract_tile_experimental(
                 tile_count,
                 debug,
                 should_cancel,
+                frame_fallback,
             )
             if len(paths) == frame_count:
                 return paths
             _log(
-                "Experimental PyAV incomplete; trying ffmpeg multi-seek fallback",
+                "Batch seeks PyAV incomplete; trying ffmpeg multi-seek",
                 xbmc.LOGWARNING,
             )
         except Exception as exc:
-            _log(f"Experimental PyAV failed: {exc}", xbmc.LOGWARNING)
+            _log(f"Batch seeks PyAV failed: {exc}", xbmc.LOGWARNING)
     elif force_ffmpeg and debug:
-        _log("Experimental: using ffmpeg for HDR tone mapping")
+        _log("Batch seeks: using ffmpeg (HDR / hardware decode)")
 
-    return _extract_tile_experimental_ffmpeg(
+    return _extract_tile_batch_seeks_ffmpeg(
         ffmpeg,
         env,
         ffmpeg_input,
@@ -271,6 +332,11 @@ def extract_tile_experimental(
         debug,
         should_cancel,
         run_subprocess,
+        frame_fallback,
         output_color_args,
         ffmpeg_input_args,
     )
+
+
+# Back-compat alias for older call sites / tests.
+extract_tile_experimental = extract_tile_batch_seeks

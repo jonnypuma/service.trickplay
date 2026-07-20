@@ -17,13 +17,13 @@ import xbmcvfs
 from ffmpeg_tools import resolve_generator_ffmpeg_tools, subprocess_hide_window_kwargs
 from generator_extract_modes import (
     EXTRACT_MODE_ACCURATE,
+    EXTRACT_MODE_BATCH_SEEKS,
     EXTRACT_MODE_EXPERIMENTAL,
     EXTRACT_MODE_FAST,
     extract_mode_log_label,
-    normalize_extract_mode,
 )
 from generator_settings import GeneratorSettings
-from experimental_extract import extract_tile_experimental
+from experimental_extract import extract_tile_batch_seeks
 from ffmpeg_media import (
     effective_generation_duration_seconds,
     elementary_hevc_input_args,
@@ -1552,8 +1552,30 @@ def generate_trickplay_for_media(
                 tile_work_dir = os.path.join(work_dir, f"t{tile_index:04d}")
                 _ensure_local_dir(tile_work_dir)
 
-                if settings.extract_mode == EXTRACT_MODE_EXPERIMENTAL:
-                    frame_paths = extract_tile_experimental(
+                if settings.extract_mode in (
+                    EXTRACT_MODE_BATCH_SEEKS,
+                    EXTRACT_MODE_EXPERIMENTAL,
+                ):
+                    def _batch_seeks_frame_fallback(
+                        timestamp: float, output_path: str
+                    ) -> bool:
+                        return _extract_frame_fast(
+                            ffmpeg,
+                            env,
+                            ffmpeg_input,
+                            timestamp,
+                            settings.tile_width,
+                            output_path,
+                            thumb_vf,
+                            debug=settings.debug,
+                            should_cancel=should_cancel,
+                            output_color_args=output_color_args,
+                            ffmpeg_input_args=ffmpeg_input_args,
+                            sw_fallback=sw_extract_fallback,
+                            hw_state=hw_state,
+                        )
+
+                    frame_paths = extract_tile_batch_seeks(
                         ffmpeg,
                         env,
                         ffmpeg_input,
@@ -1569,9 +1591,45 @@ def generate_trickplay_for_media(
                         should_cancel=should_cancel,
                         run_subprocess=_run_subprocess_cancellable,
                         force_ffmpeg=filter_ctx.apply_tonemap or hw_decode_active,
+                        frame_fallback=_batch_seeks_frame_fallback,
                         output_color_args=output_color_args,
                         ffmpeg_input_args=ffmpeg_input_args,
                     )
+                    if (
+                        len(frame_paths) < chunk_count
+                        and not _is_cancelled(should_cancel)
+                        and not _is_tail_eof_tile(
+                            tile_index, tile_count, tiles_written
+                        )
+                    ):
+                        _log(
+                            f"Tile {tile_index + 1}/{tile_count}: batch seeks incomplete "
+                            f"({len(frame_paths)}/{chunk_count}); retrying with Fast",
+                            xbmc.LOGWARNING,
+                        )
+                        _remove_tree(tile_work_dir)
+                        _ensure_local_dir(tile_work_dir)
+                        frame_paths = _extract_tile_fast(
+                            ffmpeg,
+                            env,
+                            ffmpeg_input,
+                            start_index,
+                            chunk_count,
+                            interval_sec,
+                            settings.tile_width,
+                            tile_work_dir,
+                            thumb_vf,
+                            batch_vf,
+                            tile_index=tile_index,
+                            tile_count=tile_count,
+                            debug=settings.debug,
+                            should_cancel=should_cancel,
+                            output_color_args=output_color_args,
+                            ffmpeg_input_args=ffmpeg_input_args,
+                            sw_fallback=sw_extract_fallback,
+                            hw_state=hw_state,
+                            apply_tonemap=filter_ctx.apply_tonemap,
+                        )
                 elif settings.extract_mode == EXTRACT_MODE_FAST:
                     frame_paths = _extract_tile_fast(
                         ffmpeg,

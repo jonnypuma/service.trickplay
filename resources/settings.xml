@@ -716,7 +716,7 @@
 
                             <option label="32081">fast</option>
 
-                            <option label="32082">experimental</option>
+                            <option label="32082">batch_seeks</option>
 
                         </options>
 

@@ -1,0 +1,3 @@
+# Dev-only stubs so IDEs/type checkers can resolve Kodi Python APIs
+# (xbmc, xbmcaddon, xbmcgui, xbmcvfs). Not used at runtime inside Kodi.
+Kodistubs>=21.0.0

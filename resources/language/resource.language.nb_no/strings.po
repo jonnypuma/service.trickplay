@@ -354,7 +354,7 @@ msgid "Frame extraction mode"
 msgstr "Rammeekstraksjons-modus"
 
 msgctxt "#32077"
-msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Experimental: one file open with seek between captures (PyAV when available, otherwise one ffmpeg process with many seeks per tile)."
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
 msgstr "Nøyaktig: én ffmpeg-kall per miniatyrbilde, søk etter inndata (sakte, rammenøyaktig). Rask: søk før inndata per miniatyrbilde for store intervaller, eller én fps-dekodingsgjennomgang per flis for intervaller på 5s eller mindre. Eksperimentell: én filøpning med søk mellom opptak (PyAV når tilgjengelig, ellers én ffmpeg-prosess med mange søk per flis)."
 
 msgctxt "#32080"
@@ -366,8 +366,8 @@ msgid "Fast"
 msgstr "Rask"
 
 msgctxt "#32082"
-msgid "Experimental"
-msgstr "Eksperimentell"
+msgid "Fast (batch seeks)"
+msgstr "Fast (batch seeks)"
 
 msgctxt "#32078"
 msgid "Stop batch on first failure"

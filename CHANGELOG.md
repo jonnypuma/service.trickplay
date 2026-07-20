@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.0] - 2026-07-20
+
+### Changed
+
+- **Frame extraction: Fast (batch seeks)** — renames former **Experimental** mode. Setting value is now `batch_seeks` (legacy `experimental` still loads as batch seeks). Hardened: ffmpeg multi-seek chunks capped at **8** inputs, **per-frame Fast fallback** on misses, and **full-tile Fast retry** if a mid-file tile is still incomplete. Optional PyAV remains for local SDR when installed. Biggest speed gains on local SDR files.
+
 ## [7.0.0] - 2026-07-20
 
 ### Changed

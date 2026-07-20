@@ -354,8 +354,8 @@ msgid "Frame extraction mode"
 msgstr "Modo de extracción de fotogramas"
 
 msgctxt "#32077"
-msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Experimental: one file open with seek between captures (PyAV when available, otherwise one ffmpeg process with many seeks per tile)."
-msgstr "Preciso: una llamada ffmpeg por miniatura, búsqueda después de entrada (lento, precisión de fotograma). Rápido: búsqueda antes de entrada por miniatura para intervalos amplios, o una pasada de decodificación fps por mosaico para intervalos de 5s o menos. Experimental: un archivo abierto con búsqueda entre capturas (PyAV cuando esté disponible, de lo contrario un proceso ffmpeg con muchas búsquedas por mosaico)."
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
 
 msgctxt "#32080"
 msgid "Accurate (slow)"
@@ -366,8 +366,8 @@ msgid "Fast"
 msgstr "Rápido"
 
 msgctxt "#32082"
-msgid "Experimental"
-msgstr "Experimental"
+msgid "Fast (batch seeks)"
+msgstr "Fast (batch seeks)"
 
 msgctxt "#32078"
 msgid "Stop batch on first failure"
