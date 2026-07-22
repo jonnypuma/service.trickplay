@@ -601,9 +601,6 @@ msgctxt "#32139"
 msgid "Preview horizontal offset (px)"
 msgstr "Décalage horizontal de l'aperçu (px)"
 
-msgctxt "#32140"
-msgid "Estuary (stock)"
-msgstr "Estuary (stock)"
 
 msgctxt "#32141"
 msgid "Aeon Nox SiLVO"

@@ -17,7 +17,6 @@ The reference snippets in this addon are:
 | Estuary Mod v2 | `resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml` | Slot slides |
 | Arctic Fuse 3 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.3.xml` | Slot slides + full OSD center group |
 | Arctic Fuse 2 | `resources/skin-snippet/DialogSeekBar-skin.arctic.fuse.2.xml` | Slot slides + full OSD center group |
-| Estuary (stock) | `resources/skin-snippet/DialogSeekBar-skin.estuary.xml` | Dynamic `$INFO` placement |
 | Aeon Nox SiLVO | `resources/skin-snippet/DialogSeekBar-skin.aeon.nox.silvo.xml` | Slot slides + Home properties |
 | Arctic Zephyr | `resources/skin-snippet/DialogSeekBar-skin.arctic.zephyr.xml` | Slot slides + Home properties |
 | Arctic Zephyr 2 Resurrection | `resources/skin-snippet/DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml` | Slot slides + Home properties |
@@ -58,7 +57,6 @@ The service detects your active Kodi skin (`xbmc.gui` addon id) and selects seek
 | Estuary Mod v2 | `skin.estuary.modv2`, `skin.estuary.mod`, … | 460, 990, 1430 (+ wide 30, 990, 1860) |
 | Arctic Fuse 3 | `skin.arctic.fuse.3`, … | 240, 772, 1440 |
 | Arctic Fuse 2 | `skin.arctic.fuse.2`, … | 240, 772, 1440 |
-| Estuary (stock) | `skin.estuary` | 480, 990, 960 |
 | Aeon Nox SiLVO | `skin.aeon.nox.silvo`, `skin.aeon.nox`, … | 0, 1039, 1920 |
 | Arctic Zephyr | `skin.arctic.zephyr`, … | 60, 1060, 1800 |
 | Arctic Zephyr 2 Resurrection | `skin.arctic.zephyr.2.resurrection.mod`, … | 60, 1060, 1800 |
@@ -172,7 +170,7 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 - **Thumbnail interval (ms)** — used to select a matching sidecar folder and as fallback when the folder name has no interval (default `10000`)
 - **Interval selection** — when several sidecar folders share the same tile width (e.g. `320 - 10x10 - 5000` and `320 - 10x10 - 10000`), **Preferred interval** uses the thumbnail interval setting; **Shortest interval** picks the finest-grained previews available
 - **Seek poll interval (ms)** — refresh rate while scrubbing (default `100`)
-- **Skin profile** — auto-detect active skin, or force a listed profile (Estuary Mod v2, Arctic Fuse 3, Estuary stock, Aeon Nox SiLVO, Arctic Zephyr, Arctic Horizon)
+- **Skin profile** — auto-detect active skin, or force a listed profile (Estuary Mod v2, Arctic Fuse 3, Aeon Nox SiLVO, Arctic Zephyr, Arctic Horizon)
 - **Enable debug logging** — logs seek targets, preview slots, visibility toggles, and active skin profile
 
 ### Preview adjustment (Settings → Preview adjustment)

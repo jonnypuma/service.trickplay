@@ -135,15 +135,6 @@ ARCTIC_FUSE_2 = SkinProfile(
     ),
 )
 
-# Stock Kodi Estuary — centered 50% seek bar @ bottom (xbmc/xbmc skin.estuary).
-ESTUARY = SkinProfile(
-    key="estuary",
-    label="Estuary (stock)",
-    seekbar=(480, 990, 960),
-    seekbar_focus_id=401,
-    osd_button_ids=tuple(range(11, 18)),
-)
-
 # Doctor-Eggs/Aeon-Nox-SiLVO — full-width bottom bar (16x9/DialogSeekBar.xml).
 AEON_NOX_SILVO = SkinProfile(
     key="aeon_nox_silvo",
@@ -241,7 +232,6 @@ PROFILES_BY_KEY: dict[str, SkinProfile] = {
     ESTUARY_MODV2.key: ESTUARY_MODV2,
     ARCTIC_FUSE_3.key: ARCTIC_FUSE_3,
     ARCTIC_FUSE_2.key: ARCTIC_FUSE_2,
-    ESTUARY.key: ESTUARY,
     AEON_NOX_SILVO.key: AEON_NOX_SILVO,
     ARCTIC_ZEPHYR.key: ARCTIC_ZEPHYR,
     ARCTIC_ZEPHYR_ROUNDED.key: ARCTIC_ZEPHYR_ROUNDED,
@@ -256,7 +246,6 @@ PROFILES_BY_KEY: dict[str, SkinProfile] = {
 PROFILES_BY_SKIN_ID: dict[str, SkinProfile] = {
     "skin.estuary.modv2": ESTUARY_MODV2,
     "skin.estuary.mod": ESTUARY_MODV2,
-    "skin.estuary": ESTUARY,
     "skin.arctic.fuse.3": ARCTIC_FUSE_3,
     "skin.arctic.fuse.2": ARCTIC_FUSE_2,
     "skin.arctic.fuse": ARCTIC_FUSE_3,
@@ -294,7 +283,6 @@ SKIN_ID_MARKERS: tuple[tuple[str, SkinProfile], ...] = (
     ("bingie", BINGIE),
     ("estuary.modv2", ESTUARY_MODV2),
     ("estuary.mod", ESTUARY_MODV2),
-    ("estuary", ESTUARY),
 )
 
 _cached_profile: SkinProfile | None = None
@@ -467,7 +455,6 @@ SKIN_SNIPPET_REGISTRY: tuple[tuple[str, str, str], ...] = (
     ("arctic.horizon", "DialogSeekBar-skin.arctic.horizon.xml", "merge"),
     ("bello", "VideoFullScreen-skin.bello.xml", "merge", "VideoFullScreen.xml"),
     ("bingie", "DialogSeekBar-skin.bingie.xml", "merge"),
-    ("estuary", "DialogSeekBar-skin.estuary.xml", "merge"),
 )
 UNIVERSAL_SNIPPET_FILENAME = "DialogSeekBar-universal-dynamic.xml"
 
