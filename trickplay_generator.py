@@ -1330,11 +1330,31 @@ def generate_trickplay_for_media(
     _ensure_dir(work_dir)
     _ensure_local_dir(work_dir)
 
-    extract_mode = "VFS stream" if use_vfs_stream else (
-        "dovi HEVC sequential" if is_elementary_hevc else extract_mode_log_label(
-            settings.extract_mode
-        )
+    batch_seeks_mode = settings.extract_mode in (
+        EXTRACT_MODE_BATCH_SEEKS,
+        EXTRACT_MODE_EXPERIMENTAL,
     )
+    # Multi-input batch seeks breaks with HDR/DV tonemap and with D3D11VA/10-bit
+    # (yuv420p10le filter-graph mismatch across multiple -i inputs); use Fast
+    # immediately instead of waiting out per-chunk timeouts.
+    skip_batch_seeks_reason = ""
+    if batch_seeks_mode and filter_ctx.apply_tonemap:
+        skip_batch_seeks_reason = "HDR/DV"
+    elif batch_seeks_mode and hw_decode_active:
+        skip_batch_seeks_reason = "D3D11VA hw decode"
+    use_batch_seeks = batch_seeks_mode and not skip_batch_seeks_reason
+    if use_vfs_stream:
+        extract_mode = "VFS stream"
+    elif is_elementary_hevc:
+        extract_mode = "dovi HEVC sequential"
+    elif skip_batch_seeks_reason:
+        extract_mode = f"fast (batch seeks skipped for {skip_batch_seeks_reason})"
+        _log(
+            f"Fast (batch seeks): {skip_batch_seeks_reason} active — "
+            "using Fast extract for this file"
+        )
+    else:
+        extract_mode = extract_mode_log_label(settings.extract_mode)
     hdr_note = ", HDR tone map" if filter_ctx.apply_tonemap else ""
     hw_note = ", D3D11VA hw decode" if hw_decode_active else ""
     _log(
@@ -1552,10 +1572,7 @@ def generate_trickplay_for_media(
                 tile_work_dir = os.path.join(work_dir, f"t{tile_index:04d}")
                 _ensure_local_dir(tile_work_dir)
 
-                if settings.extract_mode in (
-                    EXTRACT_MODE_BATCH_SEEKS,
-                    EXTRACT_MODE_EXPERIMENTAL,
-                ):
+                if use_batch_seeks:
                     def _batch_seeks_frame_fallback(
                         timestamp: float, output_path: str
                     ) -> bool:
@@ -1590,7 +1607,7 @@ def generate_trickplay_for_media(
                         debug=settings.debug,
                         should_cancel=should_cancel,
                         run_subprocess=_run_subprocess_cancellable,
-                        force_ffmpeg=filter_ctx.apply_tonemap or hw_decode_active,
+                        force_ffmpeg=hw_decode_active,
                         frame_fallback=_batch_seeks_frame_fallback,
                         output_color_args=output_color_args,
                         ffmpeg_input_args=ffmpeg_input_args,
@@ -1630,7 +1647,9 @@ def generate_trickplay_for_media(
                             hw_state=hw_state,
                             apply_tonemap=filter_ctx.apply_tonemap,
                         )
-                elif settings.extract_mode == EXTRACT_MODE_FAST:
+                elif (
+                    settings.extract_mode == EXTRACT_MODE_FAST or batch_seeks_mode
+                ):
                     frame_paths = _extract_tile_fast(
                         ffmpeg,
                         env,

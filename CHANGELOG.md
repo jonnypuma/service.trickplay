@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.2] - 2026-07-22
+
+### Fixed
+
+- **Fast (batch seeks) + Windows HW decode** — multi-input batch seeks is also skipped when **D3D11VA** is active (10-bit HEVC without HDR tags, e.g. NF WEBRip Main10). Same `yuv420p10le` filter-graph failure and ~16 minute chunk timeouts as the HDR path; uses **Fast** immediately instead.
+
+## [7.1.1] - 2026-07-21
+
+### Fixed
+
+- **Fast (batch seeks) + HDR/DV** — when tone mapping is active, multi-input batch seeks is skipped immediately and **Fast** is used instead. Avoids ~16 minute per-chunk timeouts from broken libplacebo/zscale + 10-bit filter graphs before falling back frame-by-frame.
+
 ## [7.1.0] - 2026-07-20
 
 ### Changed
