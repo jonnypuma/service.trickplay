@@ -324,7 +324,7 @@ def _linux_has_vulkan_icd_configs() -> bool:
 
 
 def ffmpeg_sdr_output_color_args() -> tuple[str, ...]:
-    """Output tags for tone-mapped SDR JPEGs (full-range yuvj420p for mjpeg in ffmpeg 8+)."""
+    """Output args for MJPEG JPEG thumbs (ffmpeg 7+/8+ need these for limited-range YUV)."""
     return (
         "-strict",
         "unofficial",
@@ -472,7 +472,8 @@ def build_thumb_video_filter(
         _TONEMAP_MODE_LIBPLACEBO,
     ):
         return f"{_tonemap_prefix(tonemap_mode, hdr_transfer, dolby_vision=dolby_vision)}{scale_pad}"
-    return f"yadif=0:-1:0,{scale_pad}"
+    # Force full-range JPEG-friendly pixels so mjpeg does not reject TV-range YUV.
+    return f"yadif=0:-1:0,{scale_pad},format=yuvj420p"
 
 
 def build_fps_batch_filter(
@@ -1987,7 +1988,8 @@ def resolve_thumb_filter_context(
         hdr_transfer,
         dolby_vision=is_dovi and tonemap_mode == _TONEMAP_MODE_LIBPLACEBO,
     )
-    color_args = ffmpeg_sdr_output_color_args() if apply_tonemap else ()
+    # Always required for MJPEG JPEG output on modern ffmpeg (SDR and HDR).
+    color_args = ffmpeg_sdr_output_color_args()
     input_args = ()
     if apply_tonemap and tonemap_mode == _TONEMAP_MODE_LIBPLACEBO:
         input_args = ffmpeg_libplacebo_input_args()
