@@ -18,11 +18,11 @@
 
 
 
-  Skins with dedicated slot-slide snippets (Estuary Mod v2, Arctic Fuse 3)
+  Skins with dedicated snippets (Estuary Mod v2, Arctic Fuse 3)
 
   may use those instead; this overlay works for all other profiles.
 
-  trickplay-overlay-rev:4
+  trickplay-overlay-rev:5
 
 -->
 
@@ -32,7 +32,7 @@
 
 		<control type="group" id="94090">
 
-			<!-- trickplay-overlay-rev:4 -->
+			<!-- trickplay-overlay-rev:5 -->
 			<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 			<visible>String.IsEqual(Window.Property(Trickplay.PreviewVisible),true) + !String.IsEmpty(Window.Property(Trickplay.PreviewImage))</visible>
 

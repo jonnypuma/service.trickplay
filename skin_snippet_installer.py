@@ -69,19 +69,24 @@ OSD_SLIDE_MARKERS = {
     "DialogSeekBar-skin.arctic.horizon.2.1.arizen.xml": AH2_VIDEO_OSD_SLIDE_MARKER,
 }
 LEGACY_PROPERTY_MARKER = "Window.Property(Trickplay.PreviewVisible)"
+# Window.Property PreviewLeft on Home-property skins (should use Window(Home)).
 LEGACY_DYNAMIC_PREVIEW_MARKER = "$INFO[Window.Property(Trickplay.PreviewLeft)]"
-OVERLAY_REVISION = 4
+CONTINUOUS_LEFT_WINDOW = "$INFO[Window.Property(Trickplay.PreviewLeft)]"
+CONTINUOUS_LEFT_HOME = "$INFO[Window(Home).Property(Trickplay.PreviewLeft)]"
+OVERLAY_REVISION = 5
 OVERLAY_REVISION_MARKER = f"trickplay-overlay-rev:{OVERLAY_REVISION}"
 SKIPPY_SEEKBAR_VISIBLE_MARKER = "Window(Home).Property(Skippy.Skipping)"
 SKIPPY_SEEKBAR_VISIBLE_TAG = (
     "<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>"
 )
 _CONTROLS_OPEN_RE = re.compile(r"^([ \t]*)<controls\b", re.MULTILINE)
-BINGIE_PREVIEW_TOP_MARKER = "<top>717</top>"
+BINGIE_PREVIEW_TOP_MARKER = "$INFO[Window(Home).Property(Trickplay.PreviewTop)]"
 BELLO_PREVIEW_TOP_MARKER = "<top>560</top>"
 BELLO_CENTER_SEEK_MARKER = "osd/osd_controls_bg.png"
 BELLO_SIMPLE_SEEK_MARKER = '<include content="SeekBarSimple">'
-Z2_RESURRECTION_PREVIEW_TOP_MARKER = "<top>740</top>"
+Z2_RESURRECTION_PREVIEW_TOP_MARKER = (
+    "$INFO[Window(Home).Property(Trickplay.PreviewTop)]"
+)
 _CONTROL_OPEN_RE = re.compile(
     r"<control\b[^>]*\bid=[\"']" + OVERLAY_CONTROL_ID + r"[\"']",
     re.IGNORECASE,
@@ -588,21 +593,22 @@ def overlay_needs_refresh(target_path: str, snippet_file: str) -> bool:
     # Replace-mode skins (AF2/AF3, Estuary Mod v2) intentionally use
     # Window.Property(Trickplay.*) on DialogSeekBar — not Home properties.
     if snippet_file in REPLACE_SNIPPETS:
-        return SLOT_SLIDE_MARKER not in text
-
-    # Dynamic / Home-property merge snippets: flag old dynamic Left/Top placement
-    # and Window.Property-only overlays that should have been migrated to Home.
-    if overlay_has_legacy_dynamic_placement(text):
-        return True
-    if (
-        snippet_file in HOME_PROPERTY_SNIPPETS
-        and LEGACY_PROPERTY_MARKER in text
-        and HOME_PROPERTY_MARKER not in text
-    ):
-        return True
+        return SLOT_SLIDE_MARKER not in text or CONTINUOUS_LEFT_WINDOW not in text
 
     if snippet_file not in HOME_PROPERTY_SNIPPETS:
         return False
+
+    # Home-property skins: Window.Property PreviewLeft is wrong (use Home).
+    if overlay_has_legacy_dynamic_placement(text):
+        return True
+    if LEGACY_PROPERTY_MARKER in text and HOME_PROPERTY_MARKER not in text:
+        return True
+    # Bello is a fixed-center OSD preview (no seekbar scrub tracking).
+    if (
+        snippet_file != "VideoFullScreen-skin.bello.xml"
+        and CONTINUOUS_LEFT_HOME not in text
+    ):
+        return True
 
     if snippet_file == "VideoFullScreen-skin.bello.xml":
         return (

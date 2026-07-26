@@ -198,7 +198,7 @@ class SkinSnippetMergeTests(unittest.TestCase):
             overlay_needs_refresh(path, "VideoFullScreen-skin.bello.xml")
         )
 
-    def test_bingie_snippet_uses_home_properties_and_slot_slides(self) -> None:
+    def test_bingie_snippet_uses_home_properties_and_continuous_left(self) -> None:
         snippet_path = os.path.join(
             ROOT,
             "resources",
@@ -208,8 +208,13 @@ class SkinSnippetMergeTests(unittest.TestCase):
         overlay = extract_overlay_xml_text(snippet_path)
         self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
         self.assertIn('id="94100"', overlay)
-        self.assertIn("<left>384</left>", overlay)
-        self.assertIn("<top>717</top>", overlay)
+        self.assertIn(
+            "$INFO[Window(Home).Property(Trickplay.PreviewLeft)]", overlay
+        )
+        self.assertIn(
+            "$INFO[Window(Home).Property(Trickplay.PreviewTop)]", overlay
+        )
+        self.assertNotIn("PreviewSlot", overlay)
         self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
 
     def test_overlay_needs_refresh_detects_legacy_window_property_overlay(self) -> None:
@@ -257,7 +262,7 @@ class SkinSnippetMergeTests(unittest.TestCase):
             overlay_needs_refresh(path, "DialogSeekBar-skin.bingie.xml")
         )
 
-    def test_zephyr_2_resurrection_snippet_raised_above_seekbar(self) -> None:
+    def test_zephyr_2_resurrection_snippet_uses_continuous_top(self) -> None:
         snippet_path = os.path.join(
             ROOT,
             "resources",
@@ -265,10 +270,14 @@ class SkinSnippetMergeTests(unittest.TestCase):
             "DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml",
         )
         overlay = extract_overlay_xml_text(snippet_path)
-        self.assertIn("<top>740</top>", overlay)
-        self.assertNotIn("<top>820</top>", overlay)
+        self.assertIn(
+            "$INFO[Window(Home).Property(Trickplay.PreviewTop)]", overlay
+        )
+        self.assertNotIn("PreviewSlot", overlay)
 
-    def test_aeon_nox_silvo_snippet_uses_home_properties_and_slot_slides(self) -> None:
+    def test_aeon_nox_silvo_snippet_uses_home_properties_and_continuous_left(
+        self,
+    ) -> None:
         snippet_path = os.path.join(
             ROOT,
             "resources",
@@ -278,11 +287,15 @@ class SkinSnippetMergeTests(unittest.TestCase):
         overlay = extract_overlay_xml_text(snippet_path)
         self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
         self.assertIn('id="94100"', overlay)
-        self.assertIn("<top>799</top>", overlay)
+        self.assertIn(
+            "$INFO[Window(Home).Property(Trickplay.PreviewLeft)]", overlay
+        )
         self.assertIn(NOX_OSD_SLIDE_MARKER, overlay)
         self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
 
-    def test_arctic_zephyr_snippet_uses_home_properties_and_slot_slides(self) -> None:
+    def test_arctic_zephyr_snippet_uses_home_properties_and_continuous_left(
+        self,
+    ) -> None:
         snippet_path = os.path.join(
             ROOT,
             "resources",
@@ -292,10 +305,14 @@ class SkinSnippetMergeTests(unittest.TestCase):
         overlay = extract_overlay_xml_text(snippet_path)
         self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
         self.assertIn('id="94100"', overlay)
-        self.assertIn("<top>820</top>", overlay)
+        self.assertIn(
+            "$INFO[Window(Home).Property(Trickplay.PreviewTop)]", overlay
+        )
         self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
 
-    def test_arctic_horizon_snippet_uses_home_properties_and_slot_slides(self) -> None:
+    def test_arctic_horizon_snippet_uses_home_properties_and_continuous_left(
+        self,
+    ) -> None:
         snippet_path = os.path.join(
             ROOT,
             "resources",
@@ -305,10 +322,12 @@ class SkinSnippetMergeTests(unittest.TestCase):
         overlay = extract_overlay_xml_text(snippet_path)
         self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
         self.assertIn('id="94100"', overlay)
-        self.assertIn("<top>680</top>", overlay)
+        self.assertIn(
+            "$INFO[Window(Home).Property(Trickplay.PreviewLeft)]", overlay
+        )
         self.assertIn(AH2_VIDEO_OSD_SLIDE_MARKER, overlay)
 
-    def test_horizon_2_snippet_uses_home_properties_and_slot_slides(self) -> None:
+    def test_horizon_2_snippet_uses_home_properties_and_continuous_left(self) -> None:
         snippet_path = os.path.join(
             ROOT,
             "resources",
@@ -318,7 +337,9 @@ class SkinSnippetMergeTests(unittest.TestCase):
         overlay = extract_overlay_xml_text(snippet_path)
         self.assertIn("Window(Home).Property(Trickplay.PreviewVisible)", overlay)
         self.assertIn('id="94100"', overlay)
-        self.assertIn("<top>480</top>", overlay)
+        self.assertIn(
+            "$INFO[Window(Home).Property(Trickplay.PreviewLeft)]", overlay
+        )
         self.assertIn(AH2_VIDEO_OSD_SLIDE_MARKER, overlay)
         self.assertNotIn("Window.Property(Trickplay.PreviewVisible)", overlay)
 
@@ -453,7 +474,7 @@ class SkinSnippetMergeTests(unittest.TestCase):
             path = os.path.join(ROOT, "resources", "skin-snippet", name)
             with open(path, encoding="utf-8") as handle:
                 text = handle.read()
-            self.assertIn("trickplay-overlay-rev:4", text, msg=name)
+            self.assertIn("trickplay-overlay-rev:5", text, msg=name)
             self.assertIn(SKIPPY_SEEKBAR_VISIBLE_MARKER, text, msg=name)
 
     def test_seekbar_has_host_controls(self) -> None:

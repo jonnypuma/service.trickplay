@@ -1,4 +1,4 @@
-"""Generate fixed-anchor slot-slide DialogSeekBar snippets."""
+"""Generate DialogSeekBar snippets with continuous PreviewLeft/Top bindings."""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from osd_layout import PREVIEW_GAP, SeekBarLayout, _absolute_left, _slot_ratio, preview_dimensions
+from osd_layout import PREVIEW_GAP, SeekBarLayout, preview_dimensions
+
+OVERLAY_REVISION = 5
 
 
 @dataclass(frozen=True)
@@ -28,7 +30,7 @@ SPECS = (
         filename="DialogSeekBar-skin.arctic.horizon.xml",
         comment=(
             "Arctic Horizon (skin.arctic.horizon).\n"
-            "  Fixed anchor + slot slides (94100); +80px Y when compact seekbar.\n"
+            "  Continuous PreviewLeft/Top (94100); +80px Y when compact seekbar.\n"
             "  Source: github.com/jurialmunkey/skin.arctic.horizon 1080i/Includes_OSD.xml"
         ),
         bar=(40, 920, 1840),
@@ -39,7 +41,7 @@ SPECS = (
         filename="DialogSeekBar-skin.arctic.horizon.2.xml",
         comment=(
             "Arctic Horizon 2 (skin.arctic.horizon.2).\n"
-            "  Fixed anchor + slot slides (94100); +80px Y when compact seekbar.\n"
+            "  Continuous PreviewLeft/Top (94100); +80px Y when compact seekbar.\n"
             "  Source: github.com/jurialmunkey/skin.arctic.horizon.2 1080i/Includes_OSD.xml"
         ),
         bar=(20, 720, 1840),
@@ -60,7 +62,7 @@ SPECS = (
         filename="DialogSeekBar-skin.arctic.zephyr.xml",
         comment=(
             "Arctic Zephyr (skin.arctic.zephyr).\n"
-            "  Fixed anchor + slot slides (94100).\n"
+            "  Continuous PreviewLeft/Top (94100).\n"
             "  Source: github.com/jurialmunkey/skin.arctic.zephyr 1080i/DialogSeekBar.xml"
         ),
         bar=(60, 1060, 1800),
@@ -70,7 +72,7 @@ SPECS = (
         filename="DialogSeekBar-skin.arctic.zephyr.2.resurrection.xml",
         comment=(
             "Arctic Zephyr 2 Resurrection (skin.arctic.zephyr.2.resurrection.mod).\n"
-            "  Fixed anchor + slot slides (94100); raised above OSD_Progress_Text / bar.\n"
+            "  Continuous PreviewLeft/Top (94100); raised above OSD_Progress_Text / bar.\n"
             "  Source: github.com/DenDyGH/skin.arctic.zephyr.2.resurrection.mod"
         ),
         bar=(60, 1060, 1800),
@@ -81,7 +83,7 @@ SPECS = (
         filename="DialogSeekBar-skin.arctic.zephyr.rounded.xml",
         comment=(
             "Arctic Zephyr: Rounded (skin.arctic.zephyr.rounded).\n"
-            "  Fixed anchor + slot slides (94100); lifts -74px with full video OSD.\n"
+            "  Continuous PreviewLeft/Top (94100); lifts -74px with full video OSD.\n"
             "  Source: github.com/Nanomani/skin.arctic.zephyr.rounded 1080i/Includes_OSD.xml"
         ),
         bar=(130, 962, 1660),
@@ -93,7 +95,7 @@ SPECS = (
         filename="DialogSeekBar-skin.aeon.nox.silvo.xml",
         comment=(
             "Aeon Nox SiLVO (skin.aeon.nox.silvo).\n"
-            "  Fixed anchor + slot slides (94100); lifts -90px with video OSD (DefaultSeekbar).\n"
+            "  Continuous PreviewLeft/Top (94100); lifts -90px with video OSD (DefaultSeekbar).\n"
             "  Source: github.com/Doctor-Eggs/Aeon-Nox-SiLVO 16x9/Includes.xml"
         ),
         bar=(0, 1039, 1920),
@@ -105,7 +107,7 @@ SPECS = (
         filename="DialogSeekBar-skin.bingie.xml",
         comment=(
             "Bingie (skin.bingie).\n"
-            "  Fixed anchor + slot slides (94100); aligned above SeekBar_Bingie.\n"
+            "  Continuous PreviewLeft/Top (94100); aligned above SeekBar_Bingie.\n"
             "  Source: github.com/matke-84/skin.bingie 1080i/IncludesOSD.xml"
         ),
         bar=(384, 957, 1152),
@@ -118,19 +120,6 @@ SPECS = (
 def _anchor_top(bar: SeekBarLayout) -> int:
     _, preview_h, label_h = preview_dimensions(1920, 1080, 16 / 9, True)
     return max(8, bar.top - preview_h - label_h - PREVIEW_GAP - PREVIEW_GAP)
-
-
-def _slot_slides_xml(base_left: int, bar: SeekBarLayout, preview_w: int) -> str:
-    lines: list[str] = []
-    for slot in range(51):
-        left = _absolute_left(bar, _slot_ratio(slot), preview_w)
-        slide = left - base_left
-        lines.append(
-            f'\t\t\t\t<animation effect="slide" end="{slide},0" time="0" '
-            f'condition="String.IsEqual(Window(Home).Property(Trickplay.PreviewSlot),{slot})">'
-            f"Conditional</animation>"
-        )
-    return "\n".join(lines)
 
 
 def _osd_slide_xml(kind: str | None) -> str:
@@ -163,40 +152,30 @@ def _osd_slide_xml(kind: str | None) -> str:
 
 
 def render_snippet(spec: ArcticSnippetSpec) -> str:
-    bar = SeekBarLayout(*spec.bar)
-    preview_w, _, _ = preview_dimensions(1920, 1080, 16 / 9, True)
-    base_left = bar.left
-    anchor_top = (
-        spec.anchor_top_override
-        if spec.anchor_top_override is not None
-        else _anchor_top(bar)
-    )
-    slides_xml = _slot_slides_xml(base_left, bar, preview_w)
     osd_xml = _osd_slide_xml(spec.osd_slide)
     osd_block = f"{osd_xml}\n" if osd_xml else ""
+    rev = OVERLAY_REVISION
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!--
   {spec.comment}
-  trickplay-overlay-rev:4
+  trickplay-overlay-rev:{rev}
 
   Copy group 94090 below into your skin DialogSeekBar.xml (top-level control).
 -->
 <window>
 \t<controls>
 \t\t<control type="group" id="94090">
-\t\t\t<!-- trickplay-overlay-rev:4 -->
+\t\t\t<!-- trickplay-overlay-rev:{rev} -->
 \t\t\t<zorder>999</zorder>
 \t\t\t<control type="group" id="94100">
 \t\t\t\t<visible>!String.IsEmpty(Window(Home).Property(Trickplay.PreviewImage)) + [String.IsEqual(Window(Home).Property(Trickplay.PreviewVisible),true) | Player.Seeking]</visible>
-\t\t\t\t<left>{base_left}</left>
-\t\t\t\t<top>{anchor_top}</top>
+\t\t\t\t<left>$INFO[Window(Home).Property(Trickplay.PreviewLeft)]</left>
+\t\t\t\t<top>$INFO[Window(Home).Property(Trickplay.PreviewTop)]</top>
 \t\t\t\t<width>320</width>
 \t\t\t\t<height condition="String.IsEqual(Window(Home).Property(Trickplay.ShowTimestamp),true)">220</height>
 \t\t\t\t<height condition="!String.IsEqual(Window(Home).Property(Trickplay.ShowTimestamp),true)">180</height>
-{osd_block}
-{slides_xml}
-\t\t\t\t<animation effect="fade" start="0" end="100" time="100">Visible</animation>
+{osd_block}\t\t\t\t<animation effect="fade" start="0" end="100" time="100">Visible</animation>
 \t\t\t\t<animation effect="fade" start="100" end="0" time="100">Hidden</animation>
 \t\t\t\t<control type="image" id="94106">
 \t\t\t\t\t<left>0</left>
@@ -248,7 +227,7 @@ def main() -> None:
         bar = SeekBarLayout(*spec.bar)
         print(
             f"wrote {path} "
-            f"(left={bar.left}, top={_anchor_top(bar)}, osd_slide={spec.osd_slide})"
+            f"(bar_left={bar.left}, top={_anchor_top(bar)}, osd_slide={spec.osd_slide})"
         )
 
 

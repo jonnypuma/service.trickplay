@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.5] - 2026-07-27
+
+### Changed
+
+- **Preview thumb tracks the seek marker continuously** — `Trickplay.PreviewLeft` / `PreviewLeftWide` / `PreviewTop` now follow the scrub position second-by-second instead of jumping only when the discrete `PreviewSlot` (0–50) changes. Skin snippets bind `$INFO[…PreviewLeft…]` (overlay revision **5**); reinstall or let auto-refresh update installed overlays.
+
 ## [7.1.4] - 2026-07-24
 
 ### Fixed
