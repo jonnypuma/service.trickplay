@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.14] - 2026-07-27
+
+### Fixed
+
+- **Seekbar unlocked immediately after skip** — poll was treating playhead lag vs the skip landing as a “user scrub” and clearing `Skippy.Skipping` right away. Poll now only clears on Video OSD / pause-scrub / SeekNumeric; seek-away clear is only from `onPlayBackSeek` after a 1.5s grace.
+
+## [7.1.13] - 2026-07-27
+
+### Fixed
+
+- **Post-skip seekbar unlock** — skins use Skippy’s `Skippy.Skipping` again. On user scrub (seek away from the skip landing) or Video OSD open, Trickplay clears `Skippy.Skipping` (and any legacy `Trickplay.SuppressAfterSkip`) so the seekbar/thumb can show. Overlay revision **9**.
+
+## [7.1.12] - 2026-07-27
+
+### Fixed
+
+- **Post-skip hide could not be cleared** — while `Skippy.Skipping` was set, user seeks were ignored and the AF3 seekbar stayed locked behind that property. Suppress now records the skip landing seek, clears on any later seek or when Video OSD opens, and installed seekbar visibility should use `Trickplay.SuppressAfterSkip` (not sticky `Skippy.Skipping` alone). Force-reinstall skin snippet if the seekbar still will not appear after a skip.
+
+## [7.1.11] - 2026-07-27
+
+### Fixed
+
+- **Post-skip hide is skip-signal only** — no Skippy toast/dialog detection. Suppress starts when `Skippy.Skipping` rises (real segment skip; requires Skippy **Hide OSD display during skip**), stays until you scrub again or open OSD and focus the seekbar (not a short timer). Skin snippets use `Trickplay.SuppressAfterSkip` (overlay revision **8**).
+
+## [7.1.10] - 2026-07-27
+
+### Fixed
+
+- **Skippy suppress still blocked scrubbing** — hide now stamps only on Skippy’s segment-skip seek (not while the toast sits open), lasts **1.5s**, and clears on any later seek (including +10s relative skips while playing). Previously every seek during the toast re-armed a 5s timer, so play-scrub never restored the thumb.
+
+## [7.1.9] - 2026-07-27
+
+### Fixed
+
+- **Skippy suppress blocked scrubbing** — lingering skip toast no longer refreshes the 5s hide timer every poll (that made hide feel much longer than 5s). User scrubbing (pause-scrub, SeekNumeric, or play-scrub away from the skip landing) clears suppress immediately so the thumb can show again.
+
+## [7.1.8] - 2026-07-27
+
+### Fixed
+
+- **Show timestamp toggle ignored** — the long-lived service kept a stale `xbmcaddon.Addon()` instance, so `show_timestamp=false` in settings never reached preview publish (placement still reserved label height and `ShowTimestamp` stayed on). Settings reads now use a fresh Addon object, `onSettingsChanged` invalidates the cache and re-syncs display props, and disabled timestamp clears `Trickplay.ShowTimestamp` / `PreviewTime`.
+
+## [7.1.7] - 2026-07-27
+
+### Fixed
+
+- **Preview flash after Skippy skip** — service now suppresses the thumb during Skippy segment skips (detects `Skippy.Skipping` and SkipDialog windows, plus a 5s grace). Skin-only hide was not enough: Skippy’s `signal_skipping_for_skins` defaults to off, and Trickplay was treating the skip seek as a normal scrub. AF3/AF2 overlay groups also require empty `Skippy.Skipping`. Overlay revision **7**.
+
+## [7.1.6] - 2026-07-27
+
+### Fixed
+
+- **Preview stuck / missing during play scrub** — reverted Fuse/Estuary/Home skin snippets from dynamic `$INFO` Left/Top (Kodi does not apply those on many skins) back to **PreviewSlot slide animations**. Slot count increased **51 → 101** for finer tracking. During fast scrub the last/cached thumb stays visible so the overlay **moves on every seek** instead of waiting until scrub settles. Overlay revision **6** — reinstall skin snippet.
+
 ## [7.1.5] - 2026-07-27
 
 ### Changed

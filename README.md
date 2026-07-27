@@ -67,11 +67,11 @@ The service detects your active Kodi skin (`xbmc.gui` addon id) and selects seek
 | Bello | `skin.bello`, `skin.bello.9`, `skin.bello.10`, … | 478, 560, 320 (center seek OSD in `VideoFullScreen.xml`) |
 | Bingie | `skin.bingie`, … | 384, 957, 1152 (+ wide 525, 934, 700 classic OSD) |
 
-For **Arctic Fuse 3** and **Arctic Fuse 2**, the snippet includes preview groups **94090** (overlay root), **94100** (seek-bar aligned via continuous `PreviewLeft`/`PreviewTop`), and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-install from the matching `DialogSeekBar-skin.arctic.fuse.*.xml` if you installed an older snippet missing **94100** / **94103**.
+For **Arctic Fuse 3** and **Arctic Fuse 2**, the snippet includes preview groups **94090** (overlay root), **94100** (seek-bar aligned via PreviewSlot slides 0–100), and **94103** (centered above the seek bar at the same height as minimal mode when full OSD is open). The service sets `Trickplay.PreviewLayout` to `seekbar` or `center` automatically. Re-install from the matching `DialogSeekBar-skin.arctic.fuse.*.xml` if you installed an older snippet missing **94100** / **94103**.
 
 Unknown skins fall back to Estuary Mod v2 geometry and log a warning. Override manually under **Add-on settings → Skin profile** if auto-detect is wrong.
 
-You still must merge the matching XML snippet. Set the correct **Skin profile** in add-on settings; the service publishes `Trickplay.PreviewLeft/Top/Width/Height` (and `PreviewLeftWide` where needed). Snippets bind those properties so the thumb tracks the scrub marker continuously.
+You still must merge the matching XML snippet. Set the correct **Skin profile** in add-on settings. Most dedicated skins use **PreviewSlot** slide animations (101 slots); the universal-dynamic snippet binds `Trickplay.PreviewLeft/Top` for skins where `$INFO` coordinates work.
 
 ### What to read in your skin
 
@@ -88,7 +88,7 @@ The service positions previews using geometry derived from those values. If they
 
 ### Geometry in this addon
 
-Seek bar layout is defined per skin in **`skin_profiles.py`** and applied automatically. Each profile supplies 1080p coordinates `(left, top, width)` used to compute continuous **`Trickplay.PreviewLeft`/`PreviewTop`** (and still publishes **`Trickplay.PreviewSlot`** 0–50 for compatibility). The matching skin snippet must bind `$INFO[…PreviewLeft…]` / `PreviewTop`.
+Seek bar layout is defined per skin in **`skin_profiles.py`** and applied automatically. Each profile supplies 1080p coordinates `(left, top, width)` used to compute **`Trickplay.PreviewSlot`** (0–100, 101 slots) and `PreviewLeft`/`PreviewTop`. Dedicated skin snippets use slot-slide animations matched to that geometry.
 
 To add a new skin, define a profile in `skin_profiles.py`, add a `DialogSeekBar-skin.*.xml` snippet, and map the skin addon id in `PROFILES_BY_SKIN_ID`.
 
@@ -96,30 +96,22 @@ To add a new skin, define a profile in `skin_profiles.py`, add a `DialogSeekBar-
 
 1. Copy the **`94090`** trickplay overlay group from `resources/skin-snippet/DialogSeekBar-skin.estuary.modv2.xml` into your skin’s `DialogSeekBar.xml` (as a top-level control, not nested inside unrelated groups).
 2. Confirm preview visibility uses `Trickplay.PreviewVisible` (set by the service).
-3. Confirm group **94100** uses `$INFO[…Trickplay.PreviewLeft…]` and `PreviewTop` (not fixed slot-slide animations).
+3. Confirm group **94100** has PreviewSlot slide animations covering slots **0–100** (or uses `$INFO` PreviewLeft on skins that support it).
 4. Reload the skin or restart Kodi after changes.
 
 Without this merge, the service will still load trickplay data and log preview updates, but **nothing will appear on screen**.
 
 ### Skin: hide seek OSD during Skippy skips
 
-If you use **[service.skippy](https://github.com/Skippy-McSkipface/service.skippy)** (intro/recap skip), Skippy sets `Window(Home).Property(Skippy.Skipping)` while an auto-skip or confirmed ask-skip seek is in progress. To avoid the seek bar flashing during those jumps, add this as an extra `<visible>` tag (Kodi ANDs multiple tags) on the seek bar window or control:
+If you use **[service.skippy](https://github.com/Skippy-McSkipface/service.skippy)**, enable Skippy’s **Hide OSD display during skip** (`signal_skipping_for_skins`). That sets `Window(Home).Property(Skippy.Skipping)` when a segment is actually skipped.
+
+Skin snippets hide the seek bar / thumb while that property is set:
 
 ```xml
 <visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>
 ```
 
-Manual seeks are unaffected — only Skippy-driven skips set the property.
-
-**Trickplay skin snippets include this automatically:**
-
-| Install mode | Where it is applied |
-|---|---|
-| **Merge** (overlay group `94090`) | On overlay group `94090` **and** injected on the host `DialogSeekBar.xml` window before `<controls>` when you use **Install skin snippet** |
-| **Replace** (Estuary Mod v2, Arctic Fuse 2/3) | On the `DialogSeekBar.xml` window |
-| **Bello** (`VideoFullScreen.xml`) | On trickplay overlay group `94090` **and** on Bello’s native seek OSD groups (center box + simple seek bars) when you use **Install skin snippet** |
-
-Re-run **Add-on settings → Preview tools → Install skin snippet** to pick up Skippy support on an existing install (stale overlays without `Skippy.Skipping` are treated as needing refresh).
+When you scrub again (seek away from the skip landing) or open the video OSD, Trickplay clears `Skippy.Skipping` so the seekbar can reappear. Overlay revision **9+**.
 
 ---
 
@@ -149,8 +141,8 @@ Prefetch pre-crops neighbouring cells in the background. **During playback** (de
 | `Trickplay.PreviewVisible` | `true` when the skin should show the preview |
 | `Trickplay.PreviewImage` | Path to a cropped preview JPEG for the active cell |
 | `Trickplay.PreviewTime` | Target position (formatted timestamp) |
-| `Trickplay.PreviewSlot` | Horizontal slot index (0–50); still published for compatibility |
-| `Trickplay.PreviewLeft` / `PreviewLeftWide` / `PreviewTop` | Continuous overlay position (pixels) along the seek bar |
+| `Trickplay.PreviewSlot` | Horizontal slot index (0–100) for slide animations |
+| `Trickplay.PreviewLeft` / `PreviewLeftWide` / `PreviewTop` | Pixel position (used by universal-dynamic; slot skins use slides) |
 | `Trickplay.ShowTimestamp` | `true` when the skin should show the time label |
 | `Trickplay.PreviewColorDiffuse` | Kodi `colordiffuse` ARGB (e.g. `FFFFFFFF` = opaque); driven by **Preview opacity** setting |
 | `Trickplay.Available` | `true` when trickplay data was found for the current file |

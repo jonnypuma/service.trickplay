@@ -17,9 +17,14 @@ from settings_cache import get_cached
 from thumb_cropper import get_cached_thumb_path, get_cropped_thumb_path
 from trickplay_resolver import TrickplayLookup
 
-ADDON = xbmcaddon.Addon("service.trickplay")
 HOME_WINDOW = xbmcgui.Window(10000)
 SEEKBAR_WINDOW_ID = 10115
+ADDON_ID = "service.trickplay"
+
+
+def _addon() -> xbmcaddon.Addon:
+    # Fresh instance each call — module-level Addon() returns stale settings in services.
+    return xbmcaddon.Addon(ADDON_ID)
 
 PROP_PREFIX = "Trickplay."
 PROP_PREVIEW_IMAGE = "Trickplay.PreviewImage"
@@ -177,20 +182,22 @@ def _set_property(name: str, value: str) -> None:
 
 
 def _show_timestamp_setting() -> bool:
+    addon = _addon()
     try:
-        return ADDON.getSettingBool("show_timestamp")
+        return addon.getSettingBool("show_timestamp")
     except (RuntimeError, TypeError, ValueError):
-        raw = ADDON.getSettingString("show_timestamp")
+        raw = addon.getSettingString("show_timestamp")
         if not raw:
             return True
         return raw.strip().lower() in ("true", "1", "yes", "on")
 
 
 def _setting_int(setting_id: str, default: int) -> int:
+    addon = _addon()
     try:
-        return int(ADDON.getSettingInt(setting_id))
+        return int(addon.getSettingInt(setting_id))
     except (TypeError, ValueError):
-        raw = ADDON.getSettingString(setting_id)
+        raw = addon.getSettingString(setting_id)
         try:
             return int(raw)
         except (TypeError, ValueError):
@@ -224,10 +231,22 @@ def show_timestamp_enabled() -> bool:
 
 def sync_display_settings() -> None:
     display = get_cached("display_sync", _load_display_sync_settings)
-    sync_trickplay_property(
-        PROP_SHOW_TIMESTAMP, "true" if display.show_timestamp else "false"
-    )
+    # Kodi boolean props: "true" or clear (empty). Avoid "false" — skins key off IsEqual/empty.
+    if display.show_timestamp:
+        sync_trickplay_property(PROP_SHOW_TIMESTAMP, "true")
+    else:
+        clear_trickplay_property(PROP_SHOW_TIMESTAMP)
     sync_trickplay_property(PROP_PREVIEW_COLOR_DIFFUSE, display.color_diffuse)
+
+
+def apply_display_settings() -> None:
+    """Re-read display settings after the user changes add-on options."""
+    from settings_cache import invalidate_settings_cache
+
+    invalidate_settings_cache()
+    sync_display_settings()
+    if not show_timestamp_enabled():
+        _clear_property(PROP_PREVIEW_TIME)
 
 
 def _clear_property(name: str) -> None:
@@ -347,6 +366,11 @@ class PreviewDialogController:
 
     def detach_overlay(self) -> None:
         self.hide_preview()
+
+    def on_settings_changed(self) -> None:
+        """Invalidate cached placement so the next publish picks up display toggles."""
+        apply_display_settings()
+        self._last_placement_key = None
 
     def hide_preview(self) -> None:
         with self._crop_lock:
@@ -499,13 +523,23 @@ class PreviewDialogController:
             lookup.thumb_height,
         )
 
-        if cached and not fast_scrub:
+        # Fast scrub: always refresh PreviewSlot/placement every seek and keep a
+        # thumb on-screen (cached or last frame). Do not wait for scrub settle.
+        if fast_scrub:
+            image = cached or self._last_thumb_path
+            if cached:
+                self._shown_thumb_index = lookup.thumb_index
+                self._last_thumb_path = cached
+            self._publish_preview_state(lookup, duration_seconds, image, player)
+            return
+
+        if cached:
             self._shown_thumb_index = lookup.thumb_index
             self._last_thumb_path = cached
             self._publish_preview_state(lookup, duration_seconds, cached, player)
             return
 
-        use_eager = eager and not fast_scrub
+        use_eager = eager
         if use_eager:
             debug = _debug_logging()
             thumb_path = get_cropped_thumb_path(
@@ -524,10 +558,8 @@ class PreviewDialogController:
                 )
                 return
 
-        stale_image = self._last_thumb_path
-        if not fast_scrub:
-            same_bucket = lookup.thumb_index == self._shown_thumb_index
-            stale_image = self._last_thumb_path if same_bucket else None
+        same_bucket = lookup.thumb_index == self._shown_thumb_index
+        stale_image = self._last_thumb_path if same_bucket else None
 
         with self._crop_lock:
             pending_key = (

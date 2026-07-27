@@ -9,7 +9,7 @@ from skin_profiles import DEFAULT_PROFILE, active_profile
 PREVIEW_GAP = 10
 PREVIEW_WIDTH = 320
 LABEL_HEIGHT = 40
-PREVIEW_SLOTS = 51
+PREVIEW_SLOTS = 101
 PREVIEW_X_OFFSET = 30
 LAYOUT_SEEKBAR = "seekbar"
 LAYOUT_CENTER = "center"
@@ -76,6 +76,12 @@ def preview_dimensions(
     else:
         label_h = 0
     return preview_w, preview_h, label_h
+
+
+def _slot_ratio(slot: int, slots: int = PREVIEW_SLOTS) -> float:
+    if slots <= 1:
+        return 0.0
+    return slot / float(slots - 1)
 
 
 def _absolute_left(bar: SeekBarLayout, ratio: float, preview_w: int) -> int:
@@ -151,11 +157,9 @@ def preview_placement(
         )
 
     slot = preview_slot(seek_second, duration_second)
-    # Continuous seek ratio so Left tracks the marker between discrete slots.
-    if duration_second > 0:
-        ratio = max(0.0, min(1.0, seek_second / float(duration_second)))
-    else:
-        ratio = 0.0
+    # Slot-centered Left matches skin slot-slide tables; universal-dynamic still
+    # binds PreviewLeft for skins where $INFO left/top works.
+    ratio = _slot_ratio(slot)
 
     try:
         from preview_settings import read_preview_adjustment_settings
