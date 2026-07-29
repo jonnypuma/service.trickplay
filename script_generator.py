@@ -281,6 +281,7 @@ def run_batch_dialog() -> None:
         f"overwrite={settings.overwrite_existing} extract_mode={settings.extract_mode} "
         f"hdr_tone_map={settings.hdr_tone_map} "
         f"hdr_dovi_tool_fallback={settings.hdr_dovi_tool_fallback} "
+        f"hw_decode={settings.hw_decode} hw_decode_cuda={settings.hw_decode_cuda} "
         f"ffmpeg_path={settings.ffmpeg_path!r} "
         f"stop_on_failure={settings.stop_on_failure} "
         f"batch_background={settings.batch_background} "
@@ -361,6 +362,8 @@ def run_batch_dialog() -> None:
         dovi_success_message=_ADDON.getLocalizedString(32110),
         vulkan_prompt_yes=_ADDON.getLocalizedString(32118),
         vulkan_success_message=_ADDON.getLocalizedString(32119),
+        jellyfin_upgrade_prompt_yes=_ADDON.getLocalizedString(32225),
+        jellyfin_upgrade_success_message=_ADDON.getLocalizedString(32226),
     ):
         _log("Batch aborted after HDR ffmpeg install prompt")
         return
@@ -475,6 +478,8 @@ def _install_tools_strings(settings: GeneratorSettings) -> dict[str, str]:
         "dovi_success_message": _ADDON.getLocalizedString(32110),
         "vulkan_prompt_yes": _ADDON.getLocalizedString(32118),
         "vulkan_success_message": _ADDON.getLocalizedString(32119),
+        "jellyfin_upgrade_prompt_yes": _ADDON.getLocalizedString(32225),
+        "jellyfin_upgrade_success_message": _ADDON.getLocalizedString(32226),
         "already_installed": _ADDON.getLocalizedString(32129),
     }
 
@@ -547,6 +552,8 @@ def run_install_generator_tools_dialog() -> None:
         dovi_success_message=strings["dovi_success_message"],
         vulkan_prompt_yes=strings["vulkan_prompt_yes"],
         vulkan_success_message=strings["vulkan_success_message"],
+        jellyfin_upgrade_prompt_yes=strings["jellyfin_upgrade_prompt_yes"],
+        jellyfin_upgrade_success_message=strings["jellyfin_upgrade_success_message"],
     )
     try:
         from thumb_cropper import invalidate_playback_ffmpeg_cache
@@ -620,6 +627,8 @@ def run_install_tools_dialog(*, from_playback_prompt: bool = False) -> None:
             dovi_success_message=strings["dovi_success_message"],
             vulkan_prompt_yes=strings["vulkan_prompt_yes"],
             vulkan_success_message=strings["vulkan_success_message"],
+            jellyfin_upgrade_prompt_yes=strings["jellyfin_upgrade_prompt_yes"],
+            jellyfin_upgrade_success_message=strings["jellyfin_upgrade_success_message"],
         )
     try:
         from pillow_installer import invalidate_pillow_cache

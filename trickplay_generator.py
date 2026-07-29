@@ -37,11 +37,12 @@ from ffmpeg_media import (
 )
 from grid_settings import grid_tuple
 from hdr_tone_map import (
-    augment_thumb_extract_for_windows_hw_decode,
+    augment_thumb_extract_for_hw_decode,
     build_fps_batch_filter,
+    hw_decode_backend_label,
     is_dv_profile_5,
     prepare_dovi_zscale_media,
-    probe_windows_hw_decode_eligible,
+    probe_hw_decode_eligible,
     resolve_thumb_filter_context,
 )
 from trickplay_resolver import (
@@ -87,8 +88,8 @@ _FPS_BATCH_TIMEOUT_CAP_SEC = 900.0
 
 
 @dataclass
-class WindowsHwExtractState:
-    """Per-file Windows D3D11VA extract state; disabled after first HW failure."""
+class HwExtractState:
+    """Per-file hardware extract state; disabled after first HW failure."""
 
     hw_thumb_vf: str
     hw_input_args: tuple[str, ...]
@@ -96,6 +97,7 @@ class WindowsHwExtractState:
     sw_input_args: tuple[str, ...]
     hw_enabled: bool = True
     debug: bool = False
+    backend: str = ""
     _logged_disable: bool = field(default=False, repr=False)
 
     def current(
@@ -119,12 +121,17 @@ class WindowsHwExtractState:
                 xbmc.LOGINFO,
             )
         if not self._logged_disable:
+            label = hw_decode_backend_label(self.backend) or "HW"
             _log(
-                "Windows hardware decode disabled for remainder of this file; "
+                f"Hardware decode ({label}) disabled for this file; "
                 "using software decode",
-                xbmc.LOGINFO,
+                xbmc.LOGWARNING,
             )
             self._logged_disable = True
+
+
+# Back-compat alias
+WindowsHwExtractState = HwExtractState
 
 
 def _accurate_frame_timeout_sec(thumb_index: int) -> float:
@@ -547,7 +554,7 @@ def _sw_extract_fallback(
 def _active_extract_args(
     thumb_vf: str,
     ffmpeg_input_args: tuple[str, ...],
-    hw_state: WindowsHwExtractState | None,
+    hw_state: HwExtractState | None,
 ) -> tuple[str, tuple[str, ...]]:
     if hw_state is not None:
         vf, args, _ = hw_state.current()
@@ -556,7 +563,7 @@ def _active_extract_args(
 
 
 def _sw_retry_after_hw_failure(
-    hw_state: WindowsHwExtractState | None,
+    hw_state: HwExtractState | None,
     sw_fallback: tuple[str, tuple[str, ...]] | None,
     detail: str,
     *,
@@ -577,7 +584,7 @@ def _should_use_fps_batch(
     interval_sec: float,
     *,
     apply_tonemap: bool,
-    hw_state: WindowsHwExtractState | None,
+    hw_state: HwExtractState | None,
 ) -> bool:
     if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
         return True
@@ -591,7 +598,7 @@ def _should_use_fps_batch(
 def _active_batch_extract(
     batch_vf: str,
     ffmpeg_input_args: tuple[str, ...],
-    hw_state: WindowsHwExtractState | None,
+    hw_state: HwExtractState | None,
 ) -> tuple[str, tuple[str, ...]]:
     if hw_state is None:
         return batch_vf, ffmpeg_input_args
@@ -620,7 +627,7 @@ def _extract_frame_accurate(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
-    hw_state: WindowsHwExtractState | None = None,
+    hw_state: HwExtractState | None = None,
 ) -> bool:
     """Extract one thumbnail with seek after input (frame-accurate, slower)."""
     if _is_cancelled(should_cancel):
@@ -702,7 +709,7 @@ def _extract_frame_fast(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
-    hw_state: WindowsHwExtractState | None = None,
+    hw_state: HwExtractState | None = None,
 ) -> bool:
     """Extract one thumbnail with fast seek before input (keyframe-aligned)."""
     if _is_cancelled(should_cancel):
@@ -796,7 +803,7 @@ def _extract_tile_batch_fps(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
-    hw_state: WindowsHwExtractState | None = None,
+    hw_state: HwExtractState | None = None,
 ) -> list[str]:
     if _is_cancelled(should_cancel) or frame_count <= 0:
         return []
@@ -932,7 +939,7 @@ def _extract_tile_fast_seek(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
-    hw_state: WindowsHwExtractState | None = None,
+    hw_state: HwExtractState | None = None,
 ) -> list[str]:
     """Extract one frame per interval via fast seek (-ss before -i)."""
     if _is_cancelled(should_cancel) or frame_count <= 0:
@@ -1005,7 +1012,7 @@ def _extract_tile_fast(
     output_color_args: tuple[str, ...] = (),
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
-    hw_state: WindowsHwExtractState | None = None,
+    hw_state: HwExtractState | None = None,
     apply_tonemap: bool = False,
 ) -> list[str]:
     tile_start = start_index * interval_sec
@@ -1270,34 +1277,43 @@ def generate_trickplay_for_media(
     hw_decode_requested = settings.hw_decode and not use_vfs_stream
     hw_decode_eligible = False
     hw_eligible_reason = ""
+    hw_decode_backend = ""
     if hw_decode_requested:
-        hw_decode_eligible, hw_eligible_reason = probe_windows_hw_decode_eligible(
+        hw_decode_eligible, hw_eligible_reason = probe_hw_decode_eligible(
             media_path,
             ffprobe or "",
             env,
             debug=settings.debug,
         )
         if not hw_decode_eligible:
-            _log(f"Windows hardware decode skipped: {hw_eligible_reason}")
+            _log(f"Hardware decode skipped: {hw_eligible_reason}")
 
-    thumb_vf, ffmpeg_input_args, hw_decode_active = (
-        augment_thumb_extract_for_windows_hw_decode(
+    thumb_vf, ffmpeg_input_args, hw_decode_active, hw_decode_backend = (
+        augment_thumb_extract_for_hw_decode(
             filter_ctx.thumb_vf,
             ffmpeg_input_args,
             enabled=hw_decode_requested and hw_decode_eligible,
+            ffmpeg=ffmpeg,
+            env=env,
+            apply_tonemap=filter_ctx.apply_tonemap,
+            dolby_vision=filter_ctx.dolby_vision,
+            tile_width=settings.tile_width,
+            cuda_enabled=settings.hw_decode_cuda,
         )
     )
-    hw_state: WindowsHwExtractState | None = None
+    hw_state: HwExtractState | None = None
     if hw_decode_active:
-        hw_state = WindowsHwExtractState(
+        hw_state = HwExtractState(
             hw_thumb_vf=thumb_vf,
             hw_input_args=ffmpeg_input_args,
             sw_thumb_vf=filter_ctx.thumb_vf,
             sw_input_args=sw_ffmpeg_input_args,
             debug=settings.debug,
+            backend=hw_decode_backend,
         )
         sw_extract_fallback = (filter_ctx.thumb_vf, sw_ffmpeg_input_args)
-        _log(f"Windows hardware decode enabled (D3D11VA): {hw_eligible_reason}")
+        backend_label = hw_decode_backend_label(hw_decode_backend) or hw_decode_backend
+        _log(f"Hardware decode enabled ({backend_label}): {hw_eligible_reason}")
     elif settings.hw_decode and use_vfs_stream:
         _debug(settings, "Hardware decode skipped for VFS stream input")
 
@@ -1334,14 +1350,15 @@ def generate_trickplay_for_media(
         EXTRACT_MODE_BATCH_SEEKS,
         EXTRACT_MODE_EXPERIMENTAL,
     )
-    # Multi-input batch seeks breaks with HDR/DV tonemap and with D3D11VA/10-bit
+    # Multi-input batch seeks breaks with HDR/DV tonemap and with HW/10-bit
     # (yuv420p10le filter-graph mismatch across multiple -i inputs); use Fast
     # immediately instead of waiting out per-chunk timeouts.
     skip_batch_seeks_reason = ""
     if batch_seeks_mode and filter_ctx.apply_tonemap:
         skip_batch_seeks_reason = "HDR/DV"
     elif batch_seeks_mode and hw_decode_active:
-        skip_batch_seeks_reason = "D3D11VA hw decode"
+        label = hw_decode_backend_label(hw_decode_backend) or "HW"
+        skip_batch_seeks_reason = f"{label} hw decode"
     use_batch_seeks = batch_seeks_mode and not skip_batch_seeks_reason
     if use_vfs_stream:
         extract_mode = "VFS stream"
@@ -1356,7 +1373,8 @@ def generate_trickplay_for_media(
     else:
         extract_mode = extract_mode_log_label(settings.extract_mode)
     hdr_note = ", HDR tone map" if filter_ctx.apply_tonemap else ""
-    hw_note = ", D3D11VA hw decode" if hw_decode_active else ""
+    hw_label = hw_decode_backend_label(hw_decode_backend)
+    hw_note = f", {hw_label} hw decode" if hw_decode_active and hw_label else ""
     _log(
         f"Generating trickplay for {os.path.basename(media_path)} "
         f"({thumb_count} thumbs, {tile_count} tile(s), {settings.grid}, "

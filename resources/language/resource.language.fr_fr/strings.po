@@ -522,12 +522,12 @@ msgid "Vulkan loader installed (%s)."
 msgstr "Chargeur Vulkan installé (%s)."
 
 msgctxt "#32120"
-msgid "Windows hardware decode"
-msgstr "Décodage matériel Windows"
+msgid "Hardware decode (HDR HEVC)"
+msgstr "Hardware decode (HDR HEVC)"
 
 msgctxt "#32121"
-msgid "On Windows only: D3D11VA (GPU) for 10-bit / HDR / Dolby Vision HEVC (~25–30% faster on 4K HDR/DV). Not for general use — 1080p H.264 SDR should use software decode (often faster, especially on deep seeks); long-interval SDR uses fps-batch per tile. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). No effect on Linux or CoreELEC."
-msgstr "Sur Windows uniquement : D3D11VA (GPU) pour HEVC 10 bits / HDR / Dolby Vision (~25-30% plus rapide sur 4K HDR/DV). Pas pour un usage général — 1080p H.264 SDR devrait utiliser le décodage logiciel (souvent plus rapide, surtout sur les défilements profonds) ; le SDR à intervalle long utilise le lot fps par tuile. Ignoré pour AVC et HEVC SDR 8 bits. Après le premier échec HW sur un fichier, le décodage logiciel est utilisé pour le reste de cette tâche. Nécessite une version complète de ffmpeg Windows (par ex. Gyan full depuis Exécuter). Aucun effet sur Linux ou CoreELEC."
+msgid "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA. Linux: VA-API, preferring zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload. Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable (VA-API/Vulkan/libplacebo); legacy BtbN/Gyan kept as fallback. No effect when probes fail (e.g. CoreELEC without VA-API/Vulkan)."
+msgstr "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA. Linux: VA-API, preferring zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload. Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable (VA-API/Vulkan/libplacebo); legacy BtbN/Gyan kept as fallback. No effect when probes fail (e.g. CoreELEC without VA-API/Vulkan)."
 
 msgctxt "#32122"
 msgid "Preview tools"

@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.3.0] - 2026-07-29
+
+### Added
+
+- **Prefer CUDA / NVDEC (NVIDIA)** — optional setting under Hardware decode. When on and CUDA probes OK, uses NVIDIA NVDEC → `hwdownload` → existing tonemap filters instead of D3D11VA (Windows) or VA-API (Linux). NVIDIA GPUs only; leave off on AMD/Intel.
+
+### Changed
+
+- **Windows HW decode** — dropped preference for D3D11VA→Vulkan (`vk@dx`) zero-copy (not available in current ffmpeg). Default remains **D3D11VA → hwdownload**; enable CUDA for NVDEC on NVIDIA.
+
+## [7.2.3] - 2026-07-29
+
+### Added
+
+- **Windows zero-copy HW decode** — when **Hardware decode (HDR HEVC)** + tone mapping are on, prefer **D3D11VA → Vulkan (`vk@dx`) → libplacebo**; else **D3D11VA → hwdownload**; else software (same tiered model as Linux VA-API).
+- **jellyfin-ffmpeg upgrade prompt** — if a legacy **Gyan/BtbN** build is already in the add-on install folder, **Install preview tools** / **Install generator tools** / batch **Run** offer to replace it with jellyfin-ffmpeg instead of only toasting “already installed”.
+
+## [7.2.2] - 2026-07-29
+
+### Added
+
+- **Generator ffmpeg identity logging** — on resolve, logs vendor (`jellyfin-ffmpeg` / `Gyan` / `BtbN` / …), the first `-version` line, and available `-hwaccels` so you can confirm which build is used.
+
+## [7.2.1] - 2026-07-29
+
+### Changed
+
+- **HDR ffmpeg auto-install** — primary download is now [jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg/releases) **portable** builds (`linux64` / `linuxarm64` / `win64` / `winarm64`, pinned **v8.1.2-2**). Flat archive layout (`ffmpeg` + `ffprobe` at root). On failure, retries legacy **BtbN** (Linux / Win ARM64) or **Gyan full** (Win x64).
+
+## [7.2.0] - 2026-07-29
+
+### Added
+
+- **Linux hardware decode (VA-API + Vulkan)** — **Hardware decode (HDR HEVC)** now works on Linux as well as Windows. Tiered path: prefer zero-copy **VA-API → Vulkan (`vk@va`) → libplacebo**, else **VA-API → hwdownload**, else software. Capability probes log what is missing. Point **Generator ffmpeg path** at jellyfin-ffmpeg or a self-built binary with VA-API (+ Vulkan/libplacebo for zero-copy); optional `TRICKPLAY_VAAPI_DEVICE` overrides `/dev/dri/renderD*`. Windows D3D11VA path unchanged.
+
+### Changed
+
+- Setting label **Windows hardware decode** → **Hardware decode (HDR HEVC)** (same `generator_hw_decode` id).
+
 ## [7.1.14] - 2026-07-27
 
 ### Fixed
