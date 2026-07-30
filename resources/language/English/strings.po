@@ -354,8 +354,8 @@ msgid "Frame extraction mode"
 msgstr "Frame extraction mode"
 
 msgctxt "#32077"
-msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
-msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
 
 msgctxt "#32080"
 msgid "Accurate (slow)"
@@ -901,3 +901,11 @@ msgstr "Prefer CUDA / NVDEC (NVIDIA)"
 msgctxt "#32228"
 msgid "When Hardware decode is on, use NVIDIA CUDA/NVDEC instead of D3D11VA (Windows) or VA-API (Linux). Requires an NVIDIA GPU and jellyfin-ffmpeg (or another build with CUDA). Frames still use hwdownload before libplacebo/zscale — not zero-copy Vulkan. Leave off on AMD/Intel."
 msgstr "When Hardware decode is on, use NVIDIA CUDA/NVDEC instead of D3D11VA (Windows) or VA-API (Linux). Requires an NVIDIA GPU and jellyfin-ffmpeg (or another build with CUDA). Frames still use hwdownload before libplacebo/zscale — not zero-copy Vulkan. Leave off on AMD/Intel."
+
+msgctxt "#32229"
+msgid "Generate"
+msgstr "Generate"
+
+msgctxt "#32230"
+msgid "Fast seek (weaker devices)"
+msgstr "Fast seek (weaker devices)"

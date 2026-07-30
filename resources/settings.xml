@@ -714,6 +714,8 @@
 
                             <option label="32081">fast</option>
 
+                            <option label="32230">fast_seek</option>
+
                             <option label="32082">batch_seeks</option>
 
                         </options>

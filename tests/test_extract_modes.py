@@ -14,6 +14,7 @@ from generator_extract_modes import (  # noqa: E402
     EXTRACT_MODE_BATCH_SEEKS,
     EXTRACT_MODE_EXPERIMENTAL,
     EXTRACT_MODE_FAST,
+    EXTRACT_MODE_FAST_SEEK,
     extract_mode_log_label,
     normalize_extract_mode,
 )
@@ -33,6 +34,13 @@ class ExtractModeTests(unittest.TestCase):
             EXTRACT_MODE_BATCH_SEEKS,
         )
 
+    def test_normalize_accepts_fast_seek(self) -> None:
+        self.assertEqual(
+            normalize_extract_mode(EXTRACT_MODE_FAST_SEEK),
+            EXTRACT_MODE_FAST_SEEK,
+        )
+        self.assertEqual(normalize_extract_mode("fast_seek"), EXTRACT_MODE_FAST_SEEK)
+
     def test_normalize_unknown_defaults_to_fast(self) -> None:
         self.assertEqual(normalize_extract_mode(""), EXTRACT_MODE_FAST)
         self.assertEqual(normalize_extract_mode("nope"), EXTRACT_MODE_FAST)
@@ -40,6 +48,7 @@ class ExtractModeTests(unittest.TestCase):
     def test_log_label(self) -> None:
         self.assertEqual(extract_mode_log_label(EXTRACT_MODE_BATCH_SEEKS), "batch seeks")
         self.assertEqual(extract_mode_log_label(EXTRACT_MODE_EXPERIMENTAL), "batch seeks")
+        self.assertEqual(extract_mode_log_label(EXTRACT_MODE_FAST_SEEK), "fast seek")
 
 
 if __name__ == "__main__":
