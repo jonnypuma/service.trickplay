@@ -171,7 +171,13 @@ def _read_overwrite_existing() -> bool:
 def _read_extract_mode() -> str:
     mode = _setting_string("generator_extract_mode", "")
     normalized = mode.strip().lower()
-    if normalized in ("accurate", "fast", "batch_seeks", "experimental"):
+    if normalized in (
+        "accurate",
+        "fast",
+        "fast_seek",
+        "batch_seeks",
+        "experimental",
+    ):
         return normalize_extract_mode(normalized)
     legacy_fast = _setting_bool("generator_fast_extract", True)
     return normalize_extract_mode("", legacy_fast=legacy_fast)

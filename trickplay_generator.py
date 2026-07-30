@@ -20,6 +20,7 @@ from generator_extract_modes import (
     EXTRACT_MODE_BATCH_SEEKS,
     EXTRACT_MODE_EXPERIMENTAL,
     EXTRACT_MODE_FAST,
+    EXTRACT_MODE_FAST_SEEK,
     extract_mode_log_label,
 )
 from generator_settings import GeneratorSettings
@@ -132,6 +133,25 @@ class HwExtractState:
 
 # Back-compat alias
 WindowsHwExtractState = HwExtractState
+
+
+@dataclass
+class FastExtractState:
+    """Per-file Fast extract strategy; sticky after fps-batch fails over to seek."""
+
+    prefer_fast_seek: bool = False
+    _logged_sticky_seek: bool = field(default=False, repr=False)
+
+    def remember_fps_batch_fallback(self) -> None:
+        if self.prefer_fast_seek:
+            return
+        self.prefer_fast_seek = True
+        if not self._logged_sticky_seek:
+            _log(
+                "fps batch failed; using per-frame fast seek for remaining tiles",
+                xbmc.LOGWARNING,
+            )
+            self._logged_sticky_seek = True
 
 
 def _accurate_frame_timeout_sec(thumb_index: int) -> float:
@@ -585,7 +605,10 @@ def _should_use_fps_batch(
     *,
     apply_tonemap: bool,
     hw_state: HwExtractState | None,
+    prefer_fast_seek: bool = False,
 ) -> bool:
+    if prefer_fast_seek:
+        return False
     if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
         return True
     if apply_tonemap:
@@ -1014,10 +1037,15 @@ def _extract_tile_fast(
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
     hw_state: HwExtractState | None = None,
     apply_tonemap: bool = False,
+    fast_state: FastExtractState | None = None,
 ) -> list[str]:
     tile_start = start_index * interval_sec
+    prefer_fast_seek = bool(fast_state and fast_state.prefer_fast_seek)
     if _should_use_fps_batch(
-        interval_sec, apply_tonemap=apply_tonemap, hw_state=hw_state
+        interval_sec,
+        apply_tonemap=apply_tonemap,
+        hw_state=hw_state,
+        prefer_fast_seek=prefer_fast_seek,
     ):
         frame_paths = _extract_tile_batch_fps(
             ffmpeg,
@@ -1040,13 +1068,16 @@ def _extract_tile_fast(
         )
         if frame_paths or _is_cancelled(should_cancel):
             return frame_paths
-        # Corrupt remuxes / EBML glitches often make continuous fps decode
-        # hang or exit with zero JPEGs; per-frame seeks can still succeed.
+        # Corrupt remuxes / EBML glitches / weak hardware often make continuous
+        # fps decode hang or exit with zero JPEGs; per-frame seeks can still
+        # succeed. Sticky for remaining tiles on this file.
         _log(
             f"Tile {tile_index + 1}/{tile_count}: fps batch yielded no frames; "
             "falling back to per-frame fast seek",
             xbmc.LOGWARNING,
         )
+        if fast_state is not None:
+            fast_state.remember_fps_batch_fallback()
         _clear_jpg_files(output_dir)
         return _extract_tile_fast_seek(
             ffmpeg,
@@ -1316,6 +1347,10 @@ def generate_trickplay_for_media(
         _log(f"Hardware decode enabled ({backend_label}): {hw_eligible_reason}")
     elif settings.hw_decode and use_vfs_stream:
         _debug(settings, "Hardware decode skipped for VFS stream input")
+
+    fast_state = FastExtractState(
+        prefer_fast_seek=settings.extract_mode == EXTRACT_MODE_FAST_SEEK,
+    )
 
     interval_sec = max(settings.interval_ms / 1000.0, 0.001)
     batch_vf = build_fps_batch_filter(
@@ -1664,9 +1699,12 @@ def generate_trickplay_for_media(
                             sw_fallback=sw_extract_fallback,
                             hw_state=hw_state,
                             apply_tonemap=filter_ctx.apply_tonemap,
+                            fast_state=fast_state,
                         )
                 elif (
-                    settings.extract_mode == EXTRACT_MODE_FAST or batch_seeks_mode
+                    settings.extract_mode
+                    in (EXTRACT_MODE_FAST, EXTRACT_MODE_FAST_SEEK)
+                    or batch_seeks_mode
                 ):
                     frame_paths = _extract_tile_fast(
                         ffmpeg,
@@ -1688,6 +1726,7 @@ def generate_trickplay_for_media(
                         sw_fallback=sw_extract_fallback,
                         hw_state=hw_state,
                         apply_tonemap=filter_ctx.apply_tonemap,
+                        fast_state=fast_state,
                     )
                 elif settings.extract_mode == EXTRACT_MODE_ACCURATE:
                     frame_paths = []
@@ -1747,6 +1786,7 @@ def generate_trickplay_for_media(
                         sw_fallback=sw_extract_fallback,
                         hw_state=hw_state,
                         apply_tonemap=filter_ctx.apply_tonemap,
+                        fast_state=fast_state,
                     )
 
                 if cancelled or _is_cancelled(should_cancel):

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.3.3] - 2026-07-30
+
+### Added
+
+- **Fast seek (weaker devices)** — fourth **Frame extraction mode** that always uses one ffmpeg seek per thumbnail (skips fps-batch). Prefer this on Amlogic/CoreELEC and similar weak hardware, especially 4K or network media.
+
+### Fixed
+
+- **Sticky fps-batch → seek fallback** — if fps-batch times out or yields no frames and per-frame seek is used, remaining tiles on that file skip fps-batch instead of waiting out another timeout.
+
+## [7.3.1] - 2026-07-29
+
+### Fixed
+
+- **Batch Run confirmation dismissed immediately** — after a long scan, the “Generate …?” dialog used Kodi’s default focus on **No**, so Enter/OK cancelled the job. Confirmation now labels **Generate** / **Cancel**, focuses Generate (Kodi 20+), and waits briefly after the scan progress dialog closes so a click cannot fall through.
+
 ## [7.3.0] - 2026-07-29
 
 ### Added

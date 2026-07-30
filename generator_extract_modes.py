@@ -4,6 +4,7 @@ from __future__ import annotations
 
 EXTRACT_MODE_ACCURATE = "accurate"
 EXTRACT_MODE_FAST = "fast"
+EXTRACT_MODE_FAST_SEEK = "fast_seek"
 EXTRACT_MODE_BATCH_SEEKS = "batch_seeks"
 # Legacy setting value; normalized to EXTRACT_MODE_BATCH_SEEKS.
 EXTRACT_MODE_EXPERIMENTAL = "experimental"
@@ -12,6 +13,7 @@ VALID_EXTRACT_MODES = frozenset(
     {
         EXTRACT_MODE_ACCURATE,
         EXTRACT_MODE_FAST,
+        EXTRACT_MODE_FAST_SEEK,
         EXTRACT_MODE_BATCH_SEEKS,
     }
 )
@@ -30,6 +32,7 @@ def extract_mode_log_label(mode: str) -> str:
     labels = {
         EXTRACT_MODE_ACCURATE: "accurate",
         EXTRACT_MODE_FAST: "fast",
+        EXTRACT_MODE_FAST_SEEK: "fast seek",
         EXTRACT_MODE_BATCH_SEEKS: "batch seeks",
         EXTRACT_MODE_EXPERIMENTAL: "batch seeks",
     }

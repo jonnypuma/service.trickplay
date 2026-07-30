@@ -50,6 +50,43 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay.generator.batch] {message}", level)
 
 
+def _dialog_yesno(
+    heading: str,
+    message: str,
+    *,
+    yeslabel: str = "",
+    nolabel: str = "",
+    default_yes: bool = False,
+) -> bool:
+    """
+    Show a yes/no dialog.
+
+    Kodi defaults focus to No (``DLG_YESNO_NO_BTN``). For confirm-to-proceed
+    actions set ``default_yes=True`` so Enter/OK starts the job. Explicit
+    yes/nolabel avoid ambiguous default button text.
+    """
+    kwargs: dict[str, object] = {"heading": heading, "message": message}
+    if yeslabel:
+        kwargs["yeslabel"] = yeslabel
+    if nolabel:
+        kwargs["nolabel"] = nolabel
+    if default_yes:
+        yes_btn = getattr(xbmcgui, "DLG_YESNO_YES_BTN", None)
+        if yes_btn is not None:
+            kwargs["defaultbutton"] = yes_btn
+    try:
+        return bool(xbmcgui.Dialog().yesno(**kwargs))
+    except TypeError:
+        # Older Kodi without defaultbutton
+        kwargs.pop("defaultbutton", None)
+        return bool(xbmcgui.Dialog().yesno(**kwargs))
+
+
+def _yield_ui(ms: int = 350) -> None:
+    """Let a closed progress/dialog finish dismissing before the next modal."""
+    xbmc.sleep(max(0, int(ms)))
+
+
 def _is_valid_library_root(path: str) -> bool:
     if not path or path.startswith(("special://", "plugin://", "http://", "https://")):
         return False
@@ -256,6 +293,7 @@ def _collect_candidates_with_progress(
         thread.join(timeout=30.0)
     finally:
         progress.close()
+        _yield_ui()
 
     if worker_error is not None:
         _log(f"Candidate scan failed: {worker_error}", xbmc.LOGERROR)
@@ -390,11 +428,19 @@ def run_batch_dialog() -> None:
     else:
         confirm = _ADDON.getLocalizedString(32068) % len(candidates)
 
-    if not xbmcgui.Dialog().yesno(
+    _log(f"Showing batch confirmation ({len(candidates)} candidate(s))")
+    if not _dialog_yesno(
         _ADDON.getLocalizedString(32063),
         confirm,
+        yeslabel=_ADDON.getLocalizedString(32229),
+        nolabel=_ADDON.getLocalizedString(32224),
+        default_yes=True,
     ):
-        _log("Batch run cancelled at confirmation prompt")
+        _log(
+            "Batch run cancelled at confirmation prompt "
+            "(No/Cancel, or dialog dismissed — Yes was not chosen)",
+            xbmc.LOGINFO,
+        )
         return
 
     _log(f"Starting batch generation for {len(candidates)} file(s)")
