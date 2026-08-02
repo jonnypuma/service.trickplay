@@ -909,3 +909,35 @@ msgstr "Generate"
 msgctxt "#32230"
 msgid "Fast seek (weaker devices)"
 msgstr "Fast seek (weaker devices)"
+
+msgctxt "#32231"
+msgid "fps-batch timeout cap (seconds)"
+msgstr "fps-batch timeout cap (seconds)"
+
+msgctxt "#32232"
+msgid "Maximum time allowed for one continuous fps-batch tile decode. Lower this on weak or remote systems to fail over sooner; increase it on fast local storage. Range: 180–3600 seconds."
+msgstr "Maximum time allowed for one continuous fps-batch tile decode. Lower this on weak or remote systems to fail over sooner; increase it on fast local storage. Range: 180–3600 seconds."
+
+msgctxt "#32233"
+msgid "Validation / repair"
+msgstr "Validation / repair"
+
+msgctxt "#32234"
+msgid "Validate and repair sidecars"
+msgstr "Validate and repair sidecars"
+
+msgctxt "#32235"
+msgid "Checks the configured tile width, grid, and interval for missing, corrupt, incomplete, or wrongly sized JPEG tiles. Valid tiles are preserved; repair asks for confirmation before regenerating affected media."
+msgstr "Checks the configured tile width, grid, and interval for missing, corrupt, incomplete, or wrongly sized JPEG tiles. Valid tiles are preserved; repair asks for confirmation before regenerating affected media."
+
+msgctxt "#32236"
+msgid "Repair"
+msgstr "Repair"
+
+msgctxt "#32237"
+msgid "Show generator diagnostics"
+msgstr "Show generator diagnostics"
+
+msgctxt "#32238"
+msgid "Read-only report of ffmpeg build, hardware accelerators, selected decode path, and why unsupported accelerators such as rkmpp are not selected."
+msgstr "Read-only report of ffmpeg build, hardware accelerators, selected decode path, and why unsupported accelerators such as rkmpp are not selected."

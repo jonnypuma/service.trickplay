@@ -740,6 +740,40 @@
 
                 </setting>
 
+                <setting id="generator_fps_batch_timeout_cap" type="integer" label="32231" help="32232">
+
+                    <level>0</level>
+
+                    <default>900</default>
+
+                    <constraints>
+
+                        <minimum>180</minimum>
+
+                        <maximum>3600</maximum>
+
+                        <step>60</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32231</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
                 <setting id="generator_ffmpeg_path" type="path" label="32097" help="32098">
 
                     <level>0</level>
@@ -1053,6 +1087,38 @@
                         </dependency>
 
                     </dependencies>
+
+                </setting>
+
+            </group>
+
+        </category>
+
+        <category id="validation_repair" label="32233">
+
+            <group id="g_validation" label="32233">
+
+                <setting id="validate_repair" type="action" label="32234" help="32235">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,validate_repair)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="generator_diagnostics" type="action" label="32237" help="32238">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,generator_diagnostics)</data>
+
+                    </control>
 
                 </setting>
 

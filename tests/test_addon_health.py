@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-import types
 import unittest
 from unittest.mock import patch
 
@@ -12,11 +11,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-for _name in ("xbmc", "xbmcaddon", "xbmcvfs", "xbmcgui"):
-    sys.modules.setdefault(_name, types.ModuleType(_name))
+from kodi_test_stubs import install_kodi_stubs  # noqa: E402
 
-sys.modules["xbmc"].LOGINFO = 1
-sys.modules["xbmc"].LOGWARNING = 2
+install_kodi_stubs()
 
 
 class AddonHealthTests(unittest.TestCase):

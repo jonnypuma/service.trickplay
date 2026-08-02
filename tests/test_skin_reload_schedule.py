@@ -5,18 +5,15 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import call
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-xbmc = MagicMock()
-xbmc.LOGINFO = 0
-xbmc.LOGWARNING = 1
-sys.modules.setdefault("xbmc", xbmc)
-for _name in ("xbmcaddon", "xbmcvfs", "xbmcgui"):
-    sys.modules.setdefault(_name, MagicMock())
+from kodi_test_stubs import install_kodi_stubs  # noqa: E402
+
+xbmc, _, _, _ = install_kodi_stubs()
 
 from skin_snippet_installer import (  # noqa: E402
     SKIN_RELOAD_ALARM,

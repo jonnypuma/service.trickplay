@@ -354,8 +354,8 @@ msgid "Frame extraction mode"
 msgstr "Bildruta-extraheringsläge"
 
 msgctxt "#32077"
-msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
-msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile for intervals of 5s or less. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
 
 msgctxt "#32080"
 msgid "Accurate (slow)"
@@ -367,7 +367,7 @@ msgstr "Snabb"
 
 msgctxt "#32082"
 msgid "Fast (batch seeks)"
-msgstr "Schnell (Batch-Suchen)"
+msgstr "Fast (batch seeks)"
 
 msgctxt "#32078"
 msgid "Stop batch on first failure"
@@ -526,8 +526,8 @@ msgid "Hardware decode (HDR HEVC)"
 msgstr "Hardware decode (HDR HEVC)"
 
 msgctxt "#32121"
-msgid "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA. Linux: VA-API, preferring zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload. Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable (VA-API/Vulkan/libplacebo); legacy BtbN/Gyan kept as fallback. No effect when probes fail (e.g. CoreELEC without VA-API/Vulkan)."
-msgstr "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA. Linux: VA-API, preferring zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload. Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable (VA-API/Vulkan/libplacebo); legacy BtbN/Gyan kept as fallback. No effect when probes fail (e.g. CoreELEC without VA-API/Vulkan)."
+msgid "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA→hwdownload (or CUDA/NVDEC when enabled). Linux: prefers zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload (or CUDA when enabled). Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable; legacy BtbN/Gyan kept as fallback."
+msgstr "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA→hwdownload (or CUDA/NVDEC when enabled). Linux: prefers zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload (or CUDA when enabled). Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable; legacy BtbN/Gyan kept as fallback."
 
 msgctxt "#32122"
 msgid "Preview tools"
@@ -600,7 +600,6 @@ msgstr "Skala skrubb-förhandsvisningsminiatyrbilden relativt standardstorleken 
 msgctxt "#32139"
 msgid "Preview horizontal offset (px)"
 msgstr "Förhandsvisningens horisontella förskjutning (px)"
-
 
 msgctxt "#32141"
 msgid "Aeon Nox SiLVO"
@@ -885,3 +884,59 @@ msgstr "Försök igen"
 msgctxt "#32224"
 msgid "Cancel"
 msgstr "Avbryt"
+
+msgctxt "#32225"
+msgid "A legacy ffmpeg (Gyan/BtbN) is installed. Replace it with jellyfin-ffmpeg portable for better HDR / hardware decode support?\n\nInstall location: %s"
+msgstr "A legacy ffmpeg (Gyan/BtbN) is installed. Replace it with jellyfin-ffmpeg portable for better HDR / hardware decode support?\n\nInstall location: %s"
+
+msgctxt "#32226"
+msgid "jellyfin-ffmpeg installed (%s)"
+msgstr "jellyfin-ffmpeg installed (%s)"
+
+msgctxt "#32227"
+msgid "Prefer CUDA / NVDEC (NVIDIA)"
+msgstr "Prefer CUDA / NVDEC (NVIDIA)"
+
+msgctxt "#32228"
+msgid "When Hardware decode is on, use NVIDIA CUDA/NVDEC instead of D3D11VA (Windows) or VA-API (Linux). Requires an NVIDIA GPU and jellyfin-ffmpeg (or another build with CUDA). Frames still use hwdownload before libplacebo/zscale — not zero-copy Vulkan. Leave off on AMD/Intel."
+msgstr "When Hardware decode is on, use NVIDIA CUDA/NVDEC instead of D3D11VA (Windows) or VA-API (Linux). Requires an NVIDIA GPU and jellyfin-ffmpeg (or another build with CUDA). Frames still use hwdownload before libplacebo/zscale — not zero-copy Vulkan. Leave off on AMD/Intel."
+
+msgctxt "#32229"
+msgid "Generate"
+msgstr "Generate"
+
+msgctxt "#32230"
+msgid "Fast seek (weaker devices)"
+msgstr "Snabbsökning (svagare enheter)"
+
+msgctxt "#32231"
+msgid "fps-batch timeout cap (seconds)"
+msgstr "fps-batch-tidsgräns (sekunder)"
+
+msgctxt "#32232"
+msgid "Maximum time allowed for one continuous fps-batch tile decode. Lower this on weak or remote systems to fail over sooner; increase it on fast local storage. Range: 180–3600 seconds."
+msgstr "Maximal tid för kontinuerlig fps-batch-avkodning av en ruta. Sänk detta på svaga eller fjärranslutna system för snabbare reservväg; höj det på snabb lokal lagring. Intervall: 180–3600 sekunder."
+
+msgctxt "#32233"
+msgid "Validation / repair"
+msgstr "Validering / reparation"
+
+msgctxt "#32234"
+msgid "Validate and repair sidecars"
+msgstr "Validera och reparera sidecars"
+
+msgctxt "#32235"
+msgid "Checks the configured tile width, grid, and interval for missing, corrupt, incomplete, or wrongly sized JPEG tiles. Valid tiles are preserved; repair asks for confirmation before regenerating affected media."
+msgstr "Kontrollerar konfigurerad rutbredd, rutnät och intervall efter saknade, skadade, ofullständiga eller felstorleksanpassade JPEG-rutor. Giltiga rutor bevaras; reparation frågar efter bekräftelse innan berörda medier genereras om."
+
+msgctxt "#32236"
+msgid "Repair"
+msgstr "Reparera"
+
+msgctxt "#32237"
+msgid "Show generator diagnostics"
+msgstr "Visa generatordiagnostik"
+
+msgctxt "#32238"
+msgid "Read-only report of ffmpeg build, hardware accelerators, selected decode path, and why unsupported accelerators such as rkmpp are not selected."
+msgstr "Skrivskyddad rapport om ffmpeg-bygge, hårdvaruacceleratorer, vald avkodningsväg och varför acceleratorer som rkmpp som inte stöds inte väljs."

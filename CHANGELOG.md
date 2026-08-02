@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.3.5] - 2026-08-02
+
+### Added
+
+- **Generation summaries** — batch runs now report successes, failures, cancellation, elapsed worker time, tiles written, and extraction fallbacks.
+- **Validation / repair** — the new category checks the configured sidecar profile for missing, corrupt, incomplete, and incorrectly sized JPEG tiles, then optionally repairs affected media after confirmation.
+- **Generator diagnostics** — read-only ffmpeg build, hardware accelerator, and decode-path report, including why unsupported CoreELEC accelerators such as `rkmpp` are not selected.
+- **Configurable fps-batch timeout cap** — adjust the continuous decode timeout from 180 to 3600 seconds for different storage and hardware.
+
+### Changed
+
+- **Documentation** — documented all four extraction modes and clarified that Pillow is normally supplied by Kodi/CoreELEC; the add-on only downloads it when unavailable.
+- **Test Kodi stubs** — centralized missing `translatePath` and `executebuiltin` behavior so the complete test suite runs outside Kodi.
+
+## [7.3.4] - 2026-08-01
+
+### Changed
+
+- **Fast-seek fallback diagnostics** — per-frame extraction now reports elapsed time and an estimated remaining time for each tile.
+
+### Fixed
+
+- **Safer sticky fallback** — fps-batch is skipped for later tiles only after the per-frame seek fallback successfully produces the complete current tile. Partial or failed fallback results do not permanently change the strategy.
+
 ## [7.3.3] - 2026-07-30
 
 ### Added

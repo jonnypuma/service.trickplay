@@ -455,7 +455,7 @@ class SkinSnippetMergeTests(unittest.TestCase):
             path = os.path.join(ROOT, "resources", "skin-snippet", name)
             with open(path, encoding="utf-8") as handle:
                 text = handle.read()
-            self.assertIn("trickplay-overlay-rev:7", text, msg=name)
+            self.assertIn("trickplay-overlay-rev:9", text, msg=name)
             self.assertIn(SKIPPY_SEEKBAR_VISIBLE_MARKER, text, msg=name)
 
     def test_seekbar_has_host_controls(self) -> None:

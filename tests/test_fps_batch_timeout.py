@@ -44,6 +44,9 @@ class FpsBatchTimeoutTests(unittest.TestCase):
     def test_cap_is_fifteen_minutes(self) -> None:
         self.assertEqual(_FPS_BATCH_TIMEOUT_CAP_SEC, 900.0)
 
+    def test_custom_cap_is_respected(self) -> None:
+        self.assertEqual(_fps_batch_timeout_sec(2000.0, cap_sec=600.0), 600.0)
+
 
 class PreferFastSeekTests(unittest.TestCase):
     def test_prefer_fast_seek_disables_fps_batch(self) -> None:
@@ -52,18 +55,18 @@ class PreferFastSeekTests(unittest.TestCase):
                 10.0,
                 apply_tonemap=False,
                 hw_state=None,
-                prefer_fast_seek=True,
+                force_fast_seek=True,
             )
         )
 
     def test_prefer_fast_seek_overrides_short_interval_batch(self) -> None:
-        # Short intervals normally force fps-batch; prefer_fast_seek wins.
+        # Short intervals normally force fps-batch; force_fast_seek wins.
         self.assertFalse(
             _should_use_fps_batch(
                 1.0,
                 apply_tonemap=False,
                 hw_state=None,
-                prefer_fast_seek=True,
+                force_fast_seek=True,
             )
         )
 
@@ -74,8 +77,8 @@ class PreferFastSeekTests(unittest.TestCase):
         mock_batch: MagicMock,
         mock_seek: MagicMock,
     ) -> None:
-        mock_seek.return_value = ["a.jpg"]
-        fast_state = FastExtractState(prefer_fast_seek=True)
+        mock_seek.return_value = [f"a{index}.jpg" for index in range(10)]
+        fast_state = FastExtractState(seek_mode_active=True)
 
         paths = _extract_tile_fast(
             ffmpeg="ffmpeg",
@@ -93,7 +96,7 @@ class PreferFastSeekTests(unittest.TestCase):
 
         mock_batch.assert_not_called()
         mock_seek.assert_called_once()
-        self.assertEqual(paths, ["a.jpg"])
+        self.assertEqual(len(paths), 10)
 
     @patch("trickplay_generator._extract_tile_fast_seek")
     @patch("trickplay_generator._extract_tile_batch_fps")
@@ -105,7 +108,7 @@ class PreferFastSeekTests(unittest.TestCase):
         mock_seek: MagicMock,
     ) -> None:
         mock_batch.return_value = []
-        mock_seek.return_value = ["a.jpg"]
+        mock_seek.return_value = [f"a{index}.jpg" for index in range(10)]
         fast_state = FastExtractState()
 
         first = _extract_tile_fast(
@@ -123,14 +126,14 @@ class PreferFastSeekTests(unittest.TestCase):
             tile_count=2,
             fast_state=fast_state,
         )
-        self.assertEqual(first, ["a.jpg"])
-        self.assertTrue(fast_state.prefer_fast_seek)
+        self.assertEqual(len(first), 10)
+        self.assertTrue(fast_state.seek_mode_active)
         mock_batch.assert_called_once()
         mock_clear.assert_called_once_with("/tmp/tile1")
 
         mock_batch.reset_mock()
         mock_seek.reset_mock()
-        mock_seek.return_value = ["b.jpg"]
+        mock_seek.return_value = [f"b{index}.jpg" for index in range(10)]
 
         second = _extract_tile_fast(
             ffmpeg="ffmpeg",
@@ -150,7 +153,38 @@ class PreferFastSeekTests(unittest.TestCase):
 
         mock_batch.assert_not_called()
         mock_seek.assert_called_once()
-        self.assertEqual(second, ["b.jpg"])
+        self.assertEqual(len(second), 10)
+
+    @patch("trickplay_generator._extract_tile_fast_seek")
+    @patch("trickplay_generator._extract_tile_batch_fps")
+    @patch("trickplay_generator._clear_jpg_files")
+    def test_partial_seek_does_not_make_fallback_sticky(
+        self,
+        mock_clear: MagicMock,
+        mock_batch: MagicMock,
+        mock_seek: MagicMock,
+    ) -> None:
+        mock_batch.return_value = []
+        mock_seek.return_value = ["a.jpg"]
+        fast_state = FastExtractState()
+
+        paths = _extract_tile_fast(
+            ffmpeg="ffmpeg",
+            env={},
+            ffmpeg_input="/media.mkv",
+            start_index=0,
+            frame_count=2,
+            interval_sec=10.0,
+            tile_width=320,
+            output_dir="/tmp/tile",
+            thumb_vf="scale=320:-1",
+            batch_vf="fps=1/10,scale=320:-1",
+            fast_state=fast_state,
+        )
+
+        self.assertEqual(paths, ["a.jpg"])
+        self.assertFalse(fast_state.seek_mode_active)
+        mock_clear.assert_called_once_with("/tmp/tile")
 
 
 class FpsBatchSeekFallbackTests(unittest.TestCase):

@@ -139,13 +139,13 @@ WindowsHwExtractState = HwExtractState
 class FastExtractState:
     """Per-file Fast extract strategy; sticky after fps-batch fails over to seek."""
 
-    prefer_fast_seek: bool = False
+    seek_mode_active: bool = False
     _logged_sticky_seek: bool = field(default=False, repr=False)
 
-    def remember_fps_batch_fallback(self) -> None:
-        if self.prefer_fast_seek:
+    def activate_seek_fallback(self) -> None:
+        if self.seek_mode_active:
             return
-        self.prefer_fast_seek = True
+        self.seek_mode_active = True
         if not self._logged_sticky_seek:
             _log(
                 "fps batch failed; using per-frame fast seek for remaining tiles",
@@ -158,15 +158,20 @@ def _accurate_frame_timeout_sec(thumb_index: int) -> float:
     return _ACCURATE_FRAME_TIMEOUT_BASE_SEC + max(thumb_index, 0) * _ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC
 
 
-def _fps_batch_timeout_sec(duration_sec: float) -> float:
+def _fps_batch_timeout_sec(
+    duration_sec: float,
+    *,
+    cap_sec: float = _FPS_BATCH_TIMEOUT_CAP_SEC,
+) -> float:
     """Wall-clock budget for one fps-batch tile decode.
 
     Scales with the media span being scanned, floored for short tiles and
     capped so hung/corrupt demux cannot block a batch for ~50 minutes.
     """
     span = max(float(duration_sec), 0.0)
+    cap = max(float(cap_sec), _FPS_BATCH_TIMEOUT_FLOOR_SEC)
     return min(
-        _FPS_BATCH_TIMEOUT_CAP_SEC,
+        cap,
         max(_FPS_BATCH_TIMEOUT_FLOOR_SEC, span * 0.8 + 60.0),
     )
 
@@ -429,6 +434,24 @@ class GenerationBatchPlan:
     cancelled: bool = False
 
 
+@dataclass(frozen=True)
+class GenerationResult:
+    """Structured result for one media generation attempt."""
+
+    media_path: str
+    success: bool
+    cancelled: bool = False
+    elapsed_seconds: float = 0.0
+    tiles_written: int = 0
+    tile_count: int = 0
+    extraction_mode: str = ""
+    fallback_count: int = 0
+    failure_reason: str = ""
+
+    def __bool__(self) -> bool:
+        return self.success and not self.cancelled
+
+
 def _is_tail_eof_tile(tile_index: int, tile_count: int, tiles_written: int) -> bool:
     """True when the last tile has no decodable video left but prior tiles exist."""
     return tile_index == tile_count - 1 and tiles_written > 0
@@ -605,9 +628,9 @@ def _should_use_fps_batch(
     *,
     apply_tonemap: bool,
     hw_state: HwExtractState | None,
-    prefer_fast_seek: bool = False,
+    force_fast_seek: bool = False,
 ) -> bool:
-    if prefer_fast_seek:
+    if force_fast_seek:
         return False
     if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
         return True
@@ -710,6 +733,7 @@ def _extract_frame_accurate(
                 output_color_args=output_color_args,
                 ffmpeg_input_args=sw[1],
                 hw_state=hw_state,
+                timeout_cap_sec=timeout_cap_sec,
             )
         _log(f"Frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
         return False
@@ -827,6 +851,7 @@ def _extract_tile_batch_fps(
     ffmpeg_input_args: tuple[str, ...] = (),
     sw_fallback: tuple[str, tuple[str, ...]] | None = None,
     hw_state: HwExtractState | None = None,
+    timeout_cap_sec: float = _FPS_BATCH_TIMEOUT_CAP_SEC,
 ) -> list[str]:
     if _is_cancelled(should_cancel) or frame_count <= 0:
         return []
@@ -841,7 +866,7 @@ def _extract_tile_batch_fps(
     _ensure_local_dir(output_dir)
     local_dir = _local_path(output_dir)
     duration = max(frame_count * interval_sec, interval_sec)
-    timeout = _fps_batch_timeout_sec(duration)
+    timeout = _fps_batch_timeout_sec(duration, cap_sec=timeout_cap_sec)
     pattern = os.path.join(local_dir, "%05d.jpg")
 
     _log(
@@ -970,6 +995,7 @@ def _extract_tile_fast_seek(
 
     _ensure_local_dir(output_dir)
     tile_start = start_index * interval_sec
+    started_at = time.monotonic()
     _log(
         f"Tile {tile_index + 1}/{tile_count}: fast seek "
         f"{frame_count} frame(s) every {interval_sec:.1f}s from {tile_start:.1f}s"
@@ -1005,9 +1031,14 @@ def _extract_tile_fast_seek(
                 )
             return frame_paths
         frame_paths.append(frame_path)
+        elapsed = time.monotonic() - started_at
+        completed = offset + 1
+        remaining = frame_count - completed
+        eta = (elapsed / completed) * remaining if completed else 0.0
         _log(
             f"Tile {tile_index + 1}/{tile_count}: thumb {offset + 1}/{frame_count} "
-            f"at {timestamp:.1f}s"
+            f"at {timestamp:.1f}s ({elapsed:.1f}s elapsed, "
+            f"~{eta:.0f}s remaining)"
         )
 
     _log(
@@ -1038,14 +1069,16 @@ def _extract_tile_fast(
     hw_state: HwExtractState | None = None,
     apply_tonemap: bool = False,
     fast_state: FastExtractState | None = None,
+    metrics: dict[str, object] | None = None,
+    timeout_cap_sec: float = _FPS_BATCH_TIMEOUT_CAP_SEC,
 ) -> list[str]:
     tile_start = start_index * interval_sec
-    prefer_fast_seek = bool(fast_state and fast_state.prefer_fast_seek)
+    force_fast_seek = bool(fast_state and fast_state.seek_mode_active)
     if _should_use_fps_batch(
         interval_sec,
         apply_tonemap=apply_tonemap,
         hw_state=hw_state,
-        prefer_fast_seek=prefer_fast_seek,
+        force_fast_seek=force_fast_seek,
     ):
         frame_paths = _extract_tile_batch_fps(
             ffmpeg,
@@ -1065,6 +1098,7 @@ def _extract_tile_fast(
             ffmpeg_input_args=ffmpeg_input_args,
             sw_fallback=sw_fallback,
             hw_state=hw_state,
+            timeout_cap_sec=timeout_cap_sec,
         )
         if frame_paths or _is_cancelled(should_cancel):
             return frame_paths
@@ -1076,10 +1110,8 @@ def _extract_tile_fast(
             "falling back to per-frame fast seek",
             xbmc.LOGWARNING,
         )
-        if fast_state is not None:
-            fast_state.remember_fps_batch_fallback()
         _clear_jpg_files(output_dir)
-        return _extract_tile_fast_seek(
+        frame_paths = _extract_tile_fast_seek(
             ffmpeg,
             env,
             ffmpeg_input,
@@ -1098,6 +1130,18 @@ def _extract_tile_fast(
             sw_fallback=sw_fallback,
             hw_state=hw_state,
         )
+        # Only make the fallback sticky after seek produced the complete tile.
+        # A partial/failed seek should not suppress a potentially recoverable
+        # fps-batch attempt on the next tile.
+        if (
+            fast_state is not None
+            and len(frame_paths) == frame_count
+            and not _is_cancelled(should_cancel)
+        ):
+            fast_state.activate_seek_fallback()
+            if metrics is not None:
+                metrics["fallback_count"] = int(metrics.get("fallback_count", 0)) + 1
+        return frame_paths
     return _extract_tile_fast_seek(
         ffmpeg,
         env,
@@ -1197,12 +1241,14 @@ def _remove_tree(path: str) -> None:
         shutil.rmtree(local, ignore_errors=True)
 
 
-def generate_trickplay_for_media(
+def _generate_trickplay_for_media(
     media_path: str,
     settings: GeneratorSettings,
     should_cancel: Callable[[], bool] | None = None,
+    _metrics: dict[str, object] | None = None,
 ) -> bool:
     """Write Jellyfin-format trickplay sprites next to media_path."""
+    metrics = _metrics if _metrics is not None else {}
     cleanup_orphaned_generator_temp()
     if _is_cancelled(should_cancel):
         return False
@@ -1349,7 +1395,7 @@ def generate_trickplay_for_media(
         _debug(settings, "Hardware decode skipped for VFS stream input")
 
     fast_state = FastExtractState(
-        prefer_fast_seek=settings.extract_mode == EXTRACT_MODE_FAST_SEEK,
+        seek_mode_active=settings.extract_mode == EXTRACT_MODE_FAST_SEEK,
     )
 
     interval_sec = max(settings.interval_ms / 1000.0, 0.001)
@@ -1374,6 +1420,7 @@ def generate_trickplay_for_media(
     thumb_count = int(duration / interval_sec) + 1
     thumbs_per_tile = cols * rows
     tile_count = (thumb_count + thumbs_per_tile - 1) // thumbs_per_tile
+    metrics["tile_count"] = tile_count
 
     _ensure_dir(output_dir)
     mark_generation_active()
@@ -1407,6 +1454,7 @@ def generate_trickplay_for_media(
         )
     else:
         extract_mode = extract_mode_log_label(settings.extract_mode)
+    metrics["extraction_mode"] = extract_mode
     hdr_note = ", HDR tone map" if filter_ctx.apply_tonemap else ""
     hw_label = hw_decode_backend_label(hw_decode_backend)
     hw_note = f", {hw_label} hw decode" if hw_decode_active and hw_label else ""
@@ -1700,6 +1748,8 @@ def generate_trickplay_for_media(
                             hw_state=hw_state,
                             apply_tonemap=filter_ctx.apply_tonemap,
                             fast_state=fast_state,
+                            metrics=metrics,
+                            timeout_cap_sec=settings.fps_batch_timeout_cap_sec,
                         )
                 elif (
                     settings.extract_mode
@@ -1727,6 +1777,8 @@ def generate_trickplay_for_media(
                         hw_state=hw_state,
                         apply_tonemap=filter_ctx.apply_tonemap,
                         fast_state=fast_state,
+                        metrics=metrics,
+                        timeout_cap_sec=settings.fps_batch_timeout_cap_sec,
                     )
                 elif settings.extract_mode == EXTRACT_MODE_ACCURATE:
                     frame_paths = []
@@ -1787,6 +1839,8 @@ def generate_trickplay_for_media(
                         hw_state=hw_state,
                         apply_tonemap=filter_ctx.apply_tonemap,
                         fast_state=fast_state,
+                        metrics=metrics,
+                        timeout_cap_sec=settings.fps_batch_timeout_cap_sec,
                     )
 
                 if cancelled or _is_cancelled(should_cancel):
@@ -1851,6 +1905,8 @@ def generate_trickplay_for_media(
                 _remove_tree(tile_work_dir)
 
         was_cancelled = cancelled or _is_cancelled(should_cancel)
+        metrics["cancelled"] = was_cancelled
+        metrics["tiles_written"] = tiles_written
         if was_cancelled:
             _log(
                 f"Generation cancelled for {os.path.basename(media_path)}",
@@ -1867,6 +1923,7 @@ def generate_trickplay_for_media(
                     f"Generated {tile_count} tile(s) for {os.path.basename(media_path)}"
                 )
         else:
+            metrics["failure_reason"] = "generation failed"
             _log(
                 f"Generation failed for {os.path.basename(media_path)}",
                 xbmc.LOGWARNING,
@@ -1884,6 +1941,36 @@ def generate_trickplay_for_media(
         return False
 
     return success
+
+
+def generate_trickplay_for_media(
+    media_path: str,
+    settings: GeneratorSettings,
+    should_cancel: Callable[[], bool] | None = None,
+) -> GenerationResult:
+    """Generate one sidecar and return timing and tile metrics."""
+    started_at = time.monotonic()
+    metrics: dict[str, object] = {}
+    success = _generate_trickplay_for_media(
+        media_path,
+        settings,
+        should_cancel=should_cancel,
+        _metrics=metrics,
+    )
+    cancelled = bool(metrics.get("cancelled", False)) or (
+        bool(should_cancel and should_cancel()) and not success
+    )
+    return GenerationResult(
+        media_path=media_path,
+        success=success,
+        cancelled=cancelled,
+        elapsed_seconds=time.monotonic() - started_at,
+        tiles_written=int(metrics.get("tiles_written", 0)),
+        tile_count=int(metrics.get("tile_count", 0)),
+        extraction_mode=str(metrics.get("extraction_mode", settings.extract_mode)),
+        fallback_count=int(metrics.get("fallback_count", 0)),
+        failure_reason=str(metrics.get("failure_reason", "")),
+    )
 
 
 def iter_library_videos(

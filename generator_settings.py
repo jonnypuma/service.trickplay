@@ -34,6 +34,7 @@ class GeneratorSettings:
     on_library_update_while_idle: bool = True
     overwrite_existing: bool = False
     extract_mode: str = EXTRACT_MODE_FAST
+    fps_batch_timeout_cap_sec: int = 900
     stop_on_failure: bool = False
     batch_background: bool = False
     hdr_tone_map: bool = False
@@ -196,6 +197,10 @@ def _load_generator_settings() -> GeneratorSettings:
         ),
         overwrite_existing=_read_overwrite_existing(),
         extract_mode=_read_extract_mode(),
+        fps_batch_timeout_cap_sec=min(
+            max(_setting_int("generator_fps_batch_timeout_cap", 900), 180),
+            3600,
+        ),
         stop_on_failure=_setting_bool("generator_stop_on_failure", False),
         batch_background=_setting_bool("generator_batch_background", False),
         hdr_tone_map=_setting_bool("generator_hdr_tone_map", False),

@@ -41,9 +41,11 @@ from skin_snippet_installer import (
 from library_path_browse import browse_library_folder
 from trickplay_generator import (
     GenerationBatchPlan,
+    GenerationResult,
     collect_generation_candidates,
     generate_trickplay_for_media,
 )
+from trickplay_validation import repair_invalid, validate_library
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -121,11 +123,12 @@ def _run_batch_generation(
     *,
     progress: xbmcgui.DialogProgress | None = None,
     monitor: xbmc.Monitor | None = None,
-) -> tuple[int, int, bool, list[str]]:
-    """Generate trickplay for each candidate. Returns (ok, fail, cancelled, failed_paths)."""
+) -> tuple[int, int, bool, list[str], list[GenerationResult]]:
+    """Generate candidates and return counts, failed paths, and detailed results."""
     ok_count = 0
     fail_count = 0
     failed_paths: list[str] = []
+    results: list[GenerationResult] = []
     cancelled = False
     total = len(candidates)
 
@@ -162,11 +165,18 @@ def _run_batch_generation(
             _log(f"{status}: {label}")
 
         _log(f"Generating {index + 1}/{total}: {media_path}")
-        if generate_trickplay_for_media(
+        raw_result = generate_trickplay_for_media(
             media_path,
             settings,
             should_cancel=_should_cancel,
-        ):
+        )
+        result = (
+            raw_result
+            if isinstance(raw_result, GenerationResult)
+            else GenerationResult(media_path=media_path, success=bool(raw_result))
+        )
+        results.append(result)
+        if result:
             ok_count += 1
         elif cancelled:
             break
@@ -178,7 +188,25 @@ def _run_batch_generation(
                 _log("Stopping batch (stop on first failure enabled)", xbmc.LOGWARNING)
                 break
 
-    return ok_count, fail_count, cancelled, failed_paths
+    return ok_count, fail_count, cancelled, failed_paths, results
+
+
+def _format_batch_summary(
+    results: list[GenerationResult],
+    *,
+    cancelled: bool,
+) -> str:
+    elapsed = sum(result.elapsed_seconds for result in results)
+    tiles = sum(result.tiles_written for result in results)
+    fallbacks = sum(result.fallback_count for result in results)
+    status = "cancelled" if cancelled else "complete"
+    return (
+        f"Batch {status}: {len(results)} file(s), "
+        f"{sum(bool(result) for result in results)} succeeded, "
+        f"{sum(not bool(result) for result in results)} failed, "
+        f"{tiles} tile(s), {fallbacks} fallback(s), "
+        f"{elapsed:.0f}s worker time"
+    )
 
 
 def _offer_batch_retry(failed_paths: list[str], settings: GeneratorSettings) -> None:
@@ -199,7 +227,7 @@ def _offer_batch_retry(failed_paths: list[str], settings: GeneratorSettings) -> 
         _ADDON.getLocalizedString(32183),
     )
     try:
-        ok_count, fail_count, cancelled, still_failed = _run_batch_generation(
+        ok_count, fail_count, cancelled, still_failed, results = _run_batch_generation(
             failed_paths,
             settings,
             progress=progress,
@@ -208,7 +236,9 @@ def _offer_batch_retry(failed_paths: list[str], settings: GeneratorSettings) -> 
     finally:
         progress.close()
     if cancelled:
+        _log(_format_batch_summary(results, cancelled=True))
         return
+    _log(_format_batch_summary(results, cancelled=False))
     xbmcgui.Dialog().ok(
         _ADDON.getLocalizedString(32063),
         _ADDON.getLocalizedString(32184) % (ok_count, fail_count),
@@ -317,6 +347,7 @@ def run_batch_dialog() -> None:
         "Generator settings: "
         f"enabled={settings.enabled} library_path={settings.library_path!r} "
         f"overwrite={settings.overwrite_existing} extract_mode={settings.extract_mode} "
+        f"fps_batch_timeout_cap={settings.fps_batch_timeout_cap_sec} "
         f"hdr_tone_map={settings.hdr_tone_map} "
         f"hdr_dovi_tool_fallback={settings.hdr_dovi_tool_fallback} "
         f"hw_decode={settings.hw_decode} hw_decode_cuda={settings.hw_decode_cuda} "
@@ -453,18 +484,19 @@ def run_batch_dialog() -> None:
             xbmcgui.NOTIFICATION_INFO,
             5000,
         )
-        ok_count, fail_count, cancelled, failed_paths = _run_batch_generation(
+        ok_count, fail_count, cancelled, failed_paths, results = _run_batch_generation(
             candidates,
             settings,
             monitor=monitor,
         )
         if cancelled:
-            _log(f"Batch cancelled (ok={ok_count} fail={fail_count})")
+            _log(_format_batch_summary(results, cancelled=True))
             return
-        _log(f"Batch complete: ok={ok_count} fail={fail_count}")
+        summary = _format_batch_summary(results, cancelled=False)
+        _log(summary)
         xbmcgui.Dialog().notification(
             _ADDON.getLocalizedString(32063),
-            _ADDON.getLocalizedString(32071) % (ok_count, fail_count),
+            f"{_ADDON.getLocalizedString(32071) % (ok_count, fail_count)}\n\n{summary}",
             xbmcgui.NOTIFICATION_INFO,
             8000,
         )
@@ -477,7 +509,7 @@ def run_batch_dialog() -> None:
         _ADDON.getLocalizedString(32069),
     )
     try:
-        ok_count, fail_count, cancelled, failed_paths = _run_batch_generation(
+        ok_count, fail_count, cancelled, failed_paths, results = _run_batch_generation(
             candidates,
             settings,
             progress=progress,
@@ -490,10 +522,11 @@ def run_batch_dialog() -> None:
         _log(f"Batch cancelled by user (ok={ok_count} fail={fail_count})")
         return
 
-    _log(f"Batch complete: ok={ok_count} fail={fail_count}")
+    summary = _format_batch_summary(results, cancelled=False)
+    _log(summary)
     xbmcgui.Dialog().ok(
         _ADDON.getLocalizedString(32063),
-        _ADDON.getLocalizedString(32071) % (ok_count, fail_count),
+        f"{_ADDON.getLocalizedString(32071) % (ok_count, fail_count)}\n\n{summary}",
     )
     _offer_batch_retry(failed_paths, settings)
 
@@ -880,6 +913,86 @@ def run_clear_preview_cache_dialog() -> None:
     xbmcgui.Dialog().notification(title, message, xbmcgui.NOTIFICATION_INFO, 5000)
 
 
+def run_validation_repair_dialog() -> None:
+    """Validate the configured sidecar profile and optionally repair it."""
+    settings = read_generator_settings()
+    title = _ADDON.getLocalizedString(32233)
+    if not settings.library_path or not _is_valid_library_root(settings.library_path):
+        xbmcgui.Dialog().ok(title, _ADDON.getLocalizedString(32088))
+        return
+
+    report = validate_library(
+        settings.library_path,
+        tile_width=settings.tile_width,
+        grid=settings.grid,
+        interval_ms=settings.interval_ms,
+        debug=settings.debug,
+    )
+    valid_count = len(report.items) - len(report.invalid)
+    lines = [
+        f"Checked: {len(report.items)}",
+        f"Valid: {valid_count}",
+        f"Needs repair: {len(report.invalid)}",
+    ]
+    for item in report.invalid[:20]:
+        lines.append(f"- {os.path.basename(item.media_path)}: {item.reason}")
+    if len(report.invalid) > 20:
+        lines.append(f"…and {len(report.invalid) - 20} more")
+    body = "\n".join(lines)
+    _log(f"Validation report:\n{body}")
+    if report.cancelled or not report.invalid:
+        xbmcgui.Dialog().ok(title, body)
+        return
+    if not _dialog_yesno(
+        title,
+        body + "\n\n" + _ADDON.getLocalizedString(32235),
+        yeslabel=_ADDON.getLocalizedString(32236),
+        nolabel=_ADDON.getLocalizedString(32224),
+        default_yes=True,
+    ):
+        return
+    results = repair_invalid(report.invalid, settings)
+    repaired = sum(bool(result) for result in results)
+    failed = len(results) - repaired
+    xbmcgui.Dialog().ok(
+        title,
+        body + f"\n\nRepaired: {repaired}\nFailed: {failed}",
+    )
+
+
+def run_generator_diagnostics_dialog() -> None:
+    """Show non-destructive ffmpeg and hardware capability diagnostics."""
+    import sys as _sys
+
+    from ffmpeg_tools import (
+        identify_ffmpeg_build,
+        probe_ffmpeg_hwaccels_summary,
+        resolve_generator_ffmpeg_tools,
+    )
+
+    settings = read_generator_settings()
+    ffmpeg, _ffprobe, env = resolve_generator_ffmpeg_tools(settings.ffmpeg_path)
+    vendor, version = identify_ffmpeg_build(ffmpeg or "", env)
+    hwaccels = probe_ffmpeg_hwaccels_summary(ffmpeg or "", env) or "none reported"
+    if _sys.platform.startswith("win"):
+        selected = "D3D11VA (or CUDA when enabled and available)"
+    elif _sys.platform.startswith("linux"):
+        selected = "VA-API/Vulkan (or VA-API download fallback)"
+    else:
+        selected = "software"
+    body = (
+        f"ffmpeg: {ffmpeg or 'not found'}\n"
+        f"Build: {vendor} — {version or 'unknown version'}\n"
+        f"Hardware accelerators: {hwaccels}\n"
+        f"Addon decode selection: {selected}\n\n"
+        "rkmpp/opencl/drm are not selected by this addon because its supported "
+        "thumbnail paths require CUDA, D3D11VA, or VA-API (optionally Vulkan). "
+        "Generation falls back to software when probes fail."
+    )
+    _log(f"Generator diagnostics:\n{body}")
+    xbmcgui.Dialog().ok(_ADDON.getLocalizedString(32237), body)
+
+
 def run_restore_skin_dialog(scope: InstallScope) -> None:
     _log(f"run_restore_skin_dialog started (scope={scope.value})")
     plans = build_restore_plan(scope)
@@ -993,6 +1106,10 @@ def _resolve_mode(argv: list[str]) -> str:
             return "install_generator_tools"
         if normalized in ("clear_preview_cache", "clear_cache", "clear_thumb_cache"):
             return "clear_preview_cache"
+        if normalized in ("validate_repair", "validation_repair"):
+            return "validate_repair"
+        if normalized in ("generator_diagnostics", "diagnostics"):
+            return "generator_diagnostics"
         if normalized.endswith(".py"):
             continue
         if normalized:
@@ -1032,5 +1149,9 @@ if __name__ == "__main__":
         run_install_generator_tools_dialog()
     elif mode == "clear_preview_cache":
         run_clear_preview_cache_dialog()
+    elif mode == "validate_repair":
+        run_validation_repair_dialog()
+    elif mode == "generator_diagnostics":
+        run_generator_diagnostics_dialog()
     else:
         _log(f"Unsupported mode {mode!r}; no action taken", xbmc.LOGERROR)

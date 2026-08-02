@@ -153,7 +153,7 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 
 - Local or NFS media files with Jellyfin trickplay sidecars (`Save trickplay with media` enabled in Jellyfin), **or** use the built-in generator (see below)
 - **Skin edit** to `DialogSeekBar.xml` (or `VideoFullScreen.xml` for Bello) — see above
-- **Pillow** — required for cropping preview cells and sidecar dimension probing. Auto-installed via **Install preview tools** when needed.
+- **Pillow** — used for cropping preview cells and sidecar dimension probing. Kodi/CoreELEC installations commonly already provide Pillow, so no download is normally required; **Install preview tools** offers a bundled copy only when the runtime cannot import it.
 - **ffmpeg** and **ffprobe** — required only for trickplay **generation** (and HDR tone mapping); auto-installed via **Install preview tools** when the generator or HDR tone mapping is enabled, batch **Run**, or manual install under `/storage/.kodi/system/ffmpeg/` (CoreELEC) / `addon_data/.../system/ffmpeg/` (Windows)
 
 ## Settings
@@ -196,7 +196,7 @@ Off by default. When disabled, all generator options are hidden.
 - **Generate while idle** — when Kodi is not playing video, generate one missing sidecar at a time from the library folder (background service)
 - **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
 - **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
-- **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default), or **Fast (batch seeks)** (several seeks per ffmpeg process with Fast fallback; biggest gains on local SDR; automatically uses **Fast** when HDR/DV tone mapping or hardware decode is active; legacy setting `experimental` maps here)
+- **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default; may use an fps decode pass per tile), **Fast seek (weaker devices)** (always one seek per thumbnail; recommended for Amlogic/CoreELEC, 4K, or network media), or **Fast (batch seeks)** (several seeks per ffmpeg process with Fast fallback; biggest gains on local SDR). Fast automatically avoids batch seeks when HDR/DV tone mapping or hardware decode is active; a failed fps-batch falls back to per-frame seek for the remaining tiles in that file.
 - **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Always visible in settings (even when the generator is off). Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Used for **generation only** (preview cropping uses Pillow). Use **Install preview tools** when the generator or HDR tone mapping is enabled, or batch **Run** when generating. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
 - **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires **zscale** or **libplacebo** in the generator ffmpeg. With tone mapping on, **Run** can prompt to download a pinned build if none is installed.
 - **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in generator ffmpeg `bin/` or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the generator tools folder.
@@ -207,6 +207,15 @@ Off by default. When disabled, all generator options are hidden.
 - **Generator thumbnail interval (ms)** — time between generated frames; included in the sidecar folder name (default `10000`, e.g. `320 - 10x10 - 1000`)
 - **Tile grid layout** — grid written into the sidecar folder name (e.g. `320 - 20x20 - 10000`); uses **Preferred tile width** and **Generator thumbnail interval**
 - **Run** (add-on Information page) — scan the library folder and generate all missing sidecars with a progress dialog. Use **Configure** first and press **OK** so settings are saved before **Run**.
+- **fps-batch timeout cap** — maximum time allowed for one continuous fps-batch tile decode. The default is safe for ordinary PCs; increase it for fast local storage or reduce it on weak/remote systems.
+
+### Validation / repair
+
+The **Validation/repair** category checks the currently configured tile width, grid, and interval. It verifies tile count, JPEG readability, dimensions, and expected frame capacity without changing valid sidecars. Missing, corrupt, or incomplete tiles are listed first; repair asks for confirmation and regenerates sidecars only for affected media.
+
+The category also includes **Show generator diagnostics**, which reports the selected ffmpeg build, available hardware accelerators, the selected decode backend, and why a backend such as `rkmpp` is not being used. Diagnostics are read-only.
+
+Batch generation ends with a summary showing successes, failures, cancelled state, elapsed time, generated tiles, and extraction fallbacks.
 
 Generation requires **write access** next to your media files. Pauses automatically during video playback.
 
