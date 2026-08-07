@@ -41,79 +41,6 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay.generator] {message}", level)
 
 
-def identify_ffmpeg_build(
-    ffmpeg: str,
-    env: dict[str, str] | None = None,
-) -> tuple[str, str]:
-    """
-    Return (vendor_label, version_line) from ``ffmpeg -version``.
-
-    vendor_label examples: jellyfin-ffmpeg, Gyan, BtbN, ffmpeg (unknown).
-    """
-    if not ffmpeg:
-        return "unknown", ""
-    try:
-        completed = subprocess.run(
-            [ffmpeg, "-hide_banner", "-version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            env=env,
-            **subprocess_hide_window_kwargs(),
-        )
-    except (OSError, subprocess.SubprocessError):
-        return "unknown", ""
-    text = f"{completed.stdout or ''}\n{completed.stderr or ''}"
-    first = ""
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped:
-            first = stripped
-            break
-    lower = text.lower()
-    if "jellyfin" in lower:
-        vendor = "jellyfin-ffmpeg"
-    elif "gyan.dev" in lower or "gyan" in lower:
-        vendor = "Gyan"
-    elif "btbn" in lower:
-        vendor = "BtbN"
-    else:
-        vendor = "ffmpeg"
-    return vendor, first
-
-
-def probe_ffmpeg_hwaccels_summary(
-    ffmpeg: str,
-    env: dict[str, str] | None = None,
-) -> str:
-    """Space-separated hwaccel names from ``ffmpeg -hwaccels`` (best-effort)."""
-    if not ffmpeg:
-        return ""
-    try:
-        completed = subprocess.run(
-            [ffmpeg, "-hide_banner", "-hwaccels"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            env=env,
-            **subprocess_hide_window_kwargs(),
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    text = f"{completed.stdout or ''}\n{completed.stderr or ''}"
-    names: list[str] = []
-    for line in text.splitlines():
-        name = line.strip().lower()
-        if not name or name.startswith("hardware") or " " in name:
-            continue
-        if name in names:
-            continue
-        names.append(name)
-    return " ".join(names)
-
-
 def _local_path(path: str) -> str:
     return _vfs_local_path(path)
 
@@ -132,7 +59,7 @@ def _program_path(directory: str, stem: str) -> str:
 
 
 def addon_ffmpeg_install_roots() -> tuple[str, ...]:
-    """Roots where this add-on installs downloaded ffmpeg builds (jellyfin-ffmpeg, legacy BtbN/Gyan)."""
+    """Roots where this add-on installs downloaded ffmpeg builds (BtbN Linux, Gyan Windows full)."""
     if sys.platform.startswith("win"):
         root = xbmcvfs.translatePath(
             f"special://profile/addon_data/{ADDON_FFMPEG_INSTALL_ID}/system/ffmpeg"
@@ -401,14 +328,6 @@ def resolve_generator_ffmpeg_tools(
         )
     else:
         env = build_generator_subprocess_env(selected_lib, selected_bin)
-        vendor, version_line = identify_ffmpeg_build(_gen_ffmpeg_bin, env)
-        if version_line:
-            _log(f"Generator ffmpeg build: {vendor} — {version_line}")
-        else:
-            _log(f"Generator ffmpeg build: {vendor} (version probe failed)")
-        hwaccels = probe_ffmpeg_hwaccels_summary(_gen_ffmpeg_bin, env)
-        if hwaccels:
-            _log(f"Generator ffmpeg hwaccels: {hwaccels}")
 
     _gen_env = env
     _gen_cache_key = cache_key

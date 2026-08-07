@@ -196,12 +196,16 @@ Off by default. When disabled, all generator options are hidden.
 - **Generate while idle** — when Kodi is not playing video, generate one missing sidecar at a time from the library folder (background service)
 - **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
 - **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
+<<<<<<< Updated upstream
 - **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default; may use an fps decode pass per tile), **Fast seek (weaker devices)** (always one seek per thumbnail; recommended for Amlogic/CoreELEC, 4K, or network media), or **Fast (batch seeks)** (several seeks per ffmpeg process with Fast fallback; biggest gains on local SDR). Fast automatically avoids batch seeks when HDR/DV tone mapping or hardware decode is active; a failed fps-batch falls back to per-frame seek for the remaining tiles in that file.
+=======
+- **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default), or **Fast (batch seeks)** (several seeks per ffmpeg process with Fast fallback; biggest gains on local SDR; automatically uses **Fast** when HDR/DV tone mapping or Windows D3D11VA decode is active; legacy setting `experimental` maps here)
+>>>>>>> Stashed changes
 - **Generator ffmpeg path** — optional; folder (e.g. `/storage/.kodi/system/ffmpeg/`) or `ffmpeg` binary. Always visible in settings (even when the generator is off). Leave empty to auto-use the default install folder when present, otherwise `PATH` / `/usr/bin/ffmpeg`. Used for **generation only** (preview cropping uses Pillow). Use **Install preview tools** when the generator or HDR tone mapping is enabled, or batch **Run** when generating. See [Custom ffmpeg for HDR generation](#custom-ffmpeg-for-hdr-generation) below.
 - **HDR tone mapping for previews** — optional; tone-maps HDR/DV to SDR when generating JPEGs (default off). Requires **zscale** or **libplacebo** in the generator ffmpeg. With tone mapping on, **Run** can prompt to download a pinned build if none is installed.
 - **HDR dovi_tool fallback** — optional sub-setting when tone mapping is on; runs `dovi_tool` if ffprobe finds no HDR signals (default off; place `dovi_tool` in generator ffmpeg `bin/` or on PATH, local files only). With fallback on, **Run** can prompt to download **dovi_tool 2.3.2** into the generator tools folder.
 - **Skip Dolby Vision Profile 5** — optional when tone mapping is on; skips web-style DV P5 files in batch (full dovi_tool convert is very slow on CoreELEC).
-- **Hardware decode (HDR HEVC)** — optional GPU decode for **10-bit / HDR / Dolby Vision HEVC** during thumbnail extraction. **Windows default:** D3D11VA → hwdownload. **Linux default:** prefer zero-copy VA-API → Vulkan (`vk@va`) → libplacebo when available, else VA-API → hwdownload. Optional **Prefer CUDA / NVDEC (NVIDIA)** uses CUDA decode → hwdownload on NVIDIA GPUs (jellyfin-ffmpeg). **Not a general “HW everything” switch:** 1080p H.264 SDR should stay on software decode. Applied only when ffprobe reports **HEVC** with 10-bit and/or HDR/DV. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses **jellyfin-ffmpeg** portable; override the Linux render node with `TRICKPLAY_VAAPI_DEVICE` (default: first `/dev/dri/renderD*`). No effect when probes fail (e.g. CoreELEC without VA-API/Vulkan).
+- **Windows hardware decode** — optional; on Windows only, uses D3D11VA GPU **10-bit / HDR / Dolby Vision HEVC** decode during thumbnail extraction (~25–30% faster on **4K HDR/DV** with the Gyan full ffmpeg build). **Not a general “HW everything” switch:** 1080p H.264 SDR and similar content should stay on software decode — per-frame GPU paths did not beat CPU in testing and can be slower on deep seeks into large remuxes. Applied only when ffprobe reports **HEVC** with 10-bit and/or HDR/DV; AVC and SDR 8-bit HEVC use software decode (with fps-batch per tile when the interval is above 5 s). After the first HW failure on a file, software decode is used for the rest of that job. Works with zscale and libplacebo (Vulkan) tonemapping. No effect on Linux or CoreELEC.
 - **Overwrite existing sidecars** — replace matching sidecar folders when already present (default off). Skips Jellyfin legacy folders such as `320 - 10x10/` (treated as 10000 ms) when generator settings match width, grid, and interval
 - **Library folder** — root path for batch and idle scans (must be writable for sidecar output). **Configure** the generator here, press **OK** to save, then use **Run** on the add-on’s Information page to start batch generation (not from inside Configure). If the path is empty or missing, batch generation opens the full Kodi folder browser and saves your selection. Prefer your OS mount path (e.g. `/storage/remote-shares/…`) when available — it is faster than `nfs://` URLs for generation.
 - **Generator thumbnail interval (ms)** — time between generated frames; included in the sidecar folder name (default `10000`, e.g. `320 - 10x10 - 1000`)
@@ -223,18 +227,17 @@ Generation requires **write access** next to your media files. Pauses automatica
 
 **Generator ffmpeg** (auto-installed or manual) includes **zscale** for HDR trickplay. Without it, HDR previews may look washed out until you install a capable build via batch **Run**.
 
-Pre-built releases: **[jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg/releases)** portable (primary auto-install). Legacy fallbacks: **[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)** (Linux) and **[Gyan CODEX ffmpeg](https://www.gyan.dev/ffmpeg/builds/)** (Windows).
+Pre-built releases: **[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)** (Linux) and **[Gyan CODEX ffmpeg](https://www.gyan.dev/ffmpeg/builds/)** (Windows).
 
 #### Which download?
 
 | Device / OS | Build | Notes |
 |---|---|---|
-| **x86_64** Linux / CoreELEC | jellyfin-ffmpeg `…_portable_linux64-gpl.tar.xz` | **zscale + libplacebo**; VA-API/Vulkan when host drivers allow |
-| **aarch64** Linux / CoreELEC | jellyfin-ffmpeg `…_portable_linuxarm64-gpl.tar.xz` | Same; Profile 5 may still use **dovi_tool** without Vulkan |
-| **Windows Kodi (x64)** | jellyfin-ffmpeg `…_portable_win64-clang-gpl.zip` | **zscale + libplacebo** + D3D11VA/Vulkan |
-| **Windows ARM64** | jellyfin-ffmpeg `…_portable_winarm64-clang-gpl.zip` | Same family; BtbN kept as install fallback |
+| CoreELEC / LibreELEC on **Ugoos AM9 Pro** and similar | BtbN `ffmpeg-…-linuxarm64-gpl-8.1.tar.xz` | Static **zscale**; Profile 5 uses **dovi_tool** |
+| **x86_64** Linux (Ryzen headless Kodi, etc.) | BtbN `ffmpeg-…-linux64-gpl-8.1.tar.xz` | Static **zscale** |
+| **Windows Kodi (x64)** | [Gyan `ffmpeg-8.1.1-full_build.zip`](https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip) | Static **zscale + libplacebo** (DV Profile 5 via Vulkan) |
 
-Archives are **flat** (`ffmpeg` / `ffprobe` at the root). On install failure the add-on retries legacy BtbN (Linux / Win ARM64) or Gyan full (Win x64).
+On **Linux / CoreELEC**, prefer **`-gpl-8.1`** static (not `-gpl-shared`). The shared tarball often exposes only `tonemap` on embedded Kodi even with `LD_LIBRARY_PATH` set.
 
 #### Automatic install (Install preview tools / batch Run)
 
@@ -245,16 +248,16 @@ On first playback with trickplay sidecars but no Pillow, the service may prompt 
 | Component | Auto-install source | Install location |
 |---|---|---|
 | **Pillow** (preview) | PyPI wheel (pinned) | `special://profile/addon_data/service.trickplay/system/python/site-packages/` |
-| **ffmpeg** (generation) — Linux / CoreELEC | [jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg/releases) portable (BtbN fallback) | `/storage/.kodi/system/ffmpeg/` (`bin/` has ffmpeg, ffprobe, optional **dovi_tool**) |
-| **ffmpeg** (generation) — Windows | jellyfin-ffmpeg portable (Gyan / BtbN fallback) | `special://profile/addon_data/service.trickplay/system/ffmpeg/` |
+| **ffmpeg** (generation) — CoreELEC / LibreELEC / Linux Kodi | BtbN **gpl-8.1** | `/storage/.kodi/system/ffmpeg/` (ffmpeg, ffprobe, **dovi_tool** in `bin/`) |
+| **ffmpeg** (generation) — Windows Kodi (x64) | Gyan **full build** zip (GitHub) | `special://profile/addon_data/service.trickplay/system/ffmpeg/` (`bin/` includes **dovi_tool.exe** when installed) |
 
 You can decline and continue without a capable ffmpeg (HDR previews may look washed out), or install manually using the steps below.
 
 When **HDR dovi_tool fallback** is enabled and `dovi_tool` is missing, **Run** offers to download **dovi_tool 2.3.2** into the generator ffmpeg **`bin/`** folder (same location as auto-installed ffmpeg — survives add-on updates).
 
-If an older **Gyan/BtbN** install is already HDR-capable, **Install preview tools** / **Install generator tools** / batch **Run** will **prompt to replace it** with jellyfin-ffmpeg (not a silent “already installed” toast). Decline keeps the legacy build. Generation logs `Generator ffmpeg build: jellyfin-ffmpeg — …` when the portable is active.
+Pinned **Linux** (autobuild-2026-06-13-13-31): [linuxarm64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linuxarm64-gpl-8.1.tar.xz), [linux64 gpl-8.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-13-13-31/ffmpeg-n8.1.1-13-g83e8541aa6-linux64-gpl-8.1.tar.xz).
 
-Pinned **jellyfin-ffmpeg** ([v8.1.2-2](https://github.com/jellyfin/jellyfin-ffmpeg/releases/tag/v8.1.2-2)): [linux64](https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v8.1.2-2/jellyfin-ffmpeg_8.1.2-2_portable_linux64-gpl.tar.xz), [linuxarm64](https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v8.1.2-2/jellyfin-ffmpeg_8.1.2-2_portable_linuxarm64-gpl.tar.xz), [win64](https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v8.1.2-2/jellyfin-ffmpeg_8.1.2-2_portable_win64-clang-gpl.zip), [winarm64](https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v8.1.2-2/jellyfin-ffmpeg_8.1.2-2_portable_winarm64-clang-gpl.zip).
+Pinned **Windows x64**: [Gyan ffmpeg-8.1.1-full_build.zip](https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip).
 
 Pinned **dovi_tool** (2.3.2): [linuxarm64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-aarch64-unknown-linux-musl.tar.gz), [linux64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-x86_64-unknown-linux-musl.tar.gz), [win64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-x86_64-pc-windows-msvc.zip), [winarm64](https://github.com/quietvoid/dovi_tool/releases/download/2.3.2/dovi_tool-2.3.2-aarch64-pc-windows-msvc.zip).
 
@@ -266,7 +269,7 @@ After download, verify on the device:
 
 On Windows, add the install `bin/` folder to `PATH` if needed before running the same check.
 
-You want **zscale** and/or **libplacebo**, not just `tonemap`. Re-run **Install preview tools** / **Run** if filters are missing.
+You want **zscale** and/or **libplacebo**, not just `tonemap`. If you only see `tonemap`, replace a broken **`-gpl-shared`** Linux install with **`-gpl`** (or re-run **Run** on add-on **3.0.10+**).
 
 #### Where to extract (CoreELEC / LibreELEC)
 
@@ -284,8 +287,8 @@ Default layout (auto-detected when **Generator ffmpeg path** is empty):
 
 Steps:
 
-1. Download the jellyfin-ffmpeg **portable** archive for your arch (or use **Install preview tools** / **Run**).
-2. Extract so `ffmpeg` and `ffprobe` land in `/storage/.kodi/system/ffmpeg/bin/` (portable archives are flat — copy the two binaries into `bin/`).
+1. Extract the **`-gpl`** tarball on a PC or on the box (Linux) or **`-gpl-shared`** zip (Windows).
+2. Copy the **`bin`** folder into `/storage/.kodi/system/ffmpeg/` (and **`lib`** on Windows).
 3. Make binaries executable: `chmod +x /storage/.kodi/system/ffmpeg/bin/ffmpeg /storage/.kodi/system/ffmpeg/bin/ffprobe` (and `dovi_tool` if installed manually)
 4. Leave **Generator ffmpeg path** empty (uses the folder above) or set it explicitly to `/storage/.kodi/system/ffmpeg/` or `/storage/.kodi/system/ffmpeg/bin/ffmpeg`.
 
@@ -295,27 +298,11 @@ The add-on logs the chosen binary at generation start, e.g. `Generator ffmpeg: �
 
 #### libplacebo + Vulkan on Windows and desktop Linux
 
-**jellyfin-ffmpeg portable** (auto-install) includes **libplacebo** and **zscale**. Dolby Vision Profile 5 uses **libplacebo + apply_dolbyvision** when Vulkan init succeeds (Windows install may bundle `vulkan-1.dll` beside ffmpeg). Enable **Hardware decode (HDR HEVC)** for **4K HDR/DV HEVC**; leave it off for typical 1080p H.264 libraries — software + fps-batch is better there.
+**Gyan full build** on Windows includes **libplacebo** and **zscale** in a static `bin/ffmpeg.exe`. Dolby Vision Profile 5 uses **libplacebo + apply_dolbyvision** when Vulkan init succeeds (install may bundle `vulkan-1.dll` beside ffmpeg). Enable **Windows hardware decode** for **4K HDR/DV HEVC** only (~25–30% faster there); leave it off or expect no benefit for 1080p H.264 libraries — software + fps-batch is the right path for those.
 
-On **Windows**, **Hardware decode** uses:
+BtbN **`-gpl-8.1`** on Linux is static with **zscale**; **libplacebo** may be absent. On **CoreELEC** there is usually no usable Vulkan stack; Profile 5 DV uses **dovi_tool + zscale** instead (no libplacebo). Hardware decode is Windows-only.
 
-1. **CUDA/NVDEC → hwdownload** when **Prefer CUDA / NVDEC (NVIDIA)** is on and CUDA probes OK
-2. Else **D3D11VA → `hwdownload,format=p010le`** → existing zscale/libplacebo filters
-3. **Software** after the first HW failure on a file (or when HW decode is off / ineligible)
-
-D3D11VA→Vulkan (`vk@dx`) zero-copy is not used (ffmpeg returns ENOSYS on current Windows builds).
-
-On **CoreELEC** without usable Vulkan, Profile 5 DV still uses **dovi_tool + zscale**. Linux hardware decode uses VA-API tiers when jellyfin-ffmpeg and host drivers support them.
-
-On **desktop Linux** with VA-API + Vulkan (e.g. AMD Mesa RADV), **Hardware decode** prefers:
-
-1. **Zero-copy:** VA-API decode → `vulkan=vk@va` → libplacebo tonemap → SDR JPEG
-2. **Download:** VA-API → `hwdownload,format=p010le` → existing zscale/libplacebo filters
-3. **Software** when probes fail
-
-Ensure `/dev/dri/renderD*` is accessible (or set `TRICKPLAY_VAAPI_DEVICE`), and install Mesa VA/Vulkan drivers (some distros need extra HEVC packages such as `mesa-va-drivers-freeworld`).
-
-If `-init_hw_device vulkan` fails even though `libvulkan` is installed, export the ICD path before starting Kodi (or in the service environment):
+On **desktop Linux** (e.g. headless Kodi on Ryzen with NVIDIA/AMD), if `-init_hw_device vulkan` fails even though `libvulkan` is installed, export the ICD path before starting Kodi (or in the service environment):
 
 ```bash
 export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json   # or amd_icd64.json, etc.
@@ -325,17 +312,11 @@ export VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d   # if needed
 Then verify:
 
 ```bash
-/path/to/ffmpeg -hide_banner -init_hw_device vulkan=vk \
-  -f lavfi -i nullsrc -frames:v 1 -f null -
-
-# Zero-copy interop (replace render node as needed):
-/path/to/ffmpeg -hide_banner \
-  -init_hw_device vaapi=va:/dev/dri/renderD128 \
-  -init_hw_device vulkan=vk@va \
+/storage/.kodi/system/ffmpeg/bin/ffmpeg -hide_banner -init_hw_device vulkan=vk \
   -f lavfi -i nullsrc -frames:v 1 -f null -
 ```
 
-Generator subprocesses inherit the Kodi process environment (`VK_*` vars are not stripped). The add-on logs a hint when Vulkan init fails but ICD configs are present on disk, and when VA-API/libplacebo/interop are missing for hardware decode.
+Generator subprocesses inherit the Kodi process environment (`VK_*` vars are not stripped). The add-on logs a hint when Vulkan init fails but ICD configs are present on disk.
 
 ## Installation
 

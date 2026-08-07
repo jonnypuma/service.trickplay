@@ -22,11 +22,9 @@ from ffmpeg_tools import (
     _layout_from_root,
     _local_path,
     _path_is_executable_file,
-    addon_ffmpeg_install_roots,
     build_generator_subprocess_env,
     default_dovi_tool_bin_dir,
     default_install_root,
-    identify_ffmpeg_build,
     invalidate_generator_ffmpeg_cache,
     migrate_legacy_dovi_tool_if_needed,
     subprocess_hide_window_kwargs,
@@ -40,28 +38,9 @@ from hdr_tone_map import (
     probe_vulkan_available,
 )
 
-# Primary: jellyfin-ffmpeg portable builds (VA-API/Vulkan/libplacebo/zscale).
-# https://github.com/jellyfin/jellyfin-ffmpeg/releases/tag/v8.1.2-2
-# Flat archive layout: ffmpeg(+.exe) and ffprobe(+.exe) at archive root (no bin/lib).
-_JELLYFIN_RELEASE = "v8.1.2-2"
-_JELLYFIN_BASE = (
-    f"https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/{_JELLYFIN_RELEASE}/"
-)
-_JELLYFIN_LINUX64_URL = (
-    f"{_JELLYFIN_BASE}jellyfin-ffmpeg_8.1.2-2_portable_linux64-gpl.tar.xz"
-)
-_JELLYFIN_LINUXARM64_URL = (
-    f"{_JELLYFIN_BASE}jellyfin-ffmpeg_8.1.2-2_portable_linuxarm64-gpl.tar.xz"
-)
-_JELLYFIN_WIN64_URL = (
-    f"{_JELLYFIN_BASE}jellyfin-ffmpeg_8.1.2-2_portable_win64-clang-gpl.zip"
-)
-_JELLYFIN_WINARM64_URL = (
-    f"{_JELLYFIN_BASE}jellyfin-ffmpeg_8.1.2-2_portable_winarm64-clang-gpl.zip"
-)
-
-# Legacy fallbacks (kept until jellyfin-ffmpeg is confirmed on all targets).
-# BtbN builds (autobuild-2026-06-13-13-31) — Linux zscale; Win ARM64 zscale only.
+# Pinned BtbN builds (autobuild-2026-06-13-13-31) — Linux only.
+# Linux: static gpl-8.1 (zscale; reliable on CoreELEC without lib/ / Vulkan).
+# Profile 5 without Vulkan uses dovi_tool + zscale instead.
 _BTBN_LINUX64_URL = (
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/"
     "autobuild-2026-06-13-13-31/"
@@ -73,10 +52,12 @@ _BTBN_LINUXARM64_URL = (
     "ffmpeg-n8.1.1-13-g83e8541aa6-linuxarm64-gpl-8.1.tar.xz"
 )
 # Windows x64: Gyan CODEX full build (static; zscale + libplacebo + Vulkan).
+# Pinned GitHub release zip — gyan.dev ffmpeg-release-full.zip does not exist.
 _GYAN_WIN64_URL = (
     "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/"
     "ffmpeg-8.1.1-full_build.zip"
 )
+# Windows ARM64: no Gyan build — fallback BtbN gpl-8.1 (zscale only).
 _BTBN_WINARM64_URL = (
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/"
     "autobuild-2026-06-13-13-31/"
@@ -312,37 +293,17 @@ def prompt_and_install_vulkan_loader(
     return True
 
 
-def _ffmpeg_download_candidates_for_platform() -> list[tuple[str, str]]:
-    """Ordered (url, label) list: jellyfin-ffmpeg first, then legacy fallbacks."""
+def _ffmpeg_download_url_for_platform() -> str | None:
     machine = platform.machine().lower()
     if sys.platform.startswith("win"):
         if machine in ("aarch64", "arm64"):
-            return [
-                (_JELLYFIN_WINARM64_URL, "jellyfin-ffmpeg portable winarm64"),
-                (_BTBN_WINARM64_URL, "BtbN gpl-8.1 winarm64 (fallback)"),
-            ]
-        return [
-            (_JELLYFIN_WIN64_URL, "jellyfin-ffmpeg portable win64"),
-            (_GYAN_WIN64_URL, "Gyan full 8.1.1 (fallback)"),
-        ]
+            return _BTBN_WINARM64_URL
+        return _GYAN_WIN64_URL
     if machine in ("aarch64", "arm64"):
-        return [
-            (_JELLYFIN_LINUXARM64_URL, "jellyfin-ffmpeg portable linuxarm64"),
-            (_BTBN_LINUXARM64_URL, "BtbN gpl-8.1 linuxarm64 (fallback)"),
-        ]
-    if machine in ("x86_64", "amd64"):
-        return [
-            (_JELLYFIN_LINUX64_URL, "jellyfin-ffmpeg portable linux64"),
-            (_BTBN_LINUX64_URL, "BtbN gpl-8.1 linux64 (fallback)"),
-        ]
-    # i686/i386: no jellyfin portable; keep BtbN if we ever map one (none today).
-    return []
-
-
-def _ffmpeg_download_url_for_platform() -> str | None:
-    """Primary download URL for this platform (jellyfin-ffmpeg when available)."""
-    candidates = _ffmpeg_download_candidates_for_platform()
-    return candidates[0][0] if candidates else None
+        return _BTBN_LINUXARM64_URL
+    if machine in ("x86_64", "amd64", "i686", "i386"):
+        return _BTBN_LINUX64_URL
+    return None
 
 
 def _dovi_tool_download_url_for_platform() -> str | None:
@@ -407,23 +368,18 @@ def generator_ffmpeg_has_libplacebo(custom_path: str = "") -> bool:
     return ffmpeg_has_libplacebo(ffmpeg, env)
 
 
-def _windows_libplacebo_preferred() -> bool:
-    """True on Windows x64 where libplacebo is preferred for DV when Vulkan works."""
+def _windows_gyan_full_target() -> bool:
+    """True on Windows x64 where Gyan full (libplacebo) is the auto-install target."""
     if not sys.platform.startswith("win"):
         return False
     return platform.machine().lower() not in ("aarch64", "arm64")
-
-
-def _windows_gyan_full_target() -> bool:
-    """Back-compat alias; Win x64 prefers a libplacebo-capable build."""
-    return _windows_libplacebo_preferred()
 
 
 def generator_ffmpeg_is_fully_hdr_capable(custom_path: str = "") -> bool:
     """True when generator ffmpeg meets platform HDR requirements (libplacebo on Win x64 + Vulkan)."""
     if not generator_ffmpeg_is_hdr_capable(custom_path):
         return False
-    if _windows_libplacebo_preferred() and _generator_vulkan_available(custom_path):
+    if _windows_gyan_full_target() and _generator_vulkan_available(custom_path):
         return generator_ffmpeg_has_libplacebo(custom_path)
     return True
 
@@ -441,7 +397,7 @@ def install_root_is_fully_hdr_capable(install_root: str | None = None) -> bool:
     root = install_root or default_install_root()
     if not install_root_is_hdr_capable(root):
         return False
-    if not _windows_libplacebo_preferred():
+    if not _windows_gyan_full_target():
         return True
     ffmpeg, _, lib_dir = _layout_from_root(root)
     local_ffmpeg = _local_path(ffmpeg) or ffmpeg
@@ -477,55 +433,6 @@ def should_offer_hdr_ffmpeg_download(
     return True
 
 
-def _resolved_ffmpeg_under_addon_install(custom_ffmpeg_path: str = "") -> bool:
-    """True when the resolved generator ffmpeg lives under the add-on install root."""
-    from ffmpeg_tools import resolve_generator_ffmpeg_tools
-
-    ffmpeg, _, _ = resolve_generator_ffmpeg_tools(custom_ffmpeg_path)
-    if not ffmpeg:
-        return False
-    local = os.path.normcase(os.path.abspath(_local_path(ffmpeg) or ffmpeg))
-    for root in addon_ffmpeg_install_roots():
-        root_local = os.path.normcase(os.path.abspath(_local_path(root) or root))
-        try:
-            if os.path.commonpath([local, root_local]) == root_local:
-                return True
-        except ValueError:
-            continue
-    return False
-
-
-def generator_ffmpeg_vendor(custom_path: str = "") -> str:
-    """Vendor label from ``ffmpeg -version`` (jellyfin-ffmpeg / Gyan / BtbN / …)."""
-    from ffmpeg_tools import resolve_generator_ffmpeg_tools
-
-    ffmpeg, _, env = resolve_generator_ffmpeg_tools(custom_path)
-    if not ffmpeg:
-        return "unknown"
-    vendor, _ = identify_ffmpeg_build(ffmpeg, env)
-    return vendor
-
-
-def generator_ffmpeg_is_jellyfin(custom_path: str = "") -> bool:
-    return generator_ffmpeg_vendor(custom_path) == "jellyfin-ffmpeg"
-
-
-def should_offer_jellyfin_ffmpeg_upgrade(custom_ffmpeg_path: str = "") -> bool:
-    """
-    Offer replacing a legacy Gyan/BtbN (or unknown) add-on install with jellyfin-ffmpeg.
-
-    Skips when no ffmpeg is resolved yet (base install handles that), when ffmpeg is
-    already jellyfin-ffmpeg, or when a custom path points outside the add-on install.
-    """
-    if not _ffmpeg_download_url_for_platform():
-        return False
-    if should_offer_ffmpeg_download(custom_ffmpeg_path):
-        return False
-    if not _resolved_ffmpeg_under_addon_install(custom_ffmpeg_path):
-        return False
-    return not generator_ffmpeg_is_jellyfin(custom_ffmpeg_path)
-
-
 def generator_install_tools_needed(
     *,
     hdr_tone_map_enabled: bool,
@@ -534,8 +441,6 @@ def generator_install_tools_needed(
 ) -> bool:
     """True when generator ffmpeg/HDR/dovi auto-install may still be required."""
     if should_offer_ffmpeg_download(custom_ffmpeg_path):
-        return True
-    if should_offer_jellyfin_ffmpeg_upgrade(custom_ffmpeg_path):
         return True
     if should_offer_hdr_ffmpeg_download(hdr_tone_map_enabled, custom_ffmpeg_path):
         return True
@@ -733,15 +638,18 @@ def _verify_installed(install_root: str) -> tuple[bool, str]:
     if not is_hdr_capable_tonemap_mode(mode):
         return False, (
             f"installed ffmpeg lacks zscale/libplacebo filters (detected: {mode}); "
-            "install jellyfin-ffmpeg portable (or legacy Gyan/BtbN) via Run / "
-            "Install preview tools"
+            + (
+                "install Gyan ffmpeg-8.1.1-full_build on Windows or BtbN gpl-8.1 on Linux"
+                if sys.platform.startswith("win")
+                else "install a BtbN gpl-8.1 build with zscale"
+            )
         )
     if vulkan_ok and has_lp:
         _log("HDR ffmpeg verified (zscale + libplacebo, Vulkan available)")
-    elif vulkan_ok and _windows_libplacebo_preferred():
+    elif vulkan_ok and _windows_gyan_full_target():
         return False, (
             "installed ffmpeg lacks libplacebo filter (required on Windows for "
-            "Dolby Vision via Vulkan); re-run Run to install jellyfin-ffmpeg portable"
+            "Dolby Vision via Vulkan); re-run Run to install Gyan full build"
         )
     elif vulkan_ok:
         _log(
@@ -799,51 +707,14 @@ def install_hdr_ffmpeg(
     progress: Callable[[int, str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> tuple[bool, str]:
-    """Download HDR ffmpeg into install_root. Returns (ok, detail).
-
-    Tries jellyfin-ffmpeg portable first, then legacy BtbN/Gyan fallbacks.
-    """
+    """Download HDR ffmpeg into install_root. Returns (ok, detail)."""
     root = install_root or default_install_root()
     local_root = _local_path(root)
-    candidates = _ffmpeg_download_candidates_for_platform()
-    if not candidates:
+    url = _ffmpeg_download_url_for_platform()
+    if not url:
         return False, f"unsupported platform ({sys.platform} / {platform.machine()})"
 
     os.makedirs(local_root, exist_ok=True)
-    last_error = "no candidates"
-    for index, (url, label) in enumerate(candidates):
-        if should_cancel and should_cancel():
-            return False, "cancelled"
-        ok, detail = _install_hdr_ffmpeg_from_url(
-            root,
-            local_root,
-            url,
-            label,
-            progress=progress,
-            should_cancel=should_cancel,
-        )
-        if ok:
-            return True, detail
-        last_error = detail
-        if index + 1 < len(candidates):
-            next_label = candidates[index + 1][1]
-            _log(
-                f"HDR ffmpeg install via {label} failed ({detail}); "
-                f"trying fallback {next_label}",
-                xbmc.LOGWARNING,
-            )
-    return False, last_error
-
-
-def _install_hdr_ffmpeg_from_url(
-    root: str,
-    local_root: str,
-    url: str,
-    label: str,
-    *,
-    progress: Callable[[int, str], None] | None = None,
-    should_cancel: Callable[[], bool] | None = None,
-) -> tuple[bool, str]:
     temp_dir = tempfile.mkdtemp(prefix="trickplay_ffmpeg_dl_")
     archive_name = os.path.basename(url.split("?")[0])
     archive_path = os.path.join(temp_dir, archive_name)
@@ -851,8 +722,8 @@ def _install_hdr_ffmpeg_from_url(
 
     try:
         if progress:
-            progress(0, f"Downloading HDR ffmpeg ({label})…")
-        _log(f"Downloading HDR ffmpeg ({label}) from {url}")
+            progress(0, "Downloading HDR ffmpeg…")
+        _log(f"Downloading HDR ffmpeg from {url}")
         _download_file(url, archive_path, progress=progress, should_cancel=should_cancel)
         if should_cancel and should_cancel():
             return False, "cancelled"
@@ -904,10 +775,10 @@ def _install_hdr_ffmpeg_from_url(
                             "for libplacebo / future HDR use"
                         )
                 invalidate_generator_ffmpeg_cache()
-        _log(f"HDR ffmpeg installed at {local_root} via {label} ({detail})")
+        _log(f"HDR ffmpeg installed at {local_root} ({detail})")
         return True, detail
     except (OSError, urllib.error.URLError, tarfile.TarError, zipfile.BadZipFile, RuntimeError) as exc:
-        _log(f"HDR ffmpeg install via {label} failed: {exc}", xbmc.LOGWARNING)
+        _log(f"HDR ffmpeg install failed: {exc}", xbmc.LOGWARNING)
         return False, str(exc)
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1124,43 +995,6 @@ def prompt_and_install_hdr_ffmpeg(
     )
 
 
-def prompt_and_install_jellyfin_ffmpeg_upgrade(
-    *,
-    custom_ffmpeg_path: str = "",
-    title: str,
-    prompt_yes: str,
-    prompt_no: str,
-    download_yes: str,
-    progress_title: str,
-    unsupported_message: str,
-    failed_message: str,
-    success_message: str,
-) -> bool:
-    """Offer replacing a legacy add-on ffmpeg (Gyan/BtbN) with jellyfin-ffmpeg portable."""
-    if not should_offer_jellyfin_ffmpeg_upgrade(custom_ffmpeg_path):
-        return True
-    vendor = generator_ffmpeg_vendor(custom_ffmpeg_path)
-    _log(
-        f"Offering jellyfin-ffmpeg upgrade (current build: {vendor})",
-        xbmc.LOGINFO,
-    )
-    return _prompt_and_install_ffmpeg_build(
-        title=title,
-        prompt_yes=prompt_yes,
-        prompt_no=prompt_no,
-        download_yes=download_yes,
-        progress_title=progress_title,
-        unsupported_message=unsupported_message,
-        failed_message=failed_message,
-        success_message=success_message,
-        declined_log=(
-            f"jellyfin-ffmpeg upgrade declined; keeping existing {vendor} build"
-        ),
-        cancelled_log="jellyfin-ffmpeg upgrade cancelled by user",
-        failed_log="jellyfin-ffmpeg upgrade failed",
-    )
-
-
 def prompt_and_install_dovi_tool(
     *,
     hdr_dovi_tool_fallback_enabled: bool,
@@ -1265,8 +1099,6 @@ def prompt_and_install_generator_tools(
     dovi_success_message: str,
     vulkan_prompt_yes: str = "",
     vulkan_success_message: str = "",
-    jellyfin_upgrade_prompt_yes: str = "",
-    jellyfin_upgrade_success_message: str = "",
 ) -> bool:
     """Offer ffmpeg, HDR extras, Vulkan loader (Windows), and dovi_tool downloads."""
     prompt_and_install_base_ffmpeg(
@@ -1279,22 +1111,6 @@ def prompt_and_install_generator_tools(
         unsupported_message=ffmpeg_unsupported_message,
         failed_message=base_ffmpeg_failed_message,
         success_message=base_ffmpeg_success_message,
-    )
-    prompt_and_install_jellyfin_ffmpeg_upgrade(
-        custom_ffmpeg_path=custom_ffmpeg_path,
-        title=title,
-        prompt_yes=jellyfin_upgrade_prompt_yes or (
-            "A legacy ffmpeg (Gyan/BtbN) is installed. Replace it with "
-            "jellyfin-ffmpeg portable for better HDR / hardware decode support?\n\n"
-            "Install location: %s"
-        ),
-        prompt_no=prompt_no,
-        download_yes=download_yes,
-        progress_title=hdr_ffmpeg_progress_title,
-        unsupported_message=ffmpeg_unsupported_message,
-        failed_message=hdr_ffmpeg_failed_message,
-        success_message=jellyfin_upgrade_success_message
-        or hdr_ffmpeg_success_message,
     )
     vulkan_prompt = vulkan_prompt_yes or (
         "Vulkan (vulkan-1.dll) is missing. Install the Vulkan loader next to ffmpeg?\n\n"

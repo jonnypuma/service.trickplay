@@ -27,8 +27,3 @@ desktop.ini
 *.log
 *.tmp
 .cursor/
-
-# Large local ffmpeg fixtures (see LAYOUT.md in that folder)
-tests/fixtures/jellyfin-ffmpeg-*/**/*.tar.xz
-tests/fixtures/jellyfin-ffmpeg-*/**/*.zip
-tests/fixtures/jellyfin-ffmpeg-*/_unpacked/

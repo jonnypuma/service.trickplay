@@ -522,12 +522,17 @@ msgid "Vulkan loader installed (%s)."
 msgstr "Vulkan-laddare installerad (%s)."
 
 msgctxt "#32120"
-msgid "Hardware decode (HDR HEVC)"
-msgstr "Hardware decode (HDR HEVC)"
+msgid "Windows hardware decode"
+msgstr "Windows hårdvaruavkodning"
 
 msgctxt "#32121"
+<<<<<<< Updated upstream
 msgid "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA→hwdownload (or CUDA/NVDEC when enabled). Linux: prefers zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload (or CUDA when enabled). Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable; legacy BtbN/Gyan kept as fallback."
 msgstr "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA→hwdownload (or CUDA/NVDEC when enabled). Linux: prefers zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload (or CUDA when enabled). Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable; legacy BtbN/Gyan kept as fallback."
+=======
+msgid "On Windows only: D3D11VA (GPU) for 10-bit / HDR / Dolby Vision HEVC (~25–30% faster on 4K HDR/DV). Not for general use — 1080p H.264 SDR should use software decode (often faster, especially on deep seeks); long-interval SDR uses fps-batch per tile. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). No effect on Linux or CoreELEC."
+msgstr "Endast på Windows: D3D11VA (GPU) för 10-bit / HDR / Dolby Vision HEVC (~25–30% snabbare på 4K HDR/DV). Inte för allmänt bruk — 1080p H.264 SDR bör använda programvaruavkodning (ofta snabbare, särskilt vid djupa sökningar); långintervall SDR använder fps-batch per brick. Hoppas över för AVC och SDR 8-bit HEVC. Efter första HW-felet på en fil används programvaruavkodning för resten av det jobbet. Kräver en fullständig Windows ffmpeg-build (t.ex. Gyan full från Kör). Ingen effekt på Linux eller CoreELEC."
+>>>>>>> Stashed changes
 
 msgctxt "#32122"
 msgid "Preview tools"

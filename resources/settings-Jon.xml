@@ -1,0 +1,1280 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+
+<settings version="1">
+
+    <section id="service.trickplay">
+
+        <category id="general" label="32000">
+
+            <group id="g0" label="32122">
+
+                <setting id="install_pillow" type="action" label="32172" help="32173">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_pillow)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_generator_tools" type="action" label="32174" help="32175">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_generator_tools)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_tools" type="action" label="32176" help="32177">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_tools)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="addon_status" type="action" label="32211" help="32212">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,addon_status)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_skin_snippet_current" type="action" label="32154" help="32155">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_skin,current)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_skin_snippet_force" type="action" label="32214" help="32215">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_skin,current,force)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="install_skin_snippet_all" type="action" label="32156" help="32157">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,install_skin,all)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="restore_skin_snippet_current" type="action" label="32178" help="32179">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,restore_skin,current)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="restore_skin_snippet_all" type="action" label="32194" help="32195">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,restore_skin,all)</data>
+
+                    </control>
+
+                </setting>
+
+            </group>
+
+            <group id="g1" label="32001">
+
+                <setting id="preferred_width" type="integer" label="32002" help="32003">
+
+                    <level>0</level>
+
+                    <default>320</default>
+
+                    <constraints>
+
+                        <minimum>120</minimum>
+
+                        <maximum>3840</maximum>
+
+                        <step>10</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32002</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="display_tile_grid" type="string" label="32042" help="32043">
+
+                    <level>0</level>
+
+                    <default>auto</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32072">auto</option>
+
+                            <option label="32044">10x10</option>
+
+                            <option label="32045">20x20</option>
+
+                            <option label="32046">5x5</option>
+
+                            <option label="32047">15x15</option>
+
+                            <option label="32041">custom</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32042</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="display_tile_grid_custom" type="string" label="32012" help="32013">
+
+                    <level>0</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <allowempty>false</allowempty>
+
+                    </constraints>
+
+                    <control type="edit" format="string">
+
+                        <heading>32012</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="display_tile_grid">custom</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="auto_tile_calculation" type="boolean" label="32010" help="32011">
+
+                    <level>4</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="display_tile_grid_preset" type="string" label="32042" help="32043">
+
+                    <level>4</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <allowempty>false</allowempty>
+
+                    </constraints>
+
+                    <control type="edit" format="string"/>
+
+                </setting>
+
+                <setting id="manual_tile_grid" type="string" label="32012" help="32013">
+
+                    <level>4</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <allowempty>false</allowempty>
+
+                    </constraints>
+
+                    <control type="edit" format="string"/>
+
+                </setting>
+
+                <setting id="interval_ms" type="integer" label="32004" help="32005">
+
+                    <level>0</level>
+
+                    <default>10000</default>
+
+                    <constraints>
+
+                        <minimum>1000</minimum>
+
+                        <maximum>60000</maximum>
+
+                        <step>1000</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32004</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="interval_preference" type="string" label="32089" help="32090">
+
+                    <level>0</level>
+
+                    <default>preferred</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32091">preferred</option>
+
+                            <option label="32092">shortest</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32089</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="poll_ms" type="integer" label="32006" help="32007">
+
+                    <level>1</level>
+
+                    <default>100</default>
+
+                    <constraints>
+
+                        <minimum>50</minimum>
+
+                        <maximum>1000</maximum>
+
+                        <step>50</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32006</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="debug_logging" type="boolean" label="32008" help="32009">
+
+                    <level>2</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="skin_profile" type="string" label="32014" help="32015">
+
+                    <level>0</level>
+
+                    <default>auto</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32016">auto</option>
+
+                            <option label="32017">estuary_modv2</option>
+
+                            <option label="32018">arctic_fuse_3</option>
+
+                            <option label="32202">arctic_fuse_2</option>
+
+                            <option label="32141">aeon_nox_silvo</option>
+
+                            <option label="32142">arctic_zephyr</option>
+
+                            <option label="32143">arctic_horizon</option>
+
+                            <option label="32203">arctic_horizon_2</option>
+
+                            <option label="32206">arctic_horizon_2_1_arizen</option>
+
+                            <option label="32204">arctic_zephyr_2_resurrection</option>
+
+                            <option label="32208">arctic_zephyr_rounded</option>
+
+                            <option label="32205">bello</option>
+
+                            <option label="32207">bingie</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32014</heading>
+
+                    </control>
+
+                </setting>
+
+            </group>
+
+            <group id="g2" label="32037">
+
+                <setting id="prefetch_enabled" type="boolean" label="32023" help="32024">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="prefetch_on_start" type="boolean" label="32025" help="32026">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_during_playback" type="boolean" label="32200" help="32201">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_whole_tile" type="boolean" label="32027" help="32028">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_idle_tile" type="boolean" label="32029" help="32030">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_radius" type="integer" label="32031" help="32032">
+
+                    <level>0</level>
+
+                    <default>5</default>
+
+                    <constraints>
+
+                        <minimum>1</minimum>
+
+                        <maximum>15</maximum>
+
+                        <step>1</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32031</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="prefetch_max_queue" type="integer" label="32033" help="32034">
+
+                    <level>1</level>
+
+                    <default>48</default>
+
+                    <constraints>
+
+                        <minimum>8</minimum>
+
+                        <maximum>200</maximum>
+
+                        <step>8</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32033</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="prefetch_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="cache_max_mb" type="integer" label="32035" help="32036">
+
+                    <level>1</level>
+
+                    <default>500</default>
+
+                    <constraints>
+
+                        <minimum>0</minimum>
+
+                        <maximum>5000</maximum>
+
+                        <step>50</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32035</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="cache_jpeg_quality" type="integer" label="32216" help="32217">
+
+                    <level>1</level>
+
+                    <default>90</default>
+
+                    <constraints>
+
+                        <minimum>50</minimum>
+
+                        <maximum>95</maximum>
+
+                        <step>5</step>
+
+                    </constraints>
+
+                    <control type="slider" format="integer">
+
+                        <heading>32216</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="clear_preview_cache" type="action" label="32218" help="32219">
+
+                    <level>1</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,clear_preview_cache)</data>
+
+                    </control>
+
+                </setting>
+
+            </group>
+
+            <group id="g3" label="32040">
+
+                <setting id="generator_enabled" type="boolean" label="32050" help="32051">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="generator_while_idle" type="boolean" label="32052" help="32053">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_on_library_update" type="boolean" label="32084" help="32085">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_on_library_update_while_idle" type="boolean" label="32086" help="32087">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                            <condition setting="generator_on_library_update">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_overwrite_existing" type="boolean" label="32054" help="32055">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_extract_mode" type="string" label="32076" help="32077">
+
+                    <level>0</level>
+
+                    <default>fast</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32080">accurate</option>
+
+                            <option label="32081">fast</option>
+
+                            <option label="32230">fast_seek</option>
+
+                            <option label="32082">batch_seeks</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32076</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_fps_batch_timeout_cap" type="integer" label="32231" help="32232">
+
+                    <level>0</level>
+
+                    <default>900</default>
+
+                    <constraints>
+
+                        <minimum>180</minimum>
+
+                        <maximum>3600</maximum>
+
+                        <step>60</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32231</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_ffmpeg_path" type="path" label="32097" help="32098">
+
+                    <level>0</level>
+
+                    <default></default>
+
+                    <constraints>
+
+                        <allowempty>true</allowempty>
+
+                        <writable>false</writable>
+
+                    </constraints>
+
+                    <control type="button" format="path">
+
+                        <heading>32097</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="generator_hdr_tone_map" type="boolean" label="32093" help="32094">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_hdr_dovi_tool_fallback" type="boolean" label="32095" help="32096">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                            <condition setting="generator_hdr_tone_map">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_skip_dv_profile_5" type="boolean" label="32114" help="32115">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                            <condition setting="generator_hdr_tone_map">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_hw_decode" type="boolean" label="32120" help="32121">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_hw_decode_cuda" type="boolean" label="32227" help="32228">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <and>
+
+                                <condition setting="generator_enabled">true</condition>
+
+                                <condition setting="generator_hw_decode">true</condition>
+
+                            </and>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_stop_on_failure" type="boolean" label="32078" help="32079">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_batch_background" type="boolean" label="32111" help="32112">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_library_path" type="path" label="32056" help="32057">
+
+                    <level>0</level>
+
+                    <default/>
+
+                    <constraints>
+
+                        <allowempty>true</allowempty>
+
+                        <writable>false</writable>
+
+                    </constraints>
+
+                    <control type="button" format="path">
+
+                        <heading>32056</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_interval_ms" type="integer" label="32074" help="32075">
+
+                    <level>0</level>
+
+                    <default>10000</default>
+
+                    <constraints>
+
+                        <minimum>1000</minimum>
+
+                        <maximum>60000</maximum>
+
+                        <step>1000</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32074</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_tile_grid_preset" type="string" label="32073" help="32058">
+
+                    <level>0</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <options>
+
+                            <option label="32044">10x10</option>
+
+                            <option label="32045">20x20</option>
+
+                            <option label="32046">5x5</option>
+
+                            <option label="32047">15x15</option>
+
+                            <option label="32041">custom</option>
+
+                        </options>
+
+                    </constraints>
+
+                    <control type="list" format="string">
+
+                        <heading>32073</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <condition setting="generator_enabled">true</condition>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+                <setting id="generator_tile_grid_custom" type="string" label="32012" help="32013">
+
+                    <level>0</level>
+
+                    <default>10x10</default>
+
+                    <constraints>
+
+                        <allowempty>false</allowempty>
+
+                    </constraints>
+
+                    <control type="edit" format="string">
+
+                        <heading>32012</heading>
+
+                    </control>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <and>
+
+                                <condition setting="generator_enabled">true</condition>
+
+                                <condition setting="generator_tile_grid_preset">custom</condition>
+
+                            </and>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
+            </group>
+
+        </category>
+
+        <category id="validation_repair" label="32233">
+
+            <group id="g_validation" label="32233">
+
+                <setting id="validate_repair" type="action" label="32234" help="32235">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,validate_repair)</data>
+
+                    </control>
+
+                </setting>
+
+                <setting id="generator_diagnostics" type="action" label="32237" help="32238">
+
+                    <level>0</level>
+
+                    <control type="button" format="action">
+
+                        <data>RunScript(service.trickplay,generator_diagnostics)</data>
+
+                    </control>
+
+                </setting>
+
+            </group>
+
+        </category>
+
+        <category id="preview_adjustment" label="32136">
+
+            <group id="g_preview" label="32136">
+
+                <setting id="preview_scale_percent" type="integer" label="32137" help="32138">
+
+                    <level>0</level>
+
+                    <default>100</default>
+
+                    <constraints>
+
+                        <minimum>50</minimum>
+
+                        <maximum>200</maximum>
+
+                        <step>5</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32137</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="preview_offset_x" type="integer" label="32139" help="32144">
+
+                    <level>0</level>
+
+                    <default>0</default>
+
+                    <constraints>
+
+                        <minimum>-200</minimum>
+
+                        <maximum>200</maximum>
+
+                        <step>5</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32139</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="preview_offset_y" type="integer" label="32145" help="32146">
+
+                    <level>0</level>
+
+                    <default>0</default>
+
+                    <constraints>
+
+                        <minimum>-200</minimum>
+
+                        <maximum>200</maximum>
+
+                        <step>5</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32145</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="preview_hold_seconds" type="integer" label="32019" help="32020">
+
+                    <level>0</level>
+
+                    <default>4</default>
+
+                    <constraints>
+
+                        <minimum>0</minimum>
+
+                        <maximum>10</maximum>
+
+                        <step>1</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32019</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="show_timestamp" type="boolean" label="32021" help="32022">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+                <setting id="preview_opacity" type="integer" label="32038" help="32039">
+
+                    <level>0</level>
+
+                    <default>100</default>
+
+                    <constraints>
+
+                        <minimum>0</minimum>
+
+                        <maximum>100</maximum>
+
+                        <step>5</step>
+
+                    </constraints>
+
+                    <control type="edit" format="integer">
+
+                        <heading>32038</heading>
+
+                    </control>
+
+                </setting>
+
+                <setting id="preview_show_during_play_controls" type="boolean" label="32147" help="32148">
+
+                    <level>0</level>
+
+                    <default>true</default>
+
+                    <control type="toggle"/>
+
+                </setting>
+
+            </group>
+
+        </category>
+
+    </section>
+
+</settings>
+

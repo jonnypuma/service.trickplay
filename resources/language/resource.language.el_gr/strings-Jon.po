@@ -522,17 +522,12 @@ msgid "Vulkan loader installed (%s)."
 msgstr "Ο φορτωτής Vulkan εγκαταστάθηκε (%s)."
 
 msgctxt "#32120"
-msgid "Windows hardware decode"
-msgstr "Αποκωδικοποίηση υλικού Windows"
+msgid "Hardware decode (HDR HEVC)"
+msgstr "Hardware decode (HDR HEVC)"
 
 msgctxt "#32121"
-<<<<<<< Updated upstream
 msgid "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA→hwdownload (or CUDA/NVDEC when enabled). Linux: prefers zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload (or CUDA when enabled). Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable; legacy BtbN/Gyan kept as fallback."
 msgstr "GPU decode for 10-bit / HDR / Dolby Vision HEVC during thumbnail extraction. Windows: D3D11VA→hwdownload (or CUDA/NVDEC when enabled). Linux: prefers zero-copy VA-API→Vulkan→libplacebo when available, else VA-API→hwdownload (or CUDA when enabled). Not for general use — 1080p H.264 SDR should use software decode. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Auto-install uses jellyfin-ffmpeg portable; legacy BtbN/Gyan kept as fallback."
-=======
-msgid "On Windows only: D3D11VA (GPU) for 10-bit / HDR / Dolby Vision HEVC (~25–30% faster on 4K HDR/DV). Not for general use — 1080p H.264 SDR should use software decode (often faster, especially on deep seeks); long-interval SDR uses fps-batch per tile. Skipped for AVC and SDR 8-bit HEVC. After the first HW failure on a file, software decode is used for the rest of that job. Requires a full Windows ffmpeg build (e.g. Gyan full from Run). No effect on Linux or CoreELEC."
-msgstr "Μόνο στα Windows: D3D11VA (GPU) για HEVC 10-bit / HDR / Dolby Vision (~25–30% ταχύτερο σε 4K HDR/DV). Όχι για γενική χρήση — 1080p H.264 SDR θα πρέπει να χρησιμοποιεί αποκωδικοποίηση λογισμικού (συχνά ταχύτερη, ειδικά σε βαθιές αναζητήσεις)· SDR μεγάλου διαστήματος χρησιμοποιεί fps-batch ανά πλακίδιο. Παραλείπεται για AVC και SDR HEVC 8-bit. Μετά την πρώτη αποτυχία HW σε ένα αρχείο, χρησιμοποιείται αποκωδικοποίηση λογισμικού για το υπόλοιπο αυτής της εργασίας. Απαιτεί πλήρη έκδοση ffmpeg Windows (π.χ. Gyan full από Εκτέλεση). Χωρίς επίδραση σε Linux ή CoreELEC."
->>>>>>> Stashed changes
 
 msgctxt "#32122"
 msgid "Preview tools"
