@@ -880,6 +880,32 @@
 
                 </setting>
 
+                <setting id="generator_hw_decode_cuda" type="boolean" label="32227" help="32228">
+
+                    <level>0</level>
+
+                    <default>false</default>
+
+                    <control type="toggle"/>
+
+                    <dependencies>
+
+                        <dependency type="visible">
+
+                            <and>
+
+                                <condition setting="generator_enabled">true</condition>
+
+                                <condition setting="generator_hw_decode">true</condition>
+
+                            </and>
+
+                        </dependency>
+
+                    </dependencies>
+
+                </setting>
+
                 <setting id="generator_stop_on_failure" type="boolean" label="32078" help="32079">
 
                     <level>0</level>

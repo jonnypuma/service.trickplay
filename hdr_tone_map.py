@@ -46,6 +46,17 @@ _DOVI_PROBE_TIMEOUT_SEC = 90.0
 _DOVI_CONVERT_TIMEOUT_MIN_SEC = 600.0
 _DOVI_CONVERT_TIMEOUT_MAX_SEC = 7200.0
 _vulkan_available_cache: dict[str, bool] = {}
+_vaapi_available_cache: dict[str, bool] = {}
+_vaapi_vulkan_interop_cache: dict[str, bool] = {}
+_d3d11_vulkan_interop_cache: dict[str, bool] = {}
+_cuda_available_cache: dict[str, bool] = {}
+_VAAPI_DEVICE_ENV = "TRICKPLAY_VAAPI_DEVICE"
+HW_DECODE_NONE = "none"
+HW_DECODE_CUDA = "cuda"
+HW_DECODE_D3D11VA = "d3d11va"
+HW_DECODE_D3D11VA_VULKAN = "d3d11va_vulkan"
+HW_DECODE_VAAPI_VULKAN = "vaapi_vulkan"
+HW_DECODE_VAAPI_DOWNLOAD = "vaapi_download"
 _TONEMAP_MODE_NONE = "none"
 _TONEMAP_MODE_SIMPLE = "simple"
 _TONEMAP_MODE_ZSCALE = "zscale"
@@ -145,6 +156,7 @@ def ffmpeg_libplacebo_input_args() -> tuple[str, ...]:
 
 
 _HW_DOWNLOAD_PREFIX = "hwdownload,format=p010le,"
+_HWMAP_VULKAN_PREFIX = "hwmap=derive_device=vulkan,"
 
 
 def ffmpeg_d3d11_hwaccel_input_args() -> tuple[str, ...]:
@@ -152,9 +164,122 @@ def ffmpeg_d3d11_hwaccel_input_args() -> tuple[str, ...]:
     return ("-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11")
 
 
+def ffmpeg_cuda_hwaccel_input_args() -> tuple[str, ...]:
+    """NVIDIA CUDA/NVDEC decode (pairs with hwdownload before CPU/GPU filters)."""
+    return (
+        "-init_hw_device",
+        "cuda=cu",
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_device",
+        "cu",
+        "-hwaccel_output_format",
+        "cuda",
+    )
+
+
+def ffmpeg_d3d11_vulkan_input_args() -> tuple[str, ...]:
+    """Legacy D3D11VA → Vulkan derive (rarely available; prefer CUDA or D3D11VA download)."""
+    return (
+        "-init_hw_device",
+        "d3d11va=dx",
+        "-init_hw_device",
+        "vulkan=vk@dx",
+        "-filter_hw_device",
+        "vk",
+        *ffmpeg_d3d11_hwaccel_input_args(),
+    )
+
+
+def ffmpeg_vaapi_hwaccel_input_args(device: str) -> tuple[str, ...]:
+    """Linux VA-API decode (pairs with hwdownload or Vulkan hwmap)."""
+    return (
+        "-hwaccel",
+        "vaapi",
+        "-hwaccel_device",
+        device,
+        "-hwaccel_output_format",
+        "vaapi",
+    )
+
+
+def ffmpeg_vaapi_vulkan_input_args(device: str) -> tuple[str, ...]:
+    """Zero-copy VA-API → Vulkan derive for libplacebo on Linux."""
+    return (
+        "-init_hw_device",
+        f"vaapi=va:{device}",
+        "-init_hw_device",
+        "vulkan=vk@va",
+        "-filter_hw_device",
+        "vk",
+        *ffmpeg_vaapi_hwaccel_input_args(device),
+    )
+
+
+def hw_decode_platform_available() -> bool:
+    """True when this host can attempt hardware thumbnail decode."""
+    return sys.platform == "win32" or sys.platform.startswith("linux")
+
+
 def windows_hw_decode_available() -> bool:
     """True when this host can use the Windows D3D11VA thumbnail decode path."""
     return sys.platform == "win32"
+
+
+def discover_vaapi_device() -> str | None:
+    """Return a usable VA-API render node, or None if none exist."""
+    override = (os.environ.get(_VAAPI_DEVICE_ENV) or "").strip()
+    if override:
+        return override if os.path.exists(override) else None
+    dri_dir = "/dev/dri"
+    try:
+        names = sorted(
+            name
+            for name in os.listdir(dri_dir)
+            if name.startswith("renderD")
+        )
+    except OSError:
+        return None
+    for name in names:
+        path = os.path.join(dri_dir, name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _strip_libplacebo_vulkan_input_args(args: tuple[str, ...]) -> tuple[str, ...]:
+    """Remove bare ``vulkan=vk`` init pairs so derived ``vk@va`` / ``vk@dx`` can replace them."""
+    out: list[str] = []
+    i = 0
+    while i < len(args):
+        if (
+            args[i] == "-init_hw_device"
+            and i + 1 < len(args)
+            and args[i + 1] == "vulkan=vk"
+        ):
+            i += 2
+            continue
+        if args[i] == "-filter_hw_device" and i + 1 < len(args) and args[i + 1] == "vk":
+            i += 2
+            continue
+        out.append(args[i])
+        i += 1
+    return tuple(out)
+
+
+def hw_decode_backend_label(backend: str) -> str:
+    """Short label for logs (empty when inactive)."""
+    if backend == HW_DECODE_CUDA:
+        return "CUDA/NVDEC"
+    if backend == HW_DECODE_D3D11VA_VULKAN:
+        return "D3D11VA+Vulkan"
+    if backend == HW_DECODE_D3D11VA:
+        return "D3D11VA"
+    if backend == HW_DECODE_VAAPI_VULKAN:
+        return "VA-API+Vulkan"
+    if backend == HW_DECODE_VAAPI_DOWNLOAD:
+        return "VA-API"
+    return ""
 
 
 def _primary_video_stream_from_ffprobe(payload: str) -> dict | None:
@@ -171,7 +296,7 @@ def _primary_video_stream_from_ffprobe(payload: str) -> dict | None:
     return None
 
 
-def probe_windows_hw_decode_eligible(
+def probe_hw_decode_eligible(
     media_path: str,
     ffprobe: str,
     env: dict[str, str] | None,
@@ -179,9 +304,9 @@ def probe_windows_hw_decode_eligible(
     debug: bool = False,
 ) -> tuple[bool, str]:
     """
-    True when the Windows D3D11VA path applies: HEVC with 10-bit and/or HDR/DV.
+    True when hardware decode applies: HEVC with 10-bit and/or HDR/DV.
 
-    AVC and 8-bit SDR HEVC should use software decode only (p010le hwdownload path).
+    AVC and 8-bit SDR HEVC should use software decode only.
     """
     if not ffprobe or not media_path:
         return False, "ffprobe or media path unavailable"
@@ -215,9 +340,9 @@ def probe_windows_hw_decode_eligible(
 
     codec = (video.get("codec_name") or "").lower()
     if codec not in ("hevc", "h265"):
-        reason = f"codec={codec or 'unknown'} (D3D11VA path is HEVC only)"
+        reason = f"codec={codec or 'unknown'} (HW decode path is HEVC only)"
         if debug:
-            _log(f"Windows HW decode skipped: {reason}")
+            _log(f"Hardware decode skipped: {reason}")
         return False, reason
 
     pix_fmt = (video.get("pix_fmt") or "").strip()
@@ -234,8 +359,404 @@ def probe_windows_hw_decode_eligible(
 
     reason = f"HEVC SDR 8-bit ({pix_fmt or 'unknown'}); software decode"
     if debug:
-        _log(f"Windows HW decode skipped: {reason}")
+        _log(f"Hardware decode skipped: {reason}")
     return False, reason
+
+
+# Back-compat alias for older call sites / tests.
+probe_windows_hw_decode_eligible = probe_hw_decode_eligible
+
+
+def probe_ffmpeg_has_vaapi(
+    ffmpeg: str,
+    env: dict[str, str] | None,
+    device: str | None = None,
+) -> bool:
+    """True when ffmpeg can use VA-API (hwaccel list and/or device init)."""
+    if not ffmpeg or not sys.platform.startswith("linux"):
+        return False
+    device = device or discover_vaapi_device()
+    if not device:
+        return False
+    ld_path = env.get("LD_LIBRARY_PATH", "") if env else ""
+    cache_key = f"{ffmpeg}|{ld_path}|{device}"
+    cached = _vaapi_available_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    available = False
+    try:
+        completed = subprocess.run(
+            [ffmpeg, "-hide_banner", "-hwaccels"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=env,
+            **subprocess_hide_window_kwargs(),
+        )
+        text = f"{completed.stdout or ''}\n{completed.stderr or ''}".lower()
+        if "vaapi" in text:
+            available = True
+    except (OSError, subprocess.SubprocessError):
+        available = False
+
+    if not available:
+        try:
+            completed = subprocess.run(
+                [
+                    ffmpeg,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-init_hw_device",
+                    f"vaapi=va:{device}",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "nullsrc",
+                    "-frames:v",
+                    "1",
+                    "-f",
+                    "null",
+                    "-",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=env,
+                **subprocess_hide_window_kwargs(),
+            )
+            available = completed.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            available = False
+
+    _vaapi_available_cache[cache_key] = available
+    return available
+
+
+def probe_vaapi_vulkan_interop(
+    ffmpeg: str,
+    env: dict[str, str] | None,
+    device: str | None = None,
+) -> bool:
+    """True when ffmpeg can derive Vulkan from a VA-API device (``vk@va``)."""
+    if not ffmpeg or not sys.platform.startswith("linux"):
+        return False
+    device = device or discover_vaapi_device()
+    if not device:
+        return False
+    ld_path = env.get("LD_LIBRARY_PATH", "") if env else ""
+    cache_key = f"{ffmpeg}|{ld_path}|{device}"
+    cached = _vaapi_vulkan_interop_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    available = False
+    try:
+        completed = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-init_hw_device",
+                f"vaapi=va:{device}",
+                "-init_hw_device",
+                "vulkan=vk@va",
+                "-f",
+                "lavfi",
+                "-i",
+                "nullsrc",
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                "-",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=env,
+            **subprocess_hide_window_kwargs(),
+        )
+        available = completed.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        available = False
+
+    _vaapi_vulkan_interop_cache[cache_key] = available
+    return available
+
+
+def probe_d3d11_vulkan_interop(
+    ffmpeg: str,
+    env: dict[str, str] | None,
+) -> bool:
+    """True when ffmpeg can derive Vulkan from a D3D11VA device (``vk@dx``)."""
+    if not ffmpeg or sys.platform != "win32":
+        return False
+    path_key = env.get("PATH", "") if env else ""
+    cache_key = f"{ffmpeg}|{path_key}"
+    cached = _d3d11_vulkan_interop_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    available = False
+    try:
+        completed = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-init_hw_device",
+                "d3d11va=dx",
+                "-init_hw_device",
+                "vulkan=vk@dx",
+                "-f",
+                "lavfi",
+                "-i",
+                "nullsrc",
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                "-",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=env,
+            **subprocess_hide_window_kwargs(),
+        )
+        available = completed.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        available = False
+
+    _d3d11_vulkan_interop_cache[cache_key] = available
+    return available
+
+
+def probe_ffmpeg_has_cuda(
+    ffmpeg: str,
+    env: dict[str, str] | None = None,
+) -> bool:
+    """True when ffmpeg can init a CUDA device (NVIDIA GPU + NVDEC-capable build)."""
+    if not ffmpeg:
+        return False
+    path_key = env.get("PATH", "") if env else ""
+    ld_path = env.get("LD_LIBRARY_PATH", "") if env else ""
+    cache_key = f"{ffmpeg}|{path_key}|{ld_path}"
+    cached = _cuda_available_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    available = False
+    try:
+        completed = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-init_hw_device",
+                "cuda=cu",
+                "-f",
+                "lavfi",
+                "-i",
+                "nullsrc",
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                "-",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=env,
+            **subprocess_hide_window_kwargs(),
+        )
+        available = completed.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        available = False
+
+    _cuda_available_cache[cache_key] = available
+    return available
+
+
+def select_hw_decode_backend(
+    *,
+    enabled: bool,
+    ffmpeg: str = "",
+    env: dict[str, str] | None = None,
+    apply_tonemap: bool = False,
+    cuda_enabled: bool = False,
+) -> str:
+    """
+    Choose HW decode backend for this host/ffmpeg.
+
+    When ``cuda_enabled``, prefer NVIDIA CUDA/NVDEC (hwdownload) if the probe passes.
+    Windows default: D3D11VA hwdownload.
+    Linux default: VA-API→Vulkan zero-copy when tonemapping, else VA-API hwdownload.
+    """
+    if not enabled or not hw_decode_platform_available():
+        return HW_DECODE_NONE
+
+    if cuda_enabled:
+        if ffmpeg and probe_ffmpeg_has_cuda(ffmpeg, env):
+            return HW_DECODE_CUDA
+        _log(
+            "Hardware decode: CUDA requested but unavailable "
+            "(needs NVIDIA GPU + jellyfin-ffmpeg/NVDEC) — using platform default",
+            xbmc.LOGINFO,
+        )
+
+    if sys.platform == "win32":
+        return HW_DECODE_D3D11VA
+
+    if not sys.platform.startswith("linux"):
+        return HW_DECODE_NONE
+
+    device = discover_vaapi_device()
+    if not device:
+        _log(
+            "Hardware decode: no VA-API render node under /dev/dri "
+            f"(override with {_VAAPI_DEVICE_ENV})",
+            xbmc.LOGINFO,
+        )
+        return HW_DECODE_NONE
+
+    if not ffmpeg or not probe_ffmpeg_has_vaapi(ffmpeg, env, device):
+        _log(
+            "Hardware decode: ffmpeg lacks VA-API — set Generator ffmpeg path to "
+            "jellyfin-ffmpeg (Install preview tools / Run auto-install) or a build "
+            "with --enable-vaapi",
+            xbmc.LOGINFO,
+        )
+        return HW_DECODE_NONE
+
+    if apply_tonemap:
+        has_placebo = ffmpeg_has_libplacebo(ffmpeg, env)
+        interop_ok = probe_vaapi_vulkan_interop(ffmpeg, env, device)
+        if has_placebo and interop_ok:
+            return HW_DECODE_VAAPI_VULKAN
+        missing = []
+        if not has_placebo:
+            missing.append("libplacebo")
+        if not interop_ok:
+            missing.append("VA-API↔Vulkan interop (vk@va)")
+        _log(
+            "Hardware decode: VA-API ok, "
+            + (" and ".join(missing) if missing else "zero-copy unavailable")
+            + " missing — using VA-API hwdownload",
+            xbmc.LOGINFO,
+        )
+
+    return HW_DECODE_VAAPI_DOWNLOAD
+
+
+def _hwmap_vulkan_thumb_vf(
+    tile_width: int,
+    *,
+    dolby_vision: bool,
+) -> str:
+    """Zero-copy tonemap filter: hwmap → libplacebo → scale/pad (SDR JPEG)."""
+    return (
+        f"{_HWMAP_VULKAN_PREFIX}"
+        f"{_libplacebo_tonemap_chain(dolby_vision=dolby_vision)}"
+        f"{_scale_pad_filter(tile_width)}"
+    )
+
+
+def _vaapi_vulkan_thumb_vf(
+    tile_width: int,
+    *,
+    dolby_vision: bool,
+) -> str:
+    """Back-compat alias for ``_hwmap_vulkan_thumb_vf``."""
+    return _hwmap_vulkan_thumb_vf(tile_width, dolby_vision=dolby_vision)
+
+
+def augment_thumb_extract_for_hw_decode(
+    thumb_vf: str,
+    ffmpeg_input_args: tuple[str, ...],
+    *,
+    enabled: bool,
+    ffmpeg: str = "",
+    env: dict[str, str] | None = None,
+    apply_tonemap: bool = False,
+    dolby_vision: bool = False,
+    tile_width: int = 320,
+    cuda_enabled: bool = False,
+) -> tuple[str, tuple[str, ...], bool, str]:
+    """
+    Prefix filter/input args for platform hardware decode.
+
+    Returns ``(thumb_vf, input_args, active, backend)``. Backend is one of
+    ``cuda`` / ``d3d11va`` / ``vaapi_vulkan`` / ``vaapi_download`` / ``none``
+    (legacy ``d3d11va_vulkan`` retained only if selected).
+    Caller should keep software thumb_vf/input_args for fallback on HW failure.
+    """
+    backend = select_hw_decode_backend(
+        enabled=enabled,
+        ffmpeg=ffmpeg,
+        env=env,
+        apply_tonemap=apply_tonemap,
+        cuda_enabled=cuda_enabled,
+    )
+    if backend == HW_DECODE_NONE:
+        return thumb_vf, ffmpeg_input_args, False, HW_DECODE_NONE
+
+    if backend == HW_DECODE_CUDA:
+        return (
+            f"{_HW_DOWNLOAD_PREFIX}{thumb_vf}",
+            (*ffmpeg_cuda_hwaccel_input_args(), *ffmpeg_input_args),
+            True,
+            backend,
+        )
+
+    if backend == HW_DECODE_D3D11VA_VULKAN:
+        base_args = _strip_libplacebo_vulkan_input_args(ffmpeg_input_args)
+        return (
+            _hwmap_vulkan_thumb_vf(tile_width, dolby_vision=dolby_vision),
+            (*ffmpeg_d3d11_vulkan_input_args(), *base_args),
+            True,
+            backend,
+        )
+
+    if backend == HW_DECODE_D3D11VA:
+        return (
+            f"{_HW_DOWNLOAD_PREFIX}{thumb_vf}",
+            (*ffmpeg_d3d11_hwaccel_input_args(), *ffmpeg_input_args),
+            True,
+            backend,
+        )
+
+    device = discover_vaapi_device()
+    if not device:
+        return thumb_vf, ffmpeg_input_args, False, HW_DECODE_NONE
+
+    if backend == HW_DECODE_VAAPI_VULKAN:
+        base_args = _strip_libplacebo_vulkan_input_args(ffmpeg_input_args)
+        return (
+            _hwmap_vulkan_thumb_vf(tile_width, dolby_vision=dolby_vision),
+            (*ffmpeg_vaapi_vulkan_input_args(device), *base_args),
+            True,
+            backend,
+        )
+
+    # vaapi_download
+    return (
+        f"{_HW_DOWNLOAD_PREFIX}{thumb_vf}",
+        (*ffmpeg_vaapi_hwaccel_input_args(device), *ffmpeg_input_args),
+        True,
+        backend,
+    )
 
 
 def augment_thumb_extract_for_windows_hw_decode(
@@ -244,19 +765,13 @@ def augment_thumb_extract_for_windows_hw_decode(
     *,
     enabled: bool,
 ) -> tuple[str, tuple[str, ...], bool]:
-    """
-    Prefix filter/input args for D3D11VA HEVC decode on Windows.
-
-    Uses p010le after hwdownload (10-bit HEVC Main10 / HDR/DV). Caller should
-    pass software thumb_vf and ffmpeg_input_args as fallback when hw fails.
-    """
-    if not enabled or not windows_hw_decode_available():
-        return thumb_vf, ffmpeg_input_args, False
-    return (
-        f"{_HW_DOWNLOAD_PREFIX}{thumb_vf}",
-        (*ffmpeg_d3d11_hwaccel_input_args(), *ffmpeg_input_args),
-        True,
+    """Back-compat wrapper; prefer ``augment_thumb_extract_for_hw_decode``."""
+    vf, args, active, _backend = augment_thumb_extract_for_hw_decode(
+        thumb_vf,
+        ffmpeg_input_args,
+        enabled=enabled and windows_hw_decode_available(),
     )
+    return vf, args, active
 
 
 def probe_vulkan_available(ffmpeg: str, env: dict[str, str] | None) -> bool:
@@ -521,6 +1036,10 @@ def invalidate_tonemap_support_cache() -> None:
     """Clear cached ffmpeg filter detection (e.g. after installing custom ffmpeg)."""
     _tonemap_support_cache.clear()
     _vulkan_available_cache.clear()
+    _vaapi_available_cache.clear()
+    _vaapi_vulkan_interop_cache.clear()
+    _d3d11_vulkan_interop_cache.clear()
+    _cuda_available_cache.clear()
 
 
 def detect_tonemap_support(
