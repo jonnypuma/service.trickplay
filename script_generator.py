@@ -46,6 +46,8 @@ from trickplay_generator import (
     generate_trickplay_for_media,
 )
 from trickplay_validation import repair_invalid, validate_library
+from generation_state import begin_or_update, clear as clear_generation_state, load_completed
+from generation_preflight import warnings_for_batch
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -121,6 +123,7 @@ def _run_batch_generation(
     candidates: list[str],
     settings: GeneratorSettings,
     *,
+    root: str = "",
     progress: xbmcgui.DialogProgress | None = None,
     monitor: xbmc.Monitor | None = None,
 ) -> tuple[int, int, bool, list[str], list[GenerationResult]]:
@@ -130,7 +133,16 @@ def _run_batch_generation(
     failed_paths: list[str] = []
     results: list[GenerationResult] = []
     cancelled = False
-    total = len(candidates)
+    root = root or settings.library_path
+    completed = load_completed(root, settings)
+    pending = [path for path in candidates if path not in completed]
+    if len(pending) != len(candidates):
+        _log(
+            f"Resuming batch: skipping {len(candidates) - len(pending)} "
+            f"completed file(s) from {root}"
+        )
+    begin_or_update(root, settings, completed)
+    total = len(pending)
 
     if monitor is None:
         monitor = xbmc.Monitor()
@@ -145,7 +157,7 @@ def _run_batch_generation(
             return True
         return False
 
-    for index, media_path in enumerate(candidates):
+    for index, media_path in enumerate(pending):
         if _should_cancel():
             _log(
                 f"Batch stopped early at {index + 1}/{total}",
@@ -178,6 +190,8 @@ def _run_batch_generation(
         results.append(result)
         if result:
             ok_count += 1
+            completed.add(media_path)
+            begin_or_update(root, settings, completed)
         elif cancelled:
             break
         else:
@@ -188,6 +202,8 @@ def _run_batch_generation(
                 _log("Stopping batch (stop on first failure enabled)", xbmc.LOGWARNING)
                 break
 
+    if not cancelled and all(path in completed for path in candidates):
+        clear_generation_state()
     return ok_count, fail_count, cancelled, failed_paths, results
 
 
@@ -199,14 +215,27 @@ def _format_batch_summary(
     elapsed = sum(result.elapsed_seconds for result in results)
     tiles = sum(result.tiles_written for result in results)
     fallbacks = sum(result.fallback_count for result in results)
+    failed_count = sum(not bool(result) and not result.cancelled for result in results)
+    cancelled_count = sum(result.cancelled for result in results)
     status = "cancelled" if cancelled else "complete"
-    return (
+    summary = (
         f"Batch {status}: {len(results)} file(s), "
         f"{sum(bool(result) for result in results)} succeeded, "
-        f"{sum(not bool(result) for result in results)} failed, "
+        f"{failed_count} failed, {cancelled_count} cancelled, "
         f"{tiles} tile(s), {fallbacks} fallback(s), "
         f"{elapsed:.0f}s worker time"
     )
+    failed = [
+        f"{os.path.basename(result.media_path)}"
+        + (f" — {result.failure_reason}" if result.failure_reason else "")
+        for result in results
+        if not bool(result) and not result.cancelled
+    ]
+    if failed:
+        summary += "\nFailed files:\n- " + "\n- ".join(failed[:20])
+        if len(failed) > 20:
+            summary += f"\n- … and {len(failed) - 20} more"
+    return summary
 
 
 def _offer_batch_retry(failed_paths: list[str], settings: GeneratorSettings) -> None:
@@ -230,6 +259,7 @@ def _offer_batch_retry(failed_paths: list[str], settings: GeneratorSettings) -> 
         ok_count, fail_count, cancelled, still_failed, results = _run_batch_generation(
             failed_paths,
             settings,
+            root=settings.library_path,
             progress=progress,
             monitor=monitor,
         )
@@ -459,6 +489,12 @@ def run_batch_dialog() -> None:
     else:
         confirm = _ADDON.getLocalizedString(32068) % len(candidates)
 
+    preflight_warnings = warnings_for_batch(folder, candidates)
+    if preflight_warnings:
+        for warning in preflight_warnings:
+            _log(f"Batch preflight warning: {warning}", xbmc.LOGWARNING)
+        confirm += "\n\nWarnings:\n- " + "\n- ".join(preflight_warnings)
+
     _log(f"Showing batch confirmation ({len(candidates)} candidate(s))")
     if not _dialog_yesno(
         _ADDON.getLocalizedString(32063),
@@ -487,6 +523,7 @@ def run_batch_dialog() -> None:
         ok_count, fail_count, cancelled, failed_paths, results = _run_batch_generation(
             candidates,
             settings,
+            root=folder,
             monitor=monitor,
         )
         if cancelled:
@@ -512,6 +549,7 @@ def run_batch_dialog() -> None:
         ok_count, fail_count, cancelled, failed_paths, results = _run_batch_generation(
             candidates,
             settings,
+            root=folder,
             progress=progress,
             monitor=monitor,
         )
@@ -963,27 +1001,45 @@ def run_validation_repair_dialog() -> None:
 def run_generator_diagnostics_dialog() -> None:
     """Show non-destructive ffmpeg and hardware capability diagnostics."""
     import sys as _sys
-
     from ffmpeg_tools import (
         identify_ffmpeg_build,
         probe_ffmpeg_hwaccels_summary,
         resolve_generator_ffmpeg_tools,
     )
+    from hdr_tone_map import probe_ffmpeg_has_cuda, probe_vulkan_available
 
     settings = read_generator_settings()
     ffmpeg, _ffprobe, env = resolve_generator_ffmpeg_tools(settings.ffmpeg_path)
     vendor, version = identify_ffmpeg_build(ffmpeg or "", env)
     hwaccels = probe_ffmpeg_hwaccels_summary(ffmpeg or "", env) or "none reported"
-    if _sys.platform.startswith("win"):
-        selected = "D3D11VA (or CUDA when enabled and available)"
+    os_release = ""
+    try:
+        with open("/etc/os-release", encoding="utf-8") as handle:
+            os_release = handle.read().lower()
+    except OSError:
+        pass
+    coreelec = "coreelec" in os_release
+    cuda = probe_ffmpeg_has_cuda(ffmpeg or "", env)
+    vulkan = probe_vulkan_available(ffmpeg or "", env)
+    if coreelec:
+        selected = "software/per-frame fast seek (CoreELEC policy)"
+        platform_detail = "CoreELEC detected; rkmpp, CUDA, and Vulkan are not selected"
+    elif _sys.platform.startswith("win"):
+        selected = "D3D11VA when eligible, CUDA when the probe succeeds"
+        platform_detail = "Windows hardware paths are selected per media and successful probe"
     elif _sys.platform.startswith("linux"):
-        selected = "VA-API/Vulkan (or VA-API download fallback)"
+        selected = "VA-API/Vulkan when eligible, otherwise software"
+        platform_detail = "Linux hardware paths are selected per media and successful probe"
     else:
         selected = "software"
+        platform_detail = "No supported hardware backend for this platform"
     body = (
         f"ffmpeg: {ffmpeg or 'not found'}\n"
         f"Build: {vendor} — {version or 'unknown version'}\n"
         f"Hardware accelerators: {hwaccels}\n"
+        f"Runtime CUDA probe: {'available' if cuda else 'unavailable'}\n"
+        f"Runtime Vulkan probe: {'available' if vulkan else 'unavailable'}\n"
+        f"Platform policy: {platform_detail}\n"
         f"Addon decode selection: {selected}\n\n"
         "rkmpp/opencl/drm are not selected by this addon because its supported "
         "thumbnail paths require CUDA, D3D11VA, or VA-API (optionally Vulkan). "

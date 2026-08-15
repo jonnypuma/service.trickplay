@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import math
 import os
 from dataclasses import dataclass
@@ -97,6 +98,89 @@ def _tile_paths(directory: str) -> dict[int, str]:
     return result
 
 
+def _valid_cache_path(directory: str) -> str | None:
+    if "://" in directory:
+        return None
+    return os.path.join(directory, "valid.json")
+
+
+def _file_signatures(paths: dict[int, str]) -> dict[str, dict[str, int]]:
+    signatures: dict[str, dict[str, int]] = {}
+    for index, path in paths.items():
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return {}
+        signatures[str(index)] = {
+            "size": int(stat.st_size),
+            "mtime_ns": int(stat.st_mtime_ns),
+        }
+    return signatures
+
+
+def _load_valid_cache(
+    directory: str,
+    *,
+    tile_width: int,
+    grid: str,
+    interval_ms: int,
+    duration: int,
+    expected_tiles: int,
+    paths: dict[int, str],
+) -> bool:
+    cache_path = _valid_cache_path(directory)
+    if not cache_path:
+        return False
+    try:
+        with open(cache_path, encoding="utf-8") as handle:
+            cache = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        return False
+    return (
+        cache.get("version") == 1
+        and cache.get("tile_width") == tile_width
+        and cache.get("grid") == grid
+        and cache.get("interval_ms") == interval_ms
+        and cache.get("duration") == duration
+        and cache.get("expected_tiles") == expected_tiles
+        and cache.get("files") == _file_signatures(paths)
+    )
+
+
+def _write_valid_cache(
+    directory: str,
+    *,
+    tile_width: int,
+    grid: str,
+    interval_ms: int,
+    duration: int,
+    expected_tiles: int,
+    paths: dict[int, str],
+) -> None:
+    cache_path = _valid_cache_path(directory)
+    signatures = _file_signatures(paths)
+    if not cache_path or not signatures:
+        return
+    try:
+        with open(cache_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "version": 1,
+                    "tile_width": tile_width,
+                    "grid": grid,
+                    "interval_ms": interval_ms,
+                    "duration": duration,
+                    "expected_tiles": expected_tiles,
+                    "files": signatures,
+                },
+                handle,
+                indent=2,
+            )
+            handle.write("\n")
+    except OSError:
+        return
+
+
 def validate_sidecar(
     media_path: str,
     *,
@@ -125,6 +209,22 @@ def validate_sidecar(
     thumb_count = int(duration / max(interval_ms / 1000.0, 0.001)) + 1
     expected_tiles = max(1, math.ceil(thumb_count / (cols * rows)))
     paths = _tile_paths(sidecar_dir)
+    if len(paths) == expected_tiles and _load_valid_cache(
+        sidecar_dir,
+        tile_width=tile_width,
+        grid=grid,
+        interval_ms=interval_ms,
+        duration=duration,
+        expected_tiles=expected_tiles,
+        paths=paths,
+    ):
+        return SidecarValidation(
+            media_path=media_path,
+            sidecar_dir=sidecar_dir,
+            expected_tiles=expected_tiles,
+            present_tiles=len(paths),
+            reason="validated cache",
+        )
     missing = tuple(index for index in range(expected_tiles) if index not in paths)
     corrupt: list[int] = []
     wrong_dimensions: list[int] = []
@@ -152,7 +252,7 @@ def validate_sidecar(
         reasons.append(
             f"wrong dimensions tile(s): {','.join(map(str, sorted(set(wrong_dimensions))))}"
         )
-    return SidecarValidation(
+    result = SidecarValidation(
         media_path=media_path,
         sidecar_dir=sidecar_dir,
         expected_tiles=expected_tiles,
@@ -162,6 +262,24 @@ def validate_sidecar(
         wrong_dimension_tiles=tuple(sorted(set(wrong_dimensions))),
         reason="; ".join(reasons),
     )
+    if result.valid:
+        _write_valid_cache(
+            sidecar_dir,
+            tile_width=tile_width,
+            grid=grid,
+            interval_ms=interval_ms,
+            duration=duration,
+            expected_tiles=expected_tiles,
+            paths=paths,
+        )
+    else:
+        cache_path = _valid_cache_path(sidecar_dir)
+        if cache_path:
+            try:
+                os.remove(cache_path)
+            except OSError:
+                pass
+    return result
 
 
 def validate_library(

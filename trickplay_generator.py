@@ -392,6 +392,31 @@ def _remove_empty_sidecar_dir(directory: str) -> None:
         _remove_trickplay_root_if_empty(trickplay_root)
 
 
+def _atomic_promote_sidecar(staging_dir: str, final_dir: str) -> bool:
+    """Replace a local sidecar directory only after generation succeeds."""
+    staging = _local_path(staging_dir)
+    final = _local_path(final_dir)
+    if not staging or not final or "://" in staging or "://" in final:
+        return False
+    if not os.path.isdir(staging):
+        return False
+    backup = f"{final}.previous-{uuid.uuid4().hex[:8]}"
+    try:
+        if os.path.exists(final):
+            os.replace(final, backup)
+        os.replace(staging, final)
+        if os.path.exists(backup):
+            shutil.rmtree(backup, ignore_errors=True)
+        return True
+    except OSError:
+        try:
+            if not os.path.exists(final) and os.path.exists(backup):
+                os.replace(backup, final)
+        except OSError:
+            pass
+        return False
+
+
 def _has_jpg_tiles(directory: str) -> bool:
     return bool(_list_jpg_files(directory))
 
@@ -1260,12 +1285,13 @@ def _generate_trickplay_for_media(
         return False
 
     cols, rows = grid_tuple(settings.grid)
-    output_dir = sidecar_dir_for_grid(
+    final_output_dir = sidecar_dir_for_grid(
         media_path,
         settings.tile_width,
         settings.grid,
         settings.interval_ms,
     )
+    output_dir = final_output_dir
 
     matching = find_matching_sidecar_resolution(
         media_path,
@@ -1289,6 +1315,14 @@ def _generate_trickplay_for_media(
             return True
         _clear_sidecar_tiles(output_dir)
         _log(f"Overwriting existing sidecar: {output_dir}")
+
+    atomic_staging = False
+    local_final = _local_path(final_output_dir)
+    if local_final and "://" not in local_final:
+        output_dir = f"{final_output_dir}.tmp-{uuid.uuid4().hex[:10]}"
+        atomic_staging = True
+        _remove_tree(output_dir)
+        _log(f"Generating into staging sidecar: {output_dir}")
 
     ffmpeg, ffprobe, env = resolve_generator_ffmpeg_tools(settings.ffmpeg_path)
     if not ffmpeg:
@@ -1462,7 +1496,7 @@ def _generate_trickplay_for_media(
         f"Generating trickplay for {os.path.basename(media_path)} "
         f"({thumb_count} thumbs, {tile_count} tile(s), {settings.grid}, "
         f"{settings.tile_width}px, {settings.interval_ms}ms, {extract_mode}{hdr_note}{hw_note}) "
-        f"-> {output_dir}"
+        f"-> {final_output_dir}"
     )
 
     success = True
@@ -1904,6 +1938,17 @@ def _generate_trickplay_for_media(
                 tiles_written += 1
                 _remove_tree(tile_work_dir)
 
+        if success and not cancelled and not _is_cancelled(should_cancel) and atomic_staging:
+            if _atomic_promote_sidecar(output_dir, final_output_dir):
+                _log(f"Promoted completed sidecar: {final_output_dir}")
+            else:
+                success = False
+                metrics["failure_reason"] = "atomic sidecar promotion failed"
+                _log(
+                    f"Could not promote completed sidecar to {final_output_dir}",
+                    xbmc.LOGERROR,
+                )
+
         was_cancelled = cancelled or _is_cancelled(should_cancel)
         metrics["cancelled"] = was_cancelled
         metrics["tiles_written"] = tiles_written
@@ -1932,6 +1977,8 @@ def _generate_trickplay_for_media(
     finally:
         if cancelled or _is_cancelled(should_cancel):
             _cleanup_cancelled_sidecar(output_dir)
+        elif atomic_staging and _path_exists(output_dir):
+            _remove_tree(output_dir)
         _remove_tree(work_dir)
         if dovi_prep_dir:
             _remove_tree(dovi_prep_dir)

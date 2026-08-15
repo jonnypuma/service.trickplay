@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.5.0] - 2026-08-14
+
+### Added
+
+- **Restart-safe batch generation** — completed media is persisted for the selected
+  folder and generation profile, allowing an interrupted batch to resume after reboot.
+- **Atomic sidecar generation** — local sidecars are staged and promoted only after
+  every tile succeeds, preserving the previous complete sidecar on failure.
+- **More accurate diagnostics** — runtime CUDA/Vulkan probes and CoreELEC-aware
+  platform policy are now reported alongside ffmpeg capabilities.
+- **Simple validation cache** — valid sidecar folders record tile signatures in
+  `valid.json`; changed or missing tiles invalidate the cache automatically.
+- **Preflight warnings** — batch confirmation warns about network/VFS media and low
+  disk space.
+- **Expanded batch summaries** — failed filenames and failure reasons are included.
+
+### Tests
+
+- Added coverage for restart state, validation-cache invalidation, and atomic promotion.
+
 ## [7.3.5] - 2026-08-02
 
 ### Added

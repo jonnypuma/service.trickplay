@@ -23,11 +23,30 @@ def install_kodi_stubs() -> tuple[object, object, object, object]:
         xbmcvfs = types.ModuleType("xbmcvfs")
         sys.modules["xbmcvfs"] = xbmcvfs
     if isinstance(xbmcvfs, types.ModuleType):
+        class _StubFile:
+            def __init__(self, *args, **kwargs):
+                self.data = b""
+
+            def readBytes(self):
+                return self.data
+
+            def read(self, size=-1):
+                return self.data if size == -1 else self.data[:size]
+
+            def write(self, data):
+                self.data = data
+                return len(data)
+
+            def close(self):
+                return None
+
         xbmcvfs.translatePath = lambda path: path
         xbmcvfs.exists = getattr(xbmcvfs, "exists", lambda path: False)
         xbmcvfs.listdir = getattr(xbmcvfs, "listdir", lambda path: ([], []))
         xbmcvfs.mkdirs = getattr(xbmcvfs, "mkdirs", lambda path: True)
         xbmcvfs.delete = getattr(xbmcvfs, "delete", lambda path: True)
+        xbmcvfs.copy = getattr(xbmcvfs, "copy", lambda source, target: True)
+        xbmcvfs.File = getattr(xbmcvfs, "File", _StubFile)
     else:
         xbmcvfs.translatePath = lambda path: path
 
