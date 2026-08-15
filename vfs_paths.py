@@ -105,6 +105,16 @@ def path_variants(path: str) -> tuple[str, ...]:
     return tuple(ordered)
 
 
+def writable_os_path(path: str) -> str:
+    """OS filesystem path for mkdir/os.replace, including nfs/smb bind mounts."""
+    if not path:
+        return ""
+    for candidate in path_variants(path):
+        if candidate and "://" not in candidate:
+            return candidate
+    return ""
+
+
 def _os_is_dir(path: str) -> bool:
     if not path or "://" in path:
         return False

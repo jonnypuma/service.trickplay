@@ -18,8 +18,7 @@ from osd_layout import (  # noqa: E402
     _slot_ratio,
     preview_dimensions,
 )
-
-OVERLAY_REVISION = 9
+from overlay_revision import OVERLAY_REVISION  # noqa: E402
 
 
 @dataclass(frozen=True)

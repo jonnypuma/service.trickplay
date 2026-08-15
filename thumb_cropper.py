@@ -17,6 +17,7 @@ import xbmcvfs
 
 from ffmpeg_tools import subprocess_hide_window_kwargs
 from pillow_installer import ensure_pillow_loaded
+from vfs_paths import local_path as _local_path
 
 CACHE_VERSION = "v4"
 CACHE_DIR = xbmcvfs.translatePath(
@@ -79,12 +80,6 @@ def _live_dir() -> str:
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay] {message}", level)
-
-
-def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
 
 
 def _ensure_dir(path: str) -> None:

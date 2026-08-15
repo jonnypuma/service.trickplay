@@ -46,25 +46,16 @@ from skin_profiles import (
     profile_summary,
     setting_skin_profile_override,
 )
+from preview_hold import PreviewHoldMixin
+from skippy_suppress import PROP_SUPPRESS_AFTER_SKIP, SkippySuppressMixin
 
 HOME_WINDOW = xbmcgui.Window(10000)
 
 SEEKBAR_WINDOW_ID = 10115
-SEEK_HOLD_INDEFINITE = float("inf")
 
 POLL_MS_IDLE = 1000
 POLL_MS_IDLE_GENERATOR = 500
 PLAYBACK_SCRUB_GUARD_SEC = 3.0
-# Skippy Home property when a segment is skipped (needs Skippy "Hide OSD display during skip").
-SKIPPY_SKIPPING_PROPERTY = "Skippy.Skipping"
-SKIPPY_SKIPPING_COND = (
-    f"!String.IsEmpty(Window(Home).Property({SKIPPY_SKIPPING_PROPERTY}))"
-)
-# Ignore follow-up OnSeek / playhead lag from the skip itself before treating a
-# seek as user scrub that should clear Skippy.Skipping.
-SKIPPY_SEEK_CLEAR_GRACE_SEC = 1.5
-# Legacy Trickplay hide flag from 7.1.11–7.1.12; cleared so old skins unlock.
-PROP_SUPPRESS_AFTER_SKIP = "Trickplay.SuppressAfterSkip"
 
 PROP_TILE = "Trickplay.TileImage"
 PROP_COL = "Trickplay.TileCol"
@@ -163,7 +154,7 @@ class TrickplayMonitor(xbmc.Monitor):
             _log(f"Settings change error: {exc}", xbmc.LOGERROR)
 
 
-class TrickplayService:
+class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
     def __init__(self) -> None:
         self.player = KodiPlayer(service=self)
         self.generator = GeneratorWorker()
@@ -204,7 +195,7 @@ class TrickplayService:
         self._playback_block_reason = ""
         self._preview_tools_install_prompt_pending = False
         self._preview_tools_install_prompt_done = False
-        self._skin_snippet_hint_done = False
+        self._skin_snippet_prompt_done = False
         self._skippy_skipping_latched = False
         self._skip_landing_second = -1
         self._skip_hiding_since = 0.0
@@ -213,36 +204,6 @@ class TrickplayService:
     def _on_addon_settings_changed(self) -> None:
         self.preview.on_settings_changed()
         self.poll_ms = max(_setting_int("poll_ms", 100), 50)
-
-    def _preview_hold_seconds(self) -> int:
-        return read_runtime_settings().preview_hold_seconds
-
-    def _preview_follows_playhead(self) -> bool:
-        """Hold time 0: keep preview visible and advance with playback."""
-        return read_runtime_settings().preview_hold_seconds <= 0
-
-    def _touch_seek_hold(self) -> None:
-        seconds = self._preview_hold_seconds()
-        if seconds <= 0:
-            self.seek_hold_until = SEEK_HOLD_INDEFINITE
-        else:
-            self.seek_hold_until = time.monotonic() + float(seconds)
-
-    def _seek_hold_active(self) -> bool:
-        if self.seek_hold_until <= 0.0:
-            return False
-        if self.seek_hold_until >= SEEK_HOLD_INDEFINITE:
-            return True
-        return time.monotonic() < self.seek_hold_until
-
-    def _explicit_seek_active(self) -> bool:
-        if xbmc.getCondVisibility("!String.IsEmpty(Player.SeekNumeric)"):
-            return True
-        if not xbmc.getCondVisibility("Player.Seeking"):
-            return False
-        if self.committed_seek_at <= 0.0:
-            return True
-        return time.monotonic() - self.committed_seek_at < 2.0
 
     def _log_skin_profile(self, force: bool = False) -> None:
         skin_id = current_skin_id()
@@ -362,91 +323,6 @@ class TrickplayService:
     def _scrub_guard_active(self) -> bool:
         return time.monotonic() - self.playback_started_at < PLAYBACK_SCRUB_GUARD_SEC
 
-    def _skippy_skipping_set(self) -> bool:
-        try:
-            return bool(xbmc.getCondVisibility(SKIPPY_SKIPPING_COND))
-        except Exception:
-            return False
-
-    def _clear_skippy_skipping(self, reason: str = "") -> None:
-        """Release Skippy's skin hide signal so seekbar/thumb can show again."""
-        try:
-            if HOME_WINDOW.getProperty(SKIPPY_SKIPPING_PROPERTY):
-                HOME_WINDOW.clearProperty(SKIPPY_SKIPPING_PROPERTY)
-                _log(
-                    f"Cleared Skippy.Skipping"
-                    + (f" ({reason})" if reason else "")
-                )
-        except Exception:
-            pass
-        # Unlock installs that still gate on the legacy Trickplay flag.
-        clear_trickplay_property(PROP_SUPPRESS_AFTER_SKIP)
-        self._skip_landing_second = -1
-        self._skip_hiding_since = 0.0
-        self._skippy_skipping_latched = False
-
-    def _note_skip_landing(self, target_second: int) -> None:
-        self._skip_landing_second = max(int(target_second), 0)
-        self._skip_hiding_since = time.monotonic()
-        self._skippy_skipping_latched = True
-
-    def _user_releases_skippy_hide(
-        self,
-        *,
-        scrubbing: bool = False,
-        target_second: int | None = None,
-        allow_seek_clear: bool = False,
-    ) -> str | None:
-        """Return clear reason when scrubbing/OSD should end Skippy.Skipping."""
-        del scrubbing
-        if not self._skippy_skipping_set():
-            return None
-        if self._video_osd_visible():
-            return "video OSD"
-        if xbmc.getCondVisibility("!String.IsEmpty(Player.SeekNumeric)"):
-            return "seek numeric"
-        if xbmc.getCondVisibility("Player.Paused") and self._seek_ui_visible():
-            return "pause scrub"
-        # Poll must not clear on playhead lag vs landing — that fired immediately
-        # after Skippy's own seek and unlocked the seekbar. Only on_playback_seek
-        # may clear via a later seek target, and only after a short grace.
-        if (
-            allow_seek_clear
-            and target_second is not None
-            and self._skip_landing_second >= 0
-            and self._skip_hiding_since > 0.0
-            and time.monotonic() - self._skip_hiding_since >= SKIPPY_SEEK_CLEAR_GRACE_SEC
-            and abs(int(target_second) - self._skip_landing_second) >= 1
-        ):
-            return "user seek"
-        return None
-
-    def _skippy_suppress_active(
-        self,
-        *,
-        scrubbing: bool = False,
-        target_second: int | None = None,
-        allow_seek_clear: bool = False,
-    ) -> bool:
-        """Hide thumb while Skippy.Skipping is set; clear that property on user intent."""
-        skipping = self._skippy_skipping_set()
-        if skipping and not self._skippy_skipping_latched:
-            if self._skip_hiding_since <= 0.0:
-                self._skip_hiding_since = time.monotonic()
-            clear_trickplay_property(PROP_SUPPRESS_AFTER_SKIP)
-            _debug("Skippy segment skip (Skipping set)")
-        self._skippy_skipping_latched = skipping
-
-        reason = self._user_releases_skippy_hide(
-            scrubbing=scrubbing,
-            target_second=target_second,
-            allow_seek_clear=allow_seek_clear,
-        )
-        if reason:
-            self._clear_skippy_skipping(reason)
-            return False
-        return skipping
-
     def _preview_allowed(self) -> bool:
         return self.resolution is not None and self.resolution.is_usable
 
@@ -562,22 +438,6 @@ class TrickplayService:
                     xbmc.LOGWARNING,
                 )
                 self._preview_tools_install_prompt_pending = True
-
-            if not self._skin_snippet_hint_done:
-                self._skin_snippet_hint_done = True
-                try:
-                    from skin_snippet_installer import current_skin_overlay_installed
-
-                    if not current_skin_overlay_installed():
-                        _log(
-                            "Trickplay data loaded but the active skin has no up-to-date "
-                            "preview controls — use Show addon status, then Install / Force "
-                            "reinstall skin snippet in add-on settings (DialogSeekBar.xml, "
-                            "or VideoFullScreen.xml for Bello)",
-                            xbmc.LOGWARNING,
-                        )
-                except ImportError:
-                    pass
 
             play_seconds = _player_time_seconds(self.player)
             runtime = read_runtime_settings()
@@ -1057,6 +917,21 @@ class TrickplayService:
         else:
             _log("First-playback Pillow install declined")
 
+    def _maybe_prompt_snippet_install(self) -> None:
+        if self._skin_snippet_prompt_done:
+            return
+        if not self.player.isPlayingVideo():
+            return
+        self._skin_snippet_prompt_done = True
+        try:
+            from snippet_nudge import prompt_snippet_install, snippet_needs_attention
+
+            if not snippet_needs_attention():
+                return
+            prompt_snippet_install(from_playback=True)
+        except Exception as exc:
+            _log(f"Skin snippet prompt failed: {exc}", xbmc.LOGWARNING)
+
     def _adaptive_poll_ms(self) -> int:
         if not self.player.isPlayingVideo():
             generator = read_generator_settings()
@@ -1088,6 +963,7 @@ class TrickplayService:
             return
 
         self.generator.pause_for_playback()
+        self._maybe_prompt_snippet_install()
 
         if not self._preview_allowed():
             if self.player.isPlayingVideo() and self._seek_ui_visible():
@@ -1220,6 +1096,12 @@ class TrickplayService:
         _log(
             f"Service initialized (display=skin v{ADDON.getAddonInfo('version')})"
         )
+        try:
+            from snippet_nudge import notify_stale_or_missing_snippet
+
+            notify_stale_or_missing_snippet()
+        except Exception as exc:
+            _log(f"Skin snippet startup check failed: {exc}", xbmc.LOGWARNING)
         while not self.monitor.abortRequested():
             self.poll_seek_state()
             if self.monitor.waitForAbort(self._next_poll_ms / 1000.0):

@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 import xbmcaddon
-import xbmcvfs
 
 from pillow_installer import pillow_is_available
 from skin_profiles import active_profile, current_skin_id, snippet_spec_for_skin_id
 from skin_snippet_installer import (
     OVERLAY_REVISION,
+    _skin_addon_path,
     current_skin_overlay_installed,
     find_skin_xml_paths,
     overlay_already_installed,
@@ -32,12 +31,6 @@ class AddonHealth:
     overlay_revision: int
 
 
-def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
-
-
 def _skin_display_name(skin_id: str) -> str:
     if not skin_id:
         return "(unknown)"
@@ -45,17 +38,6 @@ def _skin_display_name(skin_id: str) -> str:
         return xbmcaddon.Addon(skin_id).getAddonInfo("name") or skin_id
     except RuntimeError:
         return skin_id
-
-
-def _skin_root(skin_id: str) -> str:
-    if not skin_id:
-        return ""
-    try:
-        path = xbmcaddon.Addon(skin_id).getAddonInfo("path")
-    except RuntimeError:
-        return ""
-    local = _local_path(path) if path else ""
-    return local if local and os.path.isdir(local) else ""
 
 
 def _ffmpeg_status() -> str:
@@ -76,7 +58,7 @@ def collect_addon_health() -> AddonHealth:
     spec = snippet_spec_for_skin_id(skin_id) if skin_id else None
     snippet_file = spec.filename if spec else "(none)"
     target_xml = spec.target_xml if spec else "DialogSeekBar.xml"
-    root = _skin_root(skin_id)
+    root = _skin_addon_path(skin_id, quiet=True) or "" if skin_id else ""
 
     snippet_state = "no_target"
     if skin_id and spec and root:

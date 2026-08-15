@@ -15,6 +15,8 @@ from collections.abc import Callable
 import xbmc
 import xbmcvfs
 
+from vfs_paths import local_path as _local_path
+
 # Pinned release with broad wheel coverage (PyPI).
 PILLOW_VERSION = "10.4.0"
 PYPI_JSON_URL = f"https://pypi.org/pypi/Pillow/{PILLOW_VERSION}/json"
@@ -31,12 +33,6 @@ def default_pillow_site_packages() -> str:
     return xbmcvfs.translatePath(
         "special://profile/addon_data/service.trickplay/system/python/site-packages"
     )
-
-
-def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
 
 
 def _ensure_dir(path: str) -> None:

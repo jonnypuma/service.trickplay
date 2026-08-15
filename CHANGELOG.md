@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.0.0] - 2026-08-16
+
+### Added
+
+- **First-run / stale overlay prompt** — playback asks once per session to install the
+  skin snippet when the active overlay is missing or outdated. Show addon status offers
+  **Install** in the same cases.
+- **Update toast** — service start notifies when the installed overlay is missing or
+  stale after an add-on update.
+
+### Changed
+
+- **Settings levels** — TV-facing controls stay on Basic (install snippet, library
+  folder, extract mode, status, preview geometry). Prefetch internals, fps-batch
+  timeout, CUDA, dovi_tool, and JPEG quality are Standard/Advanced/Expert.
+- **Idle generation** — background idle jobs share restart-safe completed-file state
+  with library batch, including overwrite-profile separation.
+- **Atomic network sidecars** — nfs/smb mounts that map to a local path use the same
+  staging + `os.replace` promote as local disks.
+- **Script split** — `script_generator.py` is a RunScript dispatcher; batch, skin,
+  tools, and status dialogs live in dedicated modules.
+- **Service split** — Skippy suppress and seek-hold helpers moved out of `service.py`.
+- **Shared path/overlay helpers** — VFS local paths, writable OS mapping, skin-root
+  resolution, and overlay revision are centralized.
+
+### Tests
+
+- Coverage for idle resume, mapped-NFS atomic promote, snippet prompts, settings
+  levels, and RunScript dispatch.
+
+## [7.5.1] - 2026-08-15
+
+### Fixed
+
+- **Skin snippet result dialog** — install/restore for the current skin (including Arctic
+  Zephyr Rounded) now shows the success/failure modal and a toast before scheduling
+  `ReloadSkin`. The previous 3-second reload raced the result dialog and often swallowed it.
+
 ## [7.5.0] - 2026-08-14
 
 ### Added

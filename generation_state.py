@@ -23,6 +23,7 @@ def _profile(root: str, settings: Any) -> dict[str, object]:
         "grid": settings.grid,
         "interval_ms": settings.interval_ms,
         "extract_mode": settings.extract_mode,
+        "overwrite": bool(getattr(settings, "overwrite_existing", False)),
     }
 
 
@@ -61,6 +62,15 @@ def begin_or_update(root: str, settings: Any, completed: set[str]) -> None:
             os.unlink(temporary)
         except FileNotFoundError:
             pass
+
+
+def mark_completed(root: str, settings: Any, media_path: str) -> None:
+    """Record one successful generation for this folder/profile."""
+    if not media_path:
+        return
+    completed = load_completed(root, settings)
+    completed.add(media_path)
+    begin_or_update(root, settings, completed)
 
 
 def clear() -> None:

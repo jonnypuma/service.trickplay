@@ -940,3 +940,15 @@ msgstr "Generatordiagnostiek tonen"
 msgctxt "#32238"
 msgid "Read-only report of ffmpeg build, hardware accelerators, selected decode path, and why unsupported accelerators such as rkmpp are not selected."
 msgstr "Alleen-lezenrapport over de ffmpeg-build, hardwareversnellers, het geselecteerde decodeerpad en waarom niet-ondersteunde versnellers zoals rkmpp niet worden geselecteerd."
+
+msgctxt "#32239"
+msgid "Trickplay overlay outdated — reinstall the skin snippet."
+msgstr "Trickplay-overlay verouderd — installeer het skinfragment opnieuw."
+
+msgctxt "#32240"
+msgid "The current skin is missing the trickplay overlay. Install it now?"
+msgstr "De huidige skin mist de trickplay-overlay. Nu installeren?"
+
+msgctxt "#32241"
+msgid "The current skin overlay is outdated. Reinstall the snippet now?"
+msgstr "De overlay van de huidige skin is verouderd. Fragment nu opnieuw installeren?"

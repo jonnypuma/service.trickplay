@@ -940,3 +940,15 @@ msgstr "Visa generatordiagnostik"
 msgctxt "#32238"
 msgid "Read-only report of ffmpeg build, hardware accelerators, selected decode path, and why unsupported accelerators such as rkmpp are not selected."
 msgstr "Skrivskyddad rapport om ffmpeg-bygge, hårdvaruacceleratorer, vald avkodningsväg och varför acceleratorer som rkmpp som inte stöds inte väljs."
+
+msgctxt "#32239"
+msgid "Trickplay overlay outdated — reinstall the skin snippet."
+msgstr "Trickplay-överlägget är inaktuellt — installera om skin-snippeten."
+
+msgctxt "#32240"
+msgid "The current skin is missing the trickplay overlay. Install it now?"
+msgstr "Det aktuella skinnet saknar trickplay-överlägget. Installera nu?"
+
+msgctxt "#32241"
+msgid "The current skin overlay is outdated. Reinstall the snippet now?"
+msgstr "Överlägget för det aktuella skinnet är inaktuellt. Installera om snippeten nu?"

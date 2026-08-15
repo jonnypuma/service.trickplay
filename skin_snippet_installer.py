@@ -16,12 +16,14 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
+from overlay_revision import OVERLAY_REVISION, OVERLAY_REVISION_MARKER
 from skin_profiles import (
     UNIVERSAL_SNIPPET_FILENAME,
     current_skin_id,
     normalize_skin_id,
     snippet_spec_for_skin_id,
 )
+from vfs_paths import local_path as _local_path
 
 SEEKBAR_FILENAME = "DialogSeekBar.xml"
 VIDEO_FULLSCREEN_FILENAME = "VideoFullScreen.xml"
@@ -72,8 +74,6 @@ LEGACY_PROPERTY_MARKER = "Window.Property(Trickplay.PreviewVisible)"
 # Dynamic $INFO Left on DialogSeekBar — broken on many skins; use PreviewSlot slides.
 LEGACY_DYNAMIC_PREVIEW_MARKER = "$INFO[Window.Property(Trickplay.PreviewLeft)]"
 CONTINUOUS_LEFT_HOME = "$INFO[Window(Home).Property(Trickplay.PreviewLeft)]"
-OVERLAY_REVISION = 9
-OVERLAY_REVISION_MARKER = f"trickplay-overlay-rev:{OVERLAY_REVISION}"
 SKIPPY_SEEKBAR_VISIBLE_MARKER = "Window(Home).Property(Skippy.Skipping)"
 SKIPPY_SEEKBAR_VISIBLE_TAG = (
     "<visible>String.IsEmpty(Window(Home).Property(Skippy.Skipping))</visible>"
@@ -149,12 +149,6 @@ def _debug_log(message: str) -> None:
             _log(message)
     except ImportError:
         pass
-
-
-def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
 
 
 def _jsonrpc_addons_get_skins() -> list[str]:

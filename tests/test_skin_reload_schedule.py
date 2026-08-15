@@ -49,6 +49,12 @@ class SkinReloadScheduleTests(unittest.TestCase):
         # HH:MM or SS form — we use MM:SS with 3 second delay.
         self.assertEqual(SKIN_RELOAD_DELAY, "00:03")
 
+    def test_install_dialog_defers_reload_until_after_result_modal(self) -> None:
+        source = (ROOT / "script_skin.py").read_text(encoding="utf-8")
+        self.assertIn("schedule_reload=False", source)
+        self.assertIn("schedule_skin_reload()", source)
+        self.assertIn("def _present_skin_result(", source)
+
 
 if __name__ == "__main__":
     unittest.main()

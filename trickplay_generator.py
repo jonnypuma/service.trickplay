@@ -53,7 +53,7 @@ from trickplay_resolver import (
     resolve_media_path,
     trickplay_root_for_media,
 )
-from vfs_paths import normalize_vfs_path, vfs_join
+from vfs_paths import local_path as _local_path, normalize_vfs_path, vfs_join, writable_os_path
 from temp_cleanup import (
     GENERATE_TEMP_ROOT,
     cleanup_orphaned_generator_temp,
@@ -183,12 +183,6 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 def _debug(settings: GeneratorSettings, message: str) -> None:
     if settings.debug:
         _log(message, xbmc.LOGINFO)
-
-
-def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
 
 
 def _ensure_dir(path: str) -> None:
@@ -393,10 +387,14 @@ def _remove_empty_sidecar_dir(directory: str) -> None:
 
 
 def _atomic_promote_sidecar(staging_dir: str, final_dir: str) -> bool:
-    """Replace a local sidecar directory only after generation succeeds."""
-    staging = _local_path(staging_dir)
-    final = _local_path(final_dir)
-    if not staging or not final or "://" in staging or "://" in final:
+    """Replace a sidecar directory only after generation succeeds.
+
+    Uses a mapped OS path when the VFS URL is an nfs/smb mount so network
+    sidecars get the same atomic rename as local disks.
+    """
+    staging = writable_os_path(staging_dir)
+    final = writable_os_path(final_dir)
+    if not staging or not final:
         return False
     if not os.path.isdir(staging):
         return False
@@ -1317,9 +1315,9 @@ def _generate_trickplay_for_media(
         _log(f"Overwriting existing sidecar: {output_dir}")
 
     atomic_staging = False
-    local_final = _local_path(final_output_dir)
-    if local_final and "://" not in local_final:
-        output_dir = f"{final_output_dir}.tmp-{uuid.uuid4().hex[:10]}"
+    local_final = writable_os_path(final_output_dir)
+    if local_final:
+        output_dir = f"{local_final}.tmp-{uuid.uuid4().hex[:10]}"
         atomic_staging = True
         _remove_tree(output_dir)
         _log(f"Generating into staging sidecar: {output_dir}")

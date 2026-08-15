@@ -8,6 +8,7 @@ from collections import deque
 
 import xbmc
 
+from generation_state import mark_completed, load_completed
 from generator_settings import GeneratorSettings, read_generator_settings
 from trickplay_generator import (
     collect_generation_candidates,
@@ -109,7 +110,15 @@ class GeneratorWorker:
         if not root:
             self._idle_candidates = []
             return
-        self._idle_candidates = collect_generation_candidates(root, settings).candidates
+        candidates = collect_generation_candidates(root, settings).candidates
+        completed = load_completed(root, settings)
+        if completed:
+            before = len(candidates)
+            candidates = [path for path in candidates if path not in completed]
+            skipped = before - len(candidates)
+            if skipped:
+                _log(f"Idle resume: skipping {skipped} completed file(s) under {root}")
+        self._idle_candidates = candidates
         self._idle_scan_cursor = 0
         if settings.debug and self._idle_candidates:
             _log(
@@ -161,11 +170,13 @@ class GeneratorWorker:
                 return
 
             try:
-                generate_trickplay_for_media(
+                result = generate_trickplay_for_media(
                     path,
                     settings,
                     should_cancel=self._should_cancel,
                 )
+                if result:
+                    mark_completed(settings.library_path, settings, path)
             except Exception as exc:  # pragma: no cover
                 _log(f"Unexpected generator error for {path}: {exc}", xbmc.LOGERROR)
 

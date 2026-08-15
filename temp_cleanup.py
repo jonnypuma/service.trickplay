@@ -9,6 +9,8 @@ import time
 import xbmc
 import xbmcvfs
 
+from vfs_paths import local_path as _local_path
+
 GENERATOR_TEMP_ROOT = xbmcvfs.translatePath("special://temp/service.trickplay/")
 GENERATE_TEMP_ROOT = os.path.join(GENERATOR_TEMP_ROOT, "generate")
 DOVI_TEMP_ROOT = os.path.join(GENERATOR_TEMP_ROOT, "dovi")
@@ -19,12 +21,6 @@ LOCK_MAX_AGE_SEC = 7200
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay] {message}", level)
-
-
-def _local_path(path: str) -> str:
-    if path.startswith(("special://", "vfs://", "zip://")):
-        return xbmcvfs.translatePath(path)
-    return path
 
 
 def _generation_lock_fresh() -> bool:
