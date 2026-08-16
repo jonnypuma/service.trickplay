@@ -57,9 +57,14 @@ _tile_fingerprint_cache: dict[str, tuple[float, int, float]] = {}
 _TILE_FP_TTL_SEC = 2.0
 
 # Keep fully-decoded sprite tiles in RAM so same-tile scrub/prefetch does not
-# re-decode the JPG for every cell. Cap avoids unbounded memory on long sessions.
-# ~16.5 MiB/tile for default Jellyfin 320@10x10 (3200x1800 RGB); 8 ≈ ~132 MiB peak.
-_DECODED_TILE_MAX = 8
+# re-decode the JPG for every cell. During playback the cap is raised to the
+# current sidecar's tile count so pause/scrub-back stays warm.
+# ~16.5 MiB/tile for default Jellyfin 320@10x10 (3200x1800 RGB).
+_DECODED_TILE_DEFAULT_MAX = 8
+_DECODED_TILE_HARD_MAX = 24
+# Backward-compatible alias for the idle/default cap (tests and callers).
+_DECODED_TILE_MAX = _DECODED_TILE_DEFAULT_MAX
+_decoded_tile_max = _DECODED_TILE_DEFAULT_MAX
 _decoded_tile_lock = threading.Lock()
 # source_path -> (mtime, size, PIL Image)
 _decoded_tiles: dict[str, tuple[float, int, object]] = {}
@@ -224,6 +229,46 @@ def clear_decoded_tile_cache() -> None:
         _decoded_tile_order.clear()
 
 
+def begin_decoded_tile_session(tile_count: int) -> None:
+    """Pin decoded sprites for the current file (up to ``_DECODED_TILE_HARD_MAX``)."""
+    global _decoded_tile_max
+    count = max(0, int(tile_count))
+    _decoded_tile_max = max(
+        _DECODED_TILE_DEFAULT_MAX,
+        min(count, _DECODED_TILE_HARD_MAX),
+    )
+
+
+def end_decoded_tile_session() -> None:
+    """Release the playback pin and drop decoded sprites when the file stops."""
+    global _decoded_tile_max
+    _decoded_tile_max = _DECODED_TILE_DEFAULT_MAX
+    clear_decoded_tile_cache()
+
+
+def decoded_tile_capacity() -> int:
+    return _decoded_tile_max
+
+
+def warm_decoded_tile(tile_path: str) -> bool:
+    """Copy a sprite locally and decode it into RAM without cropping a cell."""
+    if not tile_path:
+        return False
+    if not ensure_pillow_loaded():
+        return False
+    source = temp_tile_copy(tile_path)
+    if not source:
+        _log(f"Could not copy sprite tile locally for warm: {tile_path}", xbmc.LOGWARNING)
+        return False
+    try:
+        mtime, size = _source_fingerprint(tile_path)
+        _get_decoded_tile_image(source, mtime, size)
+        return True
+    except (OSError, ValueError) as exc:
+        _log(f"Sprite warm decode failed for {tile_path}: {exc}", xbmc.LOGWARNING)
+        return False
+
+
 def _next_live_preview_path() -> str:
     """Return the next ping-pong live JPEG path under special://temp."""
     global _live_slot
@@ -380,7 +425,7 @@ def _remember_decoded_tile(source_path: str, mtime: float, size: int, image: obj
             _decoded_tile_order.remove(source_path)
         _decoded_tiles[source_path] = (mtime, size, image)
         _decoded_tile_order.append(source_path)
-        while len(_decoded_tile_order) > _DECODED_TILE_MAX:
+        while len(_decoded_tile_order) > _decoded_tile_max:
             evicted = _decoded_tile_order.pop(0)
             _decoded_tiles.pop(evicted, None)
 
@@ -419,7 +464,7 @@ def preview_cache_stats() -> dict[str, int]:
         return {
             **_cache_stats,
             "decoded_entries": len(_decoded_tiles),
-            "decoded_capacity": _DECODED_TILE_MAX,
+            "decoded_capacity": _decoded_tile_max,
         }
 
 

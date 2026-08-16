@@ -110,8 +110,8 @@ msgid "Prefetch during playback"
 msgstr "Forhent under afspilning"
 
 msgctxt "#32201"
-msgid "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
-msgstr "Mens en video afspilles, hold forhentningsradiusen (miniaturebillede-indekser) varm på begge sider af afspilningshovedet — ikke kun når søgelinjen åbnes."
+msgid "While a video is playing, keep the prefetch window warm on both sides of the current playhead — not only when the seek bar opens."
+msgstr "Mens en video afspilles, hold forhentningsvinduet varmt på begge sider af afspilningshovedet — ikke kun når søgelinjen åbnes."
 
 msgctxt "#32202"
 msgid "Arctic Fuse 2"
@@ -174,12 +174,12 @@ msgid "While the seek OSD is open and idle, pre-crop remaining cells in the curr
 msgstr "Mens søge-OSD er åben og inaktiv, beskær resterende celler i nuværende sprite-flise på forhånd."
 
 msgctxt "#32031"
-msgid "Prefetch radius (indices)"
-msgstr "Forhentningsradius (indekser)"
+msgid "Prefetch window (seconds)"
+msgstr "Forhentningsvindue (sekunder)"
 
 msgctxt "#32032"
-msgid "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
-msgstr "Hvor mange trickplay-miniaturebillede-indekser der skal beskæres på forhånd foran og bag afspilningshovedet (symmetrisk). Med et 10 s interval betyder 5 ca. ±50 s. Højere bruger mere CPU og disk."
+msgid "Seconds ahead and behind the playhead to pre-crop. 120 = ±2 minutes at any thumbnail interval. Playback uses at most 50 s so the queue is not flooded."
+msgstr "Sekunder der skal beskæres foran og bag afspilningshovedet. 120 = ±2 minutter uanset miniatureinterval. Under afspilning højst 50 s, så køen ikke fyldes."
 
 msgctxt "#32033"
 msgid "Prefetch queue size"
@@ -984,3 +984,7 @@ msgstr "Export diagnostic report"
 msgctxt "#32249"
 msgid "Report written to:\n%s"
 msgstr "Report written to:\n%s"
+
+msgctxt "#32250"
+msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
+msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."

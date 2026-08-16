@@ -343,7 +343,7 @@ class SettingsLevelTests(unittest.TestCase):
         self.assertEqual(levels["generator_fps_batch_timeout_cap"], 3)
         self.assertEqual(levels["generator_hw_decode_cuda"], 3)
         self.assertEqual(levels["cache_jpeg_quality"], 3)
-        self.assertEqual(levels["prefetch_radius"], 2)
+        self.assertEqual(levels["prefetch_radius_seconds"], 2)
         self.assertGreater(
             levels["install_skin_snippet_force"],
             levels["install_skin_snippet_current"],
@@ -406,11 +406,15 @@ class ServiceLifecycleTests(_StubAddonMixin):
         instance.prefetch = MagicMock()
         instance._playback_block_reason = "old"
         instance.clear_preview_properties = MagicMock()
-        with patch.object(service, "clear_trickplay_property") as clear_property:
+        with (
+            patch.object(service, "clear_trickplay_property") as clear_property,
+            patch.object(service, "end_decoded_tile_session") as end_session,
+        ):
             instance.reset_playback_state()
         self.assertIsNone(instance.resolution)
         self.assertEqual(instance.playing_file, "")
         instance.prefetch.cancel.assert_called_once()
+        end_session.assert_called_once()
         clear_property.assert_called_once_with(service.PROP_SUPPRESS_AFTER_SKIP)
 
 

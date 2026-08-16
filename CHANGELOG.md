@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.14.0] - 2026-08-16
+
+### Changed
+
+- **Prefetch window is time-based** — the setting is now seconds (default 120 =
+  ±2 minutes) instead of thumb indices. Index count is derived from the sidecar
+  interval, so 5 s and 10 s thumbs cover the same timeline. During playback the
+  window is still capped at 50 seconds so watching does not flood the crop queue.
+
+## [8.13.0] - 2026-08-16
+
+### Changed
+
+- **Upcoming sprite warm** — when playhead prefetch (or scrub neighbors) reaches
+  the last 20% of a sprite tile, the next tile is copied locally and decoded into
+  RAM before you cross into it. Reverse scrub warms the previous tile in the first
+  20%. First cell of `1.jpg` no longer waits for a cold NFS copy/decode.
+- **Session-pinned decoded tiles** — during playback, decoded sprites stay in RAM
+  for the whole file (up to 24 tiles; ~16 MiB each for 320@10x10) instead of an
+  8-tile LRU, so pause-and-scrub-back stays instant. The pin is released when
+  playback stops.
+
 ## [8.12.1] - 2026-08-16
 
 ### Fixed

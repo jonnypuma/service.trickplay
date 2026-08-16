@@ -143,7 +143,7 @@ Legacy Jellyfin folders without an interval suffix (`320 - 10x10/`) are treated 
 
 When playback starts, the service locates the matching `.trickplay` folder, maps the seek position to a tile file and grid cell, crops the active cell with Pillow, and publishes **DialogSeekBar window properties** for the skin to render.
 
-Prefetch pre-crops neighbouring cells in the background. **During playback** (default), the service keeps the configured **prefetch radius** warm symmetrically around the moving playhead — not only when the seek bar opens. Radius is in **thumb indices** (e.g. radius 5 with a 10 s interval ≈ ±50 s on the timeline).
+Prefetch pre-crops neighbouring cells in the background. **During playback** (default), the service keeps about **50 seconds** of thumbs warm symmetrically around the moving playhead — not only when the seek bar opens. The scrub **prefetch window** is in **seconds** (default 120 = ±2 minutes) and is converted to thumb indices from the sidecar interval, so 5 s and 10 s thumbs cover the same amount of time.
 
 ### Main window properties
 
@@ -207,12 +207,12 @@ and reports malformed names, unsupported grids, and invalid intervals separately
 - **Prefetch on playback start** — warm cache around the current playhead when a video loads
 - **Prefetch whole sprite tile** — queue extra cells from the current sprite JPG during scrubbing
 - **Prefetch idle sprite tile** — fill in the rest of the tile while the OSD is open and idle
-- **Prefetch radius** — indices ahead/behind to pre-crop (default 5)
+- **Prefetch window (seconds)** — time ahead/behind the playhead to pre-crop (default 120 = ±2 minutes). Converted to thumb indices from the sidecar interval. While playing, the window is capped at 50 seconds.
 - **Prefetch queue size** — max pending background crops (default 48)
 - **Crop cache limit (MB)** — LRU cap for cropped JPEGs (default 500; 0 = unlimited)
 - **Cached thumb JPEG quality** — compression for cropped preview JPEGs (50–95, default 90)
 
-Scrub crops reuse up to **8** decoded sprite tiles in RAM and publish via a live temp JPEG first; durable cache writes finish in the background.
+Scrub crops keep decoded sprite tiles in RAM for the current file (up to **24** tiles, default **8** when idle) so pause-and-scrub-back does not re-decode. The next sprite is copied and decoded once playhead prefetch reaches the last **20%** of the current tile. Live temp JPEGs publish immediately; durable cache writes finish in the background.
 
 ### Trickplay generator (Settings → Trickplay generator)
 

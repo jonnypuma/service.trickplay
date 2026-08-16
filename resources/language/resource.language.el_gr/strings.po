@@ -110,8 +110,8 @@ msgid "Prefetch during playback"
 msgstr "Προφόρτωση κατά την αναπαραγωγή"
 
 msgctxt "#32201"
-msgid "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
-msgstr "Ενώ αναπαράγεται ένα βίντεο, διατηρήστε την ακτίνα προφόρτωσης (δείκτες μικρογραφιών) ζεστή και στις δύο πλευρές της τρέχουσας κεφαλής αναπαραγωγής — όχι μόνο όταν ανοίγει η γραμμή αναζήτησης."
+msgid "While a video is playing, keep the prefetch window warm on both sides of the current playhead — not only when the seek bar opens."
+msgstr "Ενώ αναπαράγεται ένα βίντεο, διατηρήστε το παράθυρο προφόρτωσης ζεστό και στις δύο πλευρές της κεφαλής αναπαραγωγής — όχι μόνο όταν ανοίγει η γραμμή αναζήτησης."
 
 msgctxt "#32202"
 msgid "Arctic Fuse 2"
@@ -174,12 +174,12 @@ msgid "While the seek OSD is open and idle, pre-crop remaining cells in the curr
 msgstr "Ενώ το OSD αναζήτησης είναι ανοιχτό και αδρανές, προκόψτε τα υπόλοιπα κελιά στο τρέχον πλακίδιο sprite."
 
 msgctxt "#32031"
-msgid "Prefetch radius (indices)"
-msgstr "Ακτίνα προφόρτωσης (δείκτες)"
+msgid "Prefetch window (seconds)"
+msgstr "Παράθυρο προφόρτωσης (δευτερόλεπτα)"
 
 msgctxt "#32032"
-msgid "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
-msgstr "Πόσοι δείκτες μικρογραφιών trickplay να προκοπούν μπροστά και πίσω από την κεφαλή αναπαραγωγής (συμμετρικά). Με διάστημα 10 s, το 5 σημαίνει περίπου ±50 s. Υψηλότερες τιμές χρησιμοποιούν περισσότερη CPU και δίσκο."
+msgid "Seconds ahead and behind the playhead to pre-crop. 120 = ±2 minutes at any thumbnail interval. Playback uses at most 50 s so the queue is not flooded."
+msgstr "Δευτερόλεπτα προκοπής μπροστά και πίσω από την κεφαλή. 120 = ±2 λεπτά, ανεξάρτητα από το διάστημα μικρογραφιών. Κατά την αναπαραγωγή το πολύ 50 δ. ώστε να μην γεμίζει η ουρά."
 
 msgctxt "#32033"
 msgid "Prefetch queue size"
@@ -984,3 +984,7 @@ msgstr "Export diagnostic report"
 msgctxt "#32249"
 msgid "Report written to:\n%s"
 msgstr "Report written to:\n%s"
+
+msgctxt "#32250"
+msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
+msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."

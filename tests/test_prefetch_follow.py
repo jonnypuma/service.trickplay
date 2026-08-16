@@ -18,8 +18,17 @@ sys.modules.setdefault("xbmc", xbmc)
 for _name in ("xbmcaddon", "xbmcvfs", "xbmcgui"):
     sys.modules.setdefault(_name, MagicMock())
 
-from prefetch import ThumbPrefetch, _follow_warm_indices, _symmetric_window_indices
-from prefetch_settings import PrefetchSettings
+from prefetch import (
+    ThumbPrefetch,
+    _follow_warm_indices,
+    _symmetric_window_indices,
+    upcoming_tile_to_warm,
+)
+from prefetch_settings import (
+    PLAYBACK_WARM_SECONDS,
+    PrefetchSettings,
+    thumb_indices_for_seconds,
+)
 from trickplay_resolver import TrickplayLookup, TrickplayResolution
 
 
@@ -46,14 +55,24 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
         )
         self.assertEqual(indices, [])
 
-    def test_playback_warm_radius_caps_large_scrub_radius(self) -> None:
-        settings = PrefetchSettings(radius=12)
-        self.assertEqual(settings.playback_warm_radius, 5)
-        self.assertEqual(settings.radius_symmetric, 12)
+    def test_playback_warm_converts_time_window_to_indices(self) -> None:
+        settings = PrefetchSettings(radius_seconds=120)
+        self.assertEqual(settings.radius_indices(10000), 12)
+        self.assertEqual(settings.radius_indices(5000), 24)
+        self.assertEqual(settings.playback_warm_indices(10000), 5)
+        self.assertEqual(settings.playback_warm_indices(5000), 10)
+        self.assertEqual(settings.radius_symmetric(10000), 12)
+
+    def test_thumb_indices_for_seconds_caps_and_floors(self) -> None:
+        self.assertEqual(thumb_indices_for_seconds(120, 10000, cap=48), 12)
+        self.assertEqual(thumb_indices_for_seconds(120, 2000, cap=24), 24)
+        self.assertEqual(thumb_indices_for_seconds(15, 10000, cap=48), 2)
+        self.assertEqual(thumb_indices_for_seconds(50, 10000, cap=48), 5)
+        self.assertEqual(PLAYBACK_WARM_SECONDS, 50)
 
     @patch("prefetch.lookup_thumbnail")
     @patch("prefetch.read_prefetch_settings")
-    def test_schedule_playhead_follow_uses_playback_warm_radius(
+    def test_schedule_playhead_follow_uses_playback_warm_indices(
         self,
         mock_read_settings: MagicMock,
         mock_lookup_thumbnail: MagicMock,
@@ -61,7 +80,7 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
         settings = PrefetchSettings(
             enabled=True,
             during_playback=True,
-            radius=12,
+            radius_seconds=120,
             max_queue=48,
         )
         mock_read_settings.return_value = settings
@@ -94,8 +113,144 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
         mock_lookup_thumbnail.assert_called_once_with(resolution, 100, 10000)
         prefetch._schedule_indices.assert_called_once()
         indices = prefetch._schedule_indices.call_args.args[2]
-        # ±playback_warm_radius (5), not full scrub radius (12)
+        # ±50 s playback window at 10 s interval = 5 indices, not full ±120 s
         self.assertEqual(indices, [10, 11, 9, 12, 8, 13, 7, 14, 6, 15, 5])
+
+    @patch("prefetch.lookup_thumbnail")
+    @patch("prefetch.read_prefetch_settings")
+    def test_schedule_playhead_follow_scales_with_shorter_interval(
+        self,
+        mock_read_settings: MagicMock,
+        mock_lookup_thumbnail: MagicMock,
+    ) -> None:
+        mock_read_settings.return_value = PrefetchSettings(
+            enabled=True,
+            during_playback=True,
+            radius_seconds=120,
+        )
+        resolution = TrickplayResolution(
+            width=320,
+            tile_width=10,
+            tile_height=10,
+            tiles_dir="/tiles",
+            tile_paths=("/tiles/0.jpg",),
+            thumb_width=320,
+            thumb_height=180,
+            thumbnail_count=200,
+        )
+        lookup = TrickplayLookup(
+            tile_path="/tiles/0.jpg",
+            col=0,
+            row=2,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=20,
+            target_second=100,
+        )
+        mock_lookup_thumbnail.return_value = lookup
+        prefetch = ThumbPrefetch()
+        prefetch._schedule_indices = MagicMock()  # type: ignore[method-assign]
+        prefetch.schedule_playhead_follow(resolution, 100, 5000)
+        indices = prefetch._schedule_indices.call_args.args[2]
+        # ±50 s at 5 s interval = 10 indices (center + 10 ahead/behind interleaved)
+        self.assertEqual(len(indices), 21)
+        self.assertEqual(indices[0], 20)
+        self.assertIn(30, indices)
+        self.assertIn(10, indices)
+        self.assertNotIn(31, indices)
+
+
+class UpcomingTileWarmTests(unittest.TestCase):
+    def _resolution(self, thumbnail_count: int = 300) -> TrickplayResolution:
+        return TrickplayResolution(
+            width=320,
+            tile_width=10,
+            tile_height=10,
+            tiles_dir="/tiles",
+            tile_paths=("/tiles/0.jpg", "/tiles/1.jpg", "/tiles/2.jpg"),
+            thumb_width=320,
+            thumb_height=180,
+            thumbnail_count=thumbnail_count,
+        )
+
+    def test_last_20_percent_selects_next_tile(self) -> None:
+        resolution = self._resolution()
+        self.assertIsNone(upcoming_tile_to_warm(resolution, 79, direction=1))
+        self.assertEqual(
+            upcoming_tile_to_warm(resolution, 80, direction=1),
+            "/tiles/1.jpg",
+        )
+        self.assertEqual(
+            upcoming_tile_to_warm(resolution, 180, direction=1),
+            "/tiles/2.jpg",
+        )
+        self.assertIsNone(upcoming_tile_to_warm(resolution, 280, direction=1))
+
+    def test_first_20_percent_selects_previous_tile_in_reverse(self) -> None:
+        resolution = self._resolution()
+        self.assertEqual(
+            upcoming_tile_to_warm(resolution, 100, direction=-1),
+            "/tiles/0.jpg",
+        )
+        self.assertIsNone(upcoming_tile_to_warm(resolution, 130, direction=-1))
+
+    def test_partial_last_tile_has_no_next(self) -> None:
+        resolution = self._resolution(thumbnail_count=250)
+        self.assertIsNone(upcoming_tile_to_warm(resolution, 240, direction=1))
+        self.assertEqual(
+            upcoming_tile_to_warm(resolution, 180, direction=1),
+            "/tiles/2.jpg",
+        )
+
+    @patch("prefetch.read_prefetch_settings")
+    def test_playhead_follow_warms_next_tile_in_last_20_percent(
+        self, mock_read_settings: MagicMock
+    ) -> None:
+        mock_read_settings.return_value = PrefetchSettings(
+            enabled=True,
+            during_playback=True,
+        )
+        resolution = self._resolution()
+        prefetch = ThumbPrefetch()
+        prefetch._schedule_indices = MagicMock()  # type: ignore[method-assign]
+        prefetch.schedule_tile_warm = MagicMock(  # type: ignore[method-assign]
+            return_value="/tiles/1.jpg"
+        )
+
+        prefetch.schedule_playhead_follow(resolution, 790, 10000)
+        prefetch.schedule_tile_warm.assert_not_called()
+
+        prefetch.schedule_playhead_follow(resolution, 850, 10000)
+        prefetch.schedule_tile_warm.assert_called_once_with(
+            "/tiles/1.jpg", debug=False
+        )
+
+    @patch("prefetch.threading.Thread")
+    def test_schedule_tile_warm_is_once_per_tile(
+        self, mock_thread: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
+
+        first = prefetch.schedule_tile_warm("/tiles/1.jpg")
+        second = prefetch.schedule_tile_warm("/tiles/1.jpg")
+
+        self.assertEqual(first, "/tiles/1.jpg")
+        self.assertIsNone(second)
+        prefetch.prioritize_tile_copy.assert_called_once_with("/tiles/1.jpg")
+        mock_thread.assert_called_once()
+
+    @patch("prefetch.threading.Thread")
+    def test_cancel_without_clearing_copies_keeps_warmed_set(
+        self, _mock_thread: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
+        prefetch.schedule_tile_warm("/tiles/1.jpg")
+        prefetch.cancel(clear_copies=False)
+        self.assertIn("/tiles/1.jpg", prefetch._warmed_tiles)
+        prefetch.cancel()
+        self.assertNotIn("/tiles/1.jpg", prefetch._warmed_tiles)
 
 
 class PrefetchPriorityTests(unittest.TestCase):

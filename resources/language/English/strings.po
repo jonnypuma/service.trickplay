@@ -110,8 +110,8 @@ msgid "Prefetch during playback"
 msgstr "Prefetch during playback"
 
 msgctxt "#32201"
-msgid "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
-msgstr "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
+msgid "While a video is playing, keep the prefetch window warm on both sides of the current playhead — not only when the seek bar opens."
+msgstr "While a video is playing, keep the prefetch window warm on both sides of the current playhead — not only when the seek bar opens."
 
 msgctxt "#32202"
 msgid "Arctic Fuse 2"
@@ -174,12 +174,12 @@ msgid "While the seek OSD is open and idle, pre-crop remaining cells in the curr
 msgstr "While the seek OSD is open and idle, pre-crop remaining cells in the current sprite tile."
 
 msgctxt "#32031"
-msgid "Prefetch radius (indices)"
-msgstr "Prefetch radius (indices)"
+msgid "Prefetch window (seconds)"
+msgstr "Prefetch window (seconds)"
 
 msgctxt "#32032"
-msgid "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
-msgstr "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
+msgid "Seconds ahead and behind the playhead to pre-crop. 120 = ±2 minutes at any thumbnail interval. Playback uses at most 50 s so the queue is not flooded."
+msgstr "Seconds ahead and behind the playhead to pre-crop. 120 = ±2 minutes at any thumbnail interval. Playback uses at most 50 s so the queue is not flooded."
 
 msgctxt "#32033"
 msgid "Prefetch queue size"

@@ -20,7 +20,11 @@ from prefetch_settings import read_prefetch_settings
 from generator_settings import read_runtime_settings, read_generator_settings
 from generator_worker import GeneratorWorker
 from library_update_batch import LibraryUpdateBatch
-from thumb_cropper import get_cropped_thumb_path
+from thumb_cropper import (
+    begin_decoded_tile_session,
+    end_decoded_tile_session,
+    get_cropped_thumb_path,
+)
 from preview_dialog import (
     PREVIEW_PROPERTIES,
     PROP_PREVIEW_VISIBLE,
@@ -293,6 +297,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         self._skip_landing_second = -1
         self._skip_hiding_since = 0.0
         self.prefetch.cancel()
+        end_decoded_tile_session()
         self._playback_block_reason = ""
         clear_trickplay_property(PROP_SUPPRESS_AFTER_SKIP)
         self.clear_preview_properties()
@@ -423,6 +428,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             HOME_WINDOW.setProperty(PROP_AVAILABLE, "true")
             sync_trickplay_property(PROP_AVAILABLE, "true")
             sync_display_settings()
+            begin_decoded_tile_session(len(self.resolution.tile_paths))
             _log(
                 f"Loaded trickplay for {media_path} "
                 f"({self.resolution.thumbnail_count} thumbs, "

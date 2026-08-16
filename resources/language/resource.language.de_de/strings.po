@@ -110,8 +110,8 @@ msgid "Prefetch during playback"
 msgstr "Während Wiedergabe vorladen"
 
 msgctxt "#32201"
-msgid "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
-msgstr "Während ein Video abgespielt wird, den Vorladeradius (Miniaturbildindizes) auf beiden Seiten des aktuellen Abspielkopfes warm halten — nicht nur, wenn die Suchleiste geöffnet wird."
+msgid "While a video is playing, keep the prefetch window warm on both sides of the current playhead — not only when the seek bar opens."
+msgstr "Während ein Video abgespielt wird, das Vorladefenster auf beiden Seiten des aktuellen Abspielkopfes warm halten — nicht nur, wenn die Suchleiste geöffnet wird."
 
 msgctxt "#32202"
 msgid "Arctic Fuse 2"
@@ -174,12 +174,12 @@ msgid "While the seek OSD is open and idle, pre-crop remaining cells in the curr
 msgstr "Während das Such-OSD geöffnet und inaktiv ist, verbleibende Zellen in der aktuellen Sprite-Kachel vorab zuschneiden."
 
 msgctxt "#32031"
-msgid "Prefetch radius (indices)"
-msgstr "Vorladeradius (Indizes)"
+msgid "Prefetch window (seconds)"
+msgstr "Vorladefenster (Sekunden)"
 
 msgctxt "#32032"
-msgid "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
-msgstr "Wie viele Trickplay-Miniaturbildindizes vor und hinter dem Abspielkopf vorab zuschneiden (symmetrisch). Bei einem 10-s-Intervall bedeutet 5 etwa ±50 s. Höher verwendet mehr CPU und Festplatte."
+msgid "Seconds ahead and behind the playhead to pre-crop. 120 = ±2 minutes at any thumbnail interval. Playback uses at most 50 s so the queue is not flooded."
+msgstr "Sekunden vor und hinter dem Abspielkopf vorab zuschneiden. 120 = ±2 Minuten, unabhängig vom Miniaturintervall. Während der Wiedergabe höchstens 50 s, damit die Warteschlange nicht überläuft."
 
 msgctxt "#32033"
 msgid "Prefetch queue size"
@@ -984,3 +984,7 @@ msgstr "Export diagnostic report"
 msgctxt "#32249"
 msgid "Report written to:\n%s"
 msgstr "Report written to:\n%s"
+
+msgctxt "#32250"
+msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
+msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."

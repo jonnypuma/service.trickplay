@@ -6,7 +6,7 @@ import os
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import xbmc
 
@@ -18,6 +18,7 @@ from thumb_cropper import (
     get_cropped_thumb_path,
     temp_tile_copy,
     thumb_cache_key,
+    warm_decoded_tile,
 )
 from trickplay_resolver import (
     TrickplayLookup,
@@ -29,6 +30,9 @@ from trickplay_resolver import (
 MAX_TILE_ENQUEUE = 20
 # Cap idle whole-tile floods so NFS sprite copies do not starve scrub crops.
 IDLE_TILE_MAX_ENQUEUE = 24
+# Copy+decode the next sprite once playhead prefetch is this far through the
+# current tile, so the first cell of 1.jpg is already in RAM.
+UPCOMING_TILE_WARM_FRACTION = 0.80
 
 
 def _cache_key(lookup: TrickplayLookup) -> ThumbCacheKey:
@@ -67,6 +71,7 @@ def _neighbor_indices(
     max_index: int,
     scrub_direction: int,
     settings: PrefetchSettings,
+    interval_ms: int,
 ) -> list[int]:
     """Return thumb indices in prefetch priority order."""
     ordered: list[int] = []
@@ -78,9 +83,9 @@ def _neighbor_indices(
         seen.add(index)
         ordered.append(index)
 
-    radius_ahead = settings.radius_ahead
-    radius_behind = settings.radius_behind
-    radius_symmetric = settings.radius_symmetric
+    radius_ahead = settings.radius_ahead(interval_ms)
+    radius_behind = settings.radius_behind(interval_ms)
+    radius_symmetric = settings.radius_symmetric(interval_ms)
 
     if scrub_direction > 0:
         for distance in range(1, radius_ahead + 1):
@@ -145,6 +150,62 @@ def _follow_warm_indices(
     return indices
 
 
+def tile_progress_fraction(
+    resolution: TrickplayResolution, thumb_index: int
+) -> float:
+    """How far through the current sprite tile (0.0–1.0) by cell index."""
+    tile_start, tile_end = _tile_index_bounds(resolution, thumb_index)
+    length = tile_end - tile_start
+    if length <= 0:
+        return 0.0
+    return (thumb_index - tile_start) / length
+
+
+def adjacent_tile_path(
+    resolution: TrickplayResolution,
+    thumb_index: int,
+    direction: int,
+) -> str | None:
+    """Sprite path one tile ahead (direction>=0) or behind (direction<0)."""
+    if not resolution.tile_paths:
+        return None
+    thumbs_per_tile = resolution.thumbs_per_tile
+    if thumbs_per_tile <= 0:
+        return None
+    tile_index = thumb_index // thumbs_per_tile
+    next_index = tile_index + 1 if direction >= 0 else tile_index - 1
+    if 0 <= next_index < len(resolution.tile_paths):
+        return resolution.tile_paths[next_index]
+    return None
+
+
+def should_warm_upcoming_tile(
+    resolution: TrickplayResolution,
+    thumb_index: int,
+    direction: int = 1,
+    fraction: float = UPCOMING_TILE_WARM_FRACTION,
+) -> bool:
+    """True when the playhead is in the last (or first, reverse) 20% of a tile."""
+    progress = tile_progress_fraction(resolution, thumb_index)
+    if direction < 0:
+        return progress <= (1.0 - fraction)
+    return progress >= fraction
+
+
+def upcoming_tile_to_warm(
+    resolution: TrickplayResolution,
+    thumb_index: int,
+    direction: int = 1,
+    fraction: float = UPCOMING_TILE_WARM_FRACTION,
+) -> str | None:
+    if not should_warm_upcoming_tile(
+        resolution, thumb_index, direction=direction, fraction=fraction
+    ):
+        return None
+    warm_direction = -1 if direction < 0 else 1
+    return adjacent_tile_path(resolution, thumb_index, warm_direction)
+
+
 @dataclass(frozen=True)
 class _PrefetchItem:
     lookup: TrickplayLookup
@@ -173,6 +234,7 @@ class ThumbPrefetch:
         self._copy_done: set[str] = set()
         self._copy_worker: threading.Thread | None = None
         self._copy_generation = 0
+        self._warmed_tiles: set[str] = set()
 
     def cancel(self, *, clear_copies: bool = True) -> None:
         with self._lock:
@@ -183,6 +245,8 @@ class ThumbPrefetch:
             self._idle_tiles_done.clear()
             self._last_playback_follow_index = -1
             self._last_playback_follow_at = 0.0
+            if clear_copies:
+                self._warmed_tiles.clear()
         if clear_copies:
             with self._copy_lock:
                 self._copy_generation += 1
@@ -320,7 +384,7 @@ class ThumbPrefetch:
         high_priority: bool = False,
         force: bool = False,
     ) -> None:
-        """Keep ±playback_warm_radius crops warm around the playhead during playback."""
+        """Keep ±playback_warm_indices crops warm around the playhead during playback."""
         settings = settings or read_prefetch_settings()
         if not settings.enabled or not settings.during_playback or not resolution.is_usable:
             return
@@ -346,17 +410,23 @@ class ThumbPrefetch:
         warm_previous = -1 if force or previous_index < 0 or retry_same_index else previous_index
         self._last_playback_follow_index = center_index
         self._last_playback_follow_at = now
-        # Cap during-playback follow so a large scrub radius does not flood the queue.
-        follow_settings = replace(settings, radius=settings.playback_warm_radius)
+        # Cap during-playback follow so a large scrub window does not flood the queue.
         self._warm_around_lookup(
             resolution,
             lookup,
             interval_ms,
-            follow_settings,
+            settings,
             debug=debug,
             high_priority=high_priority,
             whole_tile=False,
             previous_index=warm_previous,
+            radius=settings.playback_warm_indices(interval_ms),
+        )
+        direction = 1
+        if previous_index >= 0 and center_index < previous_index:
+            direction = -1
+        self.maybe_warm_upcoming_tile(
+            resolution, lookup, direction=direction, debug=debug
         )
 
     def _warm_around_lookup(
@@ -370,11 +440,13 @@ class ThumbPrefetch:
         high_priority: bool,
         whole_tile: bool,
         previous_index: int,
+        radius: int | None = None,
     ) -> None:
         self._debug = debug
         self._max_queue = settings.max_queue
         max_index = _max_thumb_index(resolution)
-        radius = settings.radius
+        if radius is None:
+            radius = settings.radius_indices(interval_ms)
 
         if previous_index < 0:
             indices = _symmetric_window_indices(
@@ -434,6 +506,58 @@ class ThumbPrefetch:
             whole_tile=settings.whole_tile,
             previous_index=-1,
         )
+        self.maybe_warm_upcoming_tile(
+            resolution, center, direction=1, debug=debug
+        )
+
+    def maybe_warm_upcoming_tile(
+        self,
+        resolution: TrickplayResolution,
+        lookup: TrickplayLookup,
+        *,
+        direction: int = 1,
+        debug: bool = False,
+    ) -> str | None:
+        """Copy and decode the next sprite when the playhead is in the last 20%."""
+        tile_path = upcoming_tile_to_warm(
+            resolution, lookup.thumb_index, direction=direction
+        )
+        if not tile_path:
+            return None
+        return self.schedule_tile_warm(tile_path, debug=debug)
+
+    def schedule_tile_warm(self, tile_path: str, debug: bool = False) -> str | None:
+        """Copy a sprite locally and decode it into RAM once per playback."""
+        if not tile_path:
+            return None
+        with self._lock:
+            if tile_path in self._warmed_tiles:
+                return None
+            self._warmed_tiles.add(tile_path)
+        self._debug = debug or self._debug
+        if self._debug:
+            _log(f"Warm upcoming sprite {os.path.basename(tile_path)}")
+        self.prioritize_tile_copy(tile_path)
+        threading.Thread(
+            target=self._decode_tile_warm,
+            args=(tile_path,),
+            daemon=True,
+            name="trickplay-tile-warm",
+        ).start()
+        return tile_path
+
+    def _decode_tile_warm(self, tile_path: str) -> None:
+        try:
+            ok = warm_decoded_tile(tile_path)
+            if self._debug:
+                _log(
+                    f"Decoded sprite warm {os.path.basename(tile_path)} ok={ok}"
+                )
+        except (OSError, RuntimeError, ValueError) as exc:
+            _log(
+                f"Upcoming tile decode failed for {tile_path}: {exc}",
+                xbmc.LOGWARNING,
+            )
 
     def schedule_neighbors(
         self,
@@ -455,12 +579,16 @@ class ThumbPrefetch:
             _max_thumb_index(resolution),
             scrub_direction,
             settings,
+            interval_ms,
         )
         self._schedule_indices(
             resolution,
             interval_ms,
             indices,
             high_priority=True,
+        )
+        self.maybe_warm_upcoming_tile(
+            resolution, center, direction=scrub_direction, debug=debug
         )
         if settings.whole_tile:
             self._schedule_tile_cells(

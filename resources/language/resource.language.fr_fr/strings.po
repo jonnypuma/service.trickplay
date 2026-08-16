@@ -110,8 +110,8 @@ msgid "Prefetch during playback"
 msgstr "Précharger pendant la lecture"
 
 msgctxt "#32201"
-msgid "While a video is playing, keep the prefetch radius (thumb indices) warm on both sides of the current playhead — not only when the seek bar opens."
-msgstr "Pendant la lecture d'une vidéo, maintenir le rayon de préchargement (indices de vignettes) actif des deux côtés de la tête de lecture — pas seulement lors de l'ouverture de la barre de défilement."
+msgid "While a video is playing, keep the prefetch window warm on both sides of the current playhead — not only when the seek bar opens."
+msgstr "Pendant la lecture d’une vidéo, maintenir la fenêtre de préchargement active des deux côtés de la tête de lecture — pas seulement lors de l’ouverture de la barre de défilement."
 
 msgctxt "#32202"
 msgid "Arctic Fuse 2"
@@ -174,12 +174,12 @@ msgid "While the seek OSD is open and idle, pre-crop remaining cells in the curr
 msgstr "Lorsque l'OSD de défilement est ouvert et inactif, pré-recadrer les cellules restantes de la tuile sprite actuelle."
 
 msgctxt "#32031"
-msgid "Prefetch radius (indices)"
-msgstr "Rayon de préchargement (indices)"
+msgid "Prefetch window (seconds)"
+msgstr "Fenêtre de préchargement (secondes)"
 
 msgctxt "#32032"
-msgid "How many trickplay thumb indices to pre-crop ahead and behind the playhead (symmetric). With a 10 s interval, 5 means about ±50 s. Higher uses more CPU and disk."
-msgstr "Combien d'indices de vignettes trickplay pré-recadrer avant et après la tête de lecture (symétrique). Avec un intervalle de 10 s, 5 signifie environ ±50 s. Des valeurs plus élevées utilisent plus de CPU et de disque."
+msgid "Seconds ahead and behind the playhead to pre-crop. 120 = ±2 minutes at any thumbnail interval. Playback uses at most 50 s so the queue is not flooded."
+msgstr "Secondes à pré-recadrer avant et après la tête de lecture. 120 = ±2 minutes, quel que soit l’intervalle des vignettes. Pendant la lecture, au plus 50 s pour ne pas saturer la file."
 
 msgctxt "#32033"
 msgid "Prefetch queue size"
@@ -984,3 +984,7 @@ msgstr "Export diagnostic report"
 msgctxt "#32249"
 msgid "Report written to:\n%s"
 msgstr "Report written to:\n%s"
+
+msgctxt "#32250"
+msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
+msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."
