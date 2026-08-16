@@ -17,6 +17,10 @@ def install_kodi_stubs() -> tuple[object, object, object, object]:
     xbmc.LOGERROR = getattr(xbmc, "LOGERROR", 2)
     if not callable(getattr(xbmc, "executebuiltin", None)):
         xbmc.executebuiltin = MagicMock()
+    if not callable(getattr(xbmc, "log", None)):
+        xbmc.log = MagicMock()
+    if not callable(getattr(xbmc, "sleep", None)):
+        xbmc.sleep = MagicMock()
 
     xbmcvfs = sys.modules.get("xbmcvfs")
     if xbmcvfs is None:

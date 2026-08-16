@@ -34,6 +34,9 @@ from skin_snippet_installer import (  # noqa: E402
     insert_overlay_before_controls_close,
     overlay_already_installed,
     overlay_needs_refresh,
+    backup_paths,
+    restore_last_backup,
+    validate_skin_xml,
     remove_control_block,
     seekbar_has_host_controls,
 )
@@ -97,6 +100,32 @@ SAMPLE_BELLO_VIDEO_FULLSCREEN = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class SkinSnippetMergeTests(unittest.TestCase):
+    def test_validate_skin_xml_rejects_malformed_input(self) -> None:
+        valid, detail = validate_skin_xml("<window><controls></window>")
+        self.assertFalse(valid)
+        self.assertTrue(detail)
+
+    def test_restore_last_backup_uses_newest_backup(self) -> None:
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = os.path.join(directory, "DialogSeekBar.xml")
+            old = target + ".bak"
+            newer = target + ".bak.20260816"
+            with open(target, "w", encoding="utf-8") as handle:
+                handle.write(SAMPLE_SEEKBAR)
+            with open(old, "w", encoding="utf-8") as handle:
+                handle.write("<window><controls /></window>")
+            time.sleep(0.01)
+            with open(newer, "w", encoding="utf-8") as handle:
+                handle.write(SAMPLE_SEEKBAR.replace('id="100"', 'id="101"'))
+            self.assertEqual(backup_paths(target)[0], newer)
+            ok, detail = restore_last_backup(target)
+            self.assertTrue(ok, detail)
+            with open(target, encoding="utf-8") as handle:
+                self.assertIn('id="101"', handle.read())
+
     def test_find_control_block_span_nested(self) -> None:
         span = find_control_block_span(SAMPLE_SNIPPET, OVERLAY_CONTROL_ID)
         self.assertIsNotNone(span)

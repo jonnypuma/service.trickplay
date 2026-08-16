@@ -25,7 +25,7 @@ from generation_state import begin_or_update, load_completed, mark_completed  # 
 from generator_worker import GeneratorWorker  # noqa: E402
 from overlay_revision import OVERLAY_REVISION, OVERLAY_REVISION_MARKER  # noqa: E402
 from trickplay_generator import _atomic_promote_sidecar  # noqa: E402
-from vfs_paths import writable_os_path  # noqa: E402
+from vfs_paths import network_path_status, writable_os_path  # noqa: E402
 
 
 def _settings(**kwargs):
@@ -76,6 +76,20 @@ class WritableOsPathTests(unittest.TestCase):
     def test_unmapped_remote_url_is_empty(self) -> None:
         with patch("vfs_paths.network_url_to_local", return_value=None):
             self.assertEqual(writable_os_path("nfs://192.168.0.5/Media/show.mkv"), "")
+
+    def test_network_status_distinguishes_unmapped_smb(self) -> None:
+        with patch("vfs_paths.network_url_to_local", return_value=None):
+            self.assertEqual(
+                network_path_status("smb://server/share/movie.mkv"),
+                ("smb", "vfs-non-atomic"),
+            )
+
+    def test_network_status_reports_mapped_nfs(self) -> None:
+        with patch("vfs_paths.network_url_to_local", return_value="/mnt/media"):
+            self.assertEqual(
+                network_path_status("nfs://server/share/movie.mkv"),
+                ("nfs", "mapped-atomic"),
+            )
 
 
 class NetworkAtomicPromoteTests(unittest.TestCase):
@@ -144,6 +158,40 @@ class IdleResumeTests(unittest.TestCase):
                     set(),
                 )
 
+    def test_resume_rejects_media_replaced_at_same_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media = Path(directory) / "movie.mkv"
+            media.write_bytes(b"old")
+            state_path = str(Path(directory) / "state.json")
+            settings = _settings()
+            with patch("generation_state._local_state_path", return_value=state_path):
+                begin_or_update("/media", settings, {str(media)})
+                media.write_bytes(b"new content")
+                self.assertEqual(load_completed("/media", settings), set())
+
+    def test_worker_cancel_transitions_to_cancelling(self) -> None:
+        from generator_worker import GeneratorState
+
+        worker = GeneratorWorker()
+        worker.cancel()
+        self.assertEqual(worker.state, GeneratorState.CANCELLING)
+
+    def test_cancellable_subprocess_kills_on_cancel(self) -> None:
+        import trickplay_generator
+
+        process = MagicMock()
+        process.poll.side_effect = [None, None]
+        process.communicate.return_value = ("", "")
+        with patch("trickplay_generator.subprocess.Popen", return_value=process):
+            result = trickplay_generator._run_subprocess_cancellable(
+                ["ffmpeg"],
+                {},
+                5,
+                should_cancel=lambda: True,
+            )
+        self.assertEqual(result[0], None)
+        process.kill.assert_called_once()
+
 
 class OverlayRevisionTests(unittest.TestCase):
     def test_installer_and_generator_share_revision(self) -> None:
@@ -153,6 +201,15 @@ class OverlayRevisionTests(unittest.TestCase):
         self.assertEqual(skin_snippet_installer.OVERLAY_REVISION, OVERLAY_REVISION)
         self.assertEqual(gen_arctic.OVERLAY_REVISION, OVERLAY_REVISION)
         self.assertIn(str(OVERLAY_REVISION), OVERLAY_REVISION_MARKER)
+
+    def test_sidecar_compatibility_explains_valid_and_invalid_names(self) -> None:
+        from trickplay_resolver import inspect_sidecar_directory_name
+
+        valid = inspect_sidecar_directory_name("320 - 10x10 - 10000")
+        invalid = inspect_sidecar_directory_name("320x10x10")
+        self.assertTrue(valid.compatible)
+        self.assertFalse(invalid.compatible)
+        self.assertIn("expected", invalid.reason)
 
 
 class SnippetNudgeTests(_StubAddonMixin):
@@ -190,7 +247,71 @@ class SnippetNudgeTests(_StubAddonMixin):
         install.assert_called_once()
 
 
+class SetupWizardTests(_StubAddonMixin):
+    def test_setup_checks_mark_missing_dependencies_actionable(self) -> None:
+        from addon_health import AddonHealth, collect_setup_checks, format_setup_report
+
+        health = AddonHealth(
+            skin_id="skin.test",
+            skin_name="Test",
+            profile_label="Test",
+            snippet_file="snippet.xml",
+            target_xml="DialogSeekBar.xml",
+            snippet_state="missing",
+            pillow_ok=False,
+            ffmpeg="(not found)",
+            overlay_revision=9,
+        )
+        checks = collect_setup_checks(health)
+        self.assertEqual(len(checks), 3)
+        self.assertFalse(checks[0].ok)
+        self.assertEqual(checks[0].action, "install_skin")
+        self.assertIn("ACTION NEEDED", format_setup_report(checks))
+
+    def test_setup_checks_complete_when_all_prerequisites_exist(self) -> None:
+        from addon_health import AddonHealth, collect_setup_checks
+
+        health = AddonHealth(
+            skin_id="skin.test",
+            skin_name="Test",
+            profile_label="Test",
+            snippet_file="snippet.xml",
+            target_xml="DialogSeekBar.xml",
+            snippet_state="installed",
+            pillow_ok=True,
+            ffmpeg="ffmpeg",
+            overlay_revision=9,
+        )
+        self.assertTrue(all(check.ok for check in collect_setup_checks(health)))
+
+
 class SettingsLevelTests(unittest.TestCase):
+    def test_preview_cache_stats_are_bounded(self) -> None:
+        from thumb_cropper import preview_cache_stats
+
+        stats = preview_cache_stats()
+        self.assertLessEqual(stats["decoded_entries"], stats["decoded_capacity"])
+
+    def test_skin_adjustment_is_persisted_per_skin(self) -> None:
+        import preview_settings
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "skin-adjustments.json")
+            with (
+                patch("preview_settings._override_path", return_value=path),
+                patch("preview_settings.current_skin_id", return_value="skin.test"),
+            ):
+                preview_settings.save_skin_adjustment(
+                    "skin.test",
+                    scale_percent=125,
+                    offset_x=12,
+                    offset_y=-8,
+                )
+                self.assertEqual(
+                    preview_settings._read_skin_overrides()["skin.test"]["offset_y"],
+                    -8,
+                )
+
     def test_basic_settings_stay_visible(self) -> None:
         tree = ET.parse(ROOT / "resources" / "settings.xml")
         levels = {
@@ -234,6 +355,64 @@ class ScriptDispatchTests(_StubAddonMixin):
                 ["service.trickplay", "install_tools", "playback"]
             )
         )
+
+
+class ServiceLifecycleTests(_StubAddonMixin):
+    def test_reset_playback_state_clears_preview_and_skip_property(self) -> None:
+        import service
+
+        instance = service.TrickplayService.__new__(service.TrickplayService)
+        instance.resolution = object()
+        instance.playing_file = "movie.mkv"
+        instance.last_preview_second = 12
+        instance._last_preview_thumb_index = 3
+        instance.was_seeking = True
+        instance.preview_active = True
+        instance.preview_visible = True
+        instance.committed_seek_second = 12
+        instance.committed_seek_at = 1.0
+        instance.last_play_time = 12
+        instance.playback_started_at = 1.0
+        instance.cached_duration = 100
+        instance.seek_hold_until = 2.0
+        instance._had_compact_seekbar = True
+        instance._had_dialog_seekbar = True
+        instance._had_seek_ui = True
+        instance._pending_seek_ui_warm = True
+        instance._last_idle_prefetch_at = 1.0
+        instance._load_target = "movie.mkv"
+        instance._load_settled_for = "movie.mkv"
+        instance._skippy_skipping_latched = True
+        instance._skip_landing_second = 12
+        instance._skip_hiding_since = 1.0
+        instance.prefetch = MagicMock()
+        instance._playback_block_reason = "old"
+        instance.clear_preview_properties = MagicMock()
+        with patch.object(service, "clear_trickplay_property") as clear_property:
+            instance.reset_playback_state()
+        self.assertIsNone(instance.resolution)
+        self.assertEqual(instance.playing_file, "")
+        instance.prefetch.cancel.assert_called_once()
+        clear_property.assert_called_once_with(service.PROP_SUPPRESS_AFTER_SKIP)
+
+
+class DiagnosticReportTests(_StubAddonMixin):
+    def test_report_omits_media_paths_and_contains_cache_state(self) -> None:
+        import json
+        import diagnostic_report
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "report.txt")
+            with (
+                patch("diagnostic_report._local_report_path", return_value=path),
+                patch("diagnostic_report.collect_addon_health", return_value=_health("installed")),
+            ):
+                result = diagnostic_report.write_diagnostic_report()
+            self.assertEqual(result, path)
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+            self.assertIn("cache", payload)
+            self.assertIn("privacy", payload)
+            self.assertNotIn("media_path", payload)
 
 
 if __name__ == "__main__":

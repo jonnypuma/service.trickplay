@@ -5,6 +5,93 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.12.0] - 2026-08-16
+
+### Fixed
+
+- **Final hardening** — completed the 8.x improvement sequence with full regression
+  coverage, Python compilation checks, XML validation, and safer Kodi-stub behavior
+  for missing runtime APIs.
+
+## [8.11.0] - 2026-08-16
+
+### Documentation
+
+- Reconciled setup instructions with the guided wizard and documented rollback,
+  diagnostic export, generator states, resume identity, network modes, and
+  sidecar compatibility diagnostics.
+
+## [8.10.0] - 2026-08-16
+
+### Added
+
+- **Diagnostic report export** — writes a redacted report containing addon health,
+  generator settings summary, cache counters, and supported worker states.
+
+## [8.9.0] - 2026-08-16
+
+### Tests
+
+- **Service lifecycle coverage** — reset behavior now has regression coverage for
+  playback state, prefetch cancellation, preview cleanup, and Skippy properties.
+
+## [8.8.0] - 2026-08-16
+
+### Added
+
+- **Per-skin calibration** — active skin scale and horizontal/vertical placement
+  can be adjusted and persisted independently through the calibration action.
+
+## [8.7.0] - 2026-08-16
+
+### Added
+
+- **Sidecar compatibility diagnostics** — resolution folders can now be classified
+  as valid or invalid with a specific naming, grid, or interval reason.
+
+## [8.6.0] - 2026-08-16
+
+### Changed
+
+- **Playback cache diagnostics** — bounded decoded-tile caching now exposes hit,
+  miss, entry, and capacity counters and resets them when preview cache is cleared.
+
+## [8.5.0] - 2026-08-16
+
+### Changed
+
+- **Network diagnostics** — NFS/SMB preflight now distinguishes mapped atomic
+  operation from unmapped VFS writes and explains how to make remote generation safer.
+
+## [8.4.0] - 2026-08-16
+
+### Changed
+
+- **Resume identity** — completed generation entries now retain media size and
+  modification time and are discarded when a file is replaced at the same path.
+
+## [8.3.0] - 2026-08-16
+
+### Changed
+
+- **Generator lifecycle states** — idle generation now exposes explicit queued,
+  running, paused, cancelling, failed, and complete states; active ffmpeg work is
+  terminated through the existing cancellation callback.
+
+## [8.2.0] - 2026-08-16
+
+### Added
+
+- **Safer skin integration** — merged and replacement XML is parsed before it is
+  promoted, skin writes are atomic, and the newest available backup can be restored.
+
+## [8.1.0] - 2026-08-16
+
+### Added
+
+- **Setup wizard** — checks the active skin overlay, Pillow, and ffmpeg, then offers
+  the relevant installation actions for missing prerequisites.
+
 ## [8.0.0] - 2026-08-16
 
 ### Added

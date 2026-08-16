@@ -64,6 +64,7 @@ _decoded_tile_lock = threading.Lock()
 # source_path -> (mtime, size, PIL Image)
 _decoded_tiles: dict[str, tuple[float, int, object]] = {}
 _decoded_tile_order: list[str] = []
+_cache_stats = {"decoded_hits": 0, "decoded_misses": 0}
 
 # Ping-pong live preview JPEGs so Kodi reloads textures while durable cache
 # is written asynchronously after the first RAM crop.
@@ -347,6 +348,8 @@ def clear_preview_cache() -> PreviewCacheClearResult:
     tile_files, tile_bytes = _delete_jpg_files(TEMP_DIR, top_level_only=True)
 
     _clear_memory_cache_index()
+    _cache_stats["decoded_hits"] = 0
+    _cache_stats["decoded_misses"] = 0
     with _prepared_temp_lock:
         _prepared_temp_tiles.clear()
     with _live_preview_lock:
@@ -392,11 +395,13 @@ def _get_decoded_tile_image(source_path: str, mtime: float, size: int):
                 if source_path in _decoded_tile_order:
                     _decoded_tile_order.remove(source_path)
                     _decoded_tile_order.append(source_path)
+                _cache_stats["decoded_hits"] += 1
                 return image
             _decoded_tiles.pop(source_path, None)
             if source_path in _decoded_tile_order:
                 _decoded_tile_order.remove(source_path)
 
+    _cache_stats["decoded_misses"] += 1
     from PIL import Image
 
     with Image.open(source_path) as opened:
@@ -406,6 +411,16 @@ def _get_decoded_tile_image(source_path: str, mtime: float, size: int):
 
     _remember_decoded_tile(source_path, mtime, size, image)
     return image
+
+
+def preview_cache_stats() -> dict[str, int]:
+    """Return lightweight cache counters for diagnostics."""
+    with _decoded_tile_lock:
+        return {
+            **_cache_stats,
+            "decoded_entries": len(_decoded_tiles),
+            "decoded_capacity": _DECODED_TILE_MAX,
+        }
 
 
 def _cache_tile_fingerprint(tile_path: str, mtime: float, size: int) -> None:

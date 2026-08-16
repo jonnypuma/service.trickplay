@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
 import xbmcaddon
 
@@ -31,12 +32,22 @@ class AddonHealth:
     overlay_revision: int
 
 
+@dataclass(frozen=True)
+class SetupCheck:
+    """One actionable prerequisite check shown by the setup wizard."""
+
+    name: str
+    ok: bool
+    detail: str
+    action: str = ""
+
+
 def _skin_display_name(skin_id: str) -> str:
     if not skin_id:
         return "(unknown)"
     try:
         return xbmcaddon.Addon(skin_id).getAddonInfo("name") or skin_id
-    except RuntimeError:
+    except (RuntimeError, AttributeError):
         return skin_id
 
 
@@ -110,6 +121,46 @@ def format_health_report(health: AddonHealth) -> str:
         f"Pillow: {pillow_line}\n"
         f"ffmpeg: {health.ffmpeg}"
     )
+
+
+def collect_setup_checks(health: AddonHealth | None = None) -> tuple[SetupCheck, ...]:
+    """Return deterministic, actionable setup checks for the guided wizard."""
+    health = health or collect_addon_health()
+    checks = [
+        SetupCheck(
+            "Skin overlay",
+            health.snippet_state == "installed",
+            {
+                "installed": "Installed and current",
+                "stale": "Installed but outdated",
+                "missing": "Not installed",
+                "no_target": f"Target {health.target_xml} was not found",
+            }.get(health.snippet_state, health.snippet_state),
+            "install_skin",
+        ),
+        SetupCheck(
+            "Pillow",
+            health.pillow_ok,
+            "Available" if health.pillow_ok else "Missing; install preview tools",
+            "install_tools",
+        ),
+        SetupCheck(
+            "ffmpeg",
+            health.ffmpeg != "(not found)",
+            health.ffmpeg if health.ffmpeg != "(not found)" else "Not found; install generator tools",
+            "install_generator_tools",
+        ),
+    ]
+    return tuple(checks)
+
+
+def format_setup_report(checks: Iterable[SetupCheck]) -> str:
+    """Format setup checks without exposing local credentials or VFS URLs."""
+    lines = ["Trickplay setup checks:"]
+    for check in checks:
+        state = "OK" if check.ok else "ACTION NEEDED"
+        lines.append(f"{state}: {check.name} — {check.detail}")
+    return "\n".join(lines)
 
 
 def current_skin_snippet_is_current() -> bool:

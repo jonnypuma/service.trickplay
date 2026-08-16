@@ -263,7 +263,7 @@ def _skin_addon_path(skin_id: str, *, quiet: bool = False) -> str | None:
     """Resolve a skin's on-disk folder (Addon API, then filesystem fallback)."""
     try:
         path = xbmcaddon.Addon(skin_id).getAddonInfo("path")
-    except RuntimeError:
+    except (RuntimeError, AttributeError):
         path = None
     local = _local_path(path) if path else ""
     if local and os.path.isdir(local):
@@ -334,8 +334,58 @@ def _read_text(path: str) -> str:
 
 
 def _write_text(path: str, text: str) -> None:
-    with open(path, "w", encoding="utf-8", newline="") as handle:
-        handle.write(text)
+    temporary = f"{path}.tmp-trickplay"
+    try:
+        with open(temporary, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        ET.parse(temporary)
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def validate_skin_xml(text: str) -> tuple[bool, str]:
+    """Validate a skin document before it is written to disk."""
+    try:
+        ET.fromstring(text)
+    except ET.ParseError as exc:
+        return False, str(exc)
+    return True, ""
+
+
+def backup_paths(target_path: str) -> tuple[str, ...]:
+    """Return available backups, newest first."""
+    local = _local_path(target_path)
+    if not local:
+        return tuple()
+    directory = os.path.dirname(local)
+    name = os.path.basename(local)
+    try:
+        candidates = [
+            os.path.join(directory, entry)
+            for entry in os.listdir(directory)
+            if entry.startswith(name + BACKUP_SUFFIX)
+            and os.path.isfile(os.path.join(directory, entry))
+        ]
+    except OSError:
+        return tuple()
+    return tuple(sorted(candidates, key=os.path.getmtime, reverse=True))
+
+
+def restore_last_backup(target_path: str) -> tuple[bool, str]:
+    """Restore the newest backup without deleting any backup files."""
+    local = _local_path(target_path)
+    candidates = backup_paths(local)
+    if not candidates:
+        return False, "backup_not_found"
+    try:
+        _write_text(local, _read_text(candidates[0]))
+    except (OSError, ET.ParseError) as exc:
+        return False, str(exc)
+    return True, "restored"
 
 
 def find_control_block_span(text: str, control_id: str) -> tuple[int, int] | None:
@@ -929,7 +979,12 @@ def _merge_overlay_preserve_format(
 
 
 def _replace_seekbar(seekbar_path: str, snippet_path: str) -> None:
-    shutil.copy2(snippet_path, _local_path(seekbar_path))
+    local = _local_path(seekbar_path)
+    text = _read_text(snippet_path)
+    valid, detail = validate_skin_xml(text)
+    if not valid:
+        raise ValueError(f"invalid snippet XML: {detail}")
+    _write_text(local, text)
 
 
 def _install_one_path(
@@ -957,7 +1012,7 @@ def _install_one_path(
             _merge_overlay_preserve_format(
                 local, snippet_path, target_xml=target_xml
             )
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, ET.ParseError) as exc:
         return False, str(exc)
 
     if backup_detail == "backup_exists":

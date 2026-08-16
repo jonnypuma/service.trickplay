@@ -295,7 +295,7 @@ def _addon() -> xbmcaddon.Addon | None:
         return None
     try:
         return xbmcaddon.Addon("service.trickplay")
-    except RuntimeError:
+    except (RuntimeError, AttributeError):
         return None
 
 

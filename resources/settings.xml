@@ -27,6 +27,24 @@
                         <data>RunScript(service.trickplay,addon_status)</data>
                     </control>
                 </setting>
+                <setting id="setup_wizard" type="action" label="32242" help="32243">
+                    <level>0</level>
+                    <control type="button" format="action">
+                        <data>RunScript(service.trickplay,setup)</data>
+                    </control>
+                </setting>
+                <setting id="skin_calibration" type="action" label="32246" help="32247">
+                    <level>1</level>
+                    <control type="button" format="action">
+                        <data>RunScript(service.trickplay,skin_calibration)</data>
+                    </control>
+                </setting>
+                <setting id="diagnostic_report" type="action" label="32248" help="32249">
+                    <level>1</level>
+                    <control type="button" format="action">
+                        <data>RunScript(service.trickplay,diagnostic_report)</data>
+                    </control>
+                </setting>
                 <setting id="install_skin_snippet_current" type="action" label="32154" help="32155">
                     <level>0</level>
                     <control type="button" format="action">

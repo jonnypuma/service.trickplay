@@ -71,6 +71,40 @@ class TrickplayLookup:
     target_second: int
 
 
+@dataclass(frozen=True)
+class SidecarCompatibility:
+    name: str
+    compatible: bool
+    reason: str
+
+
+def inspect_sidecar_directory_name(name: str) -> SidecarCompatibility:
+    """Explain why a Jellyfin resolution directory is or is not usable."""
+    parsed = parse_resolution_dir_name(name)
+    if parsed is None:
+        return SidecarCompatibility(
+            name,
+            False,
+            "expected '<width> - <columns>x<rows>[-<interval_ms>]'",
+        )
+    width, columns, rows, interval = parsed
+    if width <= 0 or columns < _MIN_TILE_GRID or rows < _MIN_TILE_GRID:
+        return SidecarCompatibility(name, False, "width and grid must be positive")
+    if columns > _MAX_TILE_GRID or rows > _MAX_TILE_GRID:
+        return SidecarCompatibility(name, False, "grid exceeds supported 50x50 limit")
+    if interval <= 0:
+        return SidecarCompatibility(name, False, "interval must be positive")
+    return SidecarCompatibility(name, True, "valid Jellyfin resolution directory")
+
+
+def sidecar_compatibility_report(root: str) -> tuple[SidecarCompatibility, ...]:
+    """Inspect all immediate resolution folders for diagnostics/UI."""
+    return tuple(
+        inspect_sidecar_directory_name(name)
+        for name in _list_immediate_subdir_names(root)
+    )
+
+
 def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay] {message}", level)
 

@@ -6,7 +6,10 @@ Kodi background service that can generate/show **Jellyfin trickplay** or custom 
 
 ## Skin integration required
 
-**This addon does not work out of the box.** It runs as a service that crops thumbnails and publishes window properties, but **your active Kodi skin must display them**.
+The addon runs as a service that crops thumbnails and publishes window properties.
+On first use, the setup wizard checks Pillow, ffmpeg, and the active skin overlay
+and offers the required actions. Your active Kodi skin must still display the
+published preview properties.
 
 For each skin you use, you must merge trickplay preview controls from this repo into that skin’s own **`DialogSeekBar.xml`**.
 
@@ -47,6 +50,14 @@ Those filenames are deliberate: they are **not** dropped into Kodi as-is. Either
 - Manually copy the preview block from the matching file into your skin’s real target XML (backup the original first).
 
 Skins without a discoverable `DialogSeekBar.xml` under their add-on folder are skipped and reported as failed.
+
+Use **Run setup wizard** for a guided prerequisite check. Use **Export diagnostic
+report** when reporting a problem; the report intentionally omits media paths,
+network URLs, and credentials.
+
+Skin installation writes a temporary XML file, parses it, and only then replaces
+the target. The original target is retained as a `.bak` backup. **Restore skin
+snippet** restores the backup for rollback after an unwanted update.
 
 ### Skin profiles (auto-detect)
 
@@ -148,6 +159,21 @@ Prefetch pre-crops neighbouring cells in the background. **During playback** (de
 | `Trickplay.Available` | `true` when trickplay data was found for the current file |
 
 Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.PreviewTop`, etc.) are also published.
+
+### Generator lifecycle and resume behavior
+
+Idle generation reports `queued`, `running`, `paused`, `cancelling`, `failed`, and
+`complete` states. Cancellation terminates the active ffmpeg extraction. Batch
+and idle generation share restart-safe state. Completed entries include media
+size and modification time, so replacing a file at the same path causes it to
+be generated again.
+
+For NFS/SMB media, the preflight report identifies whether the share is mapped to
+a local mount (`mapped-atomic`) or remains a VFS-only path (`vfs-non-atomic`).
+Mapping the share locally is recommended for safest sidecar promotion.
+
+The resolver accepts Jellyfin resolution folders such as `320 - 10x10 - 10000`
+and reports malformed names, unsupported grids, and invalid intervals separately.
 
 ## Requirements
 

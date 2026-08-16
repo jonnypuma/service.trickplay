@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 
-from vfs_paths import network_url_to_local
+from vfs_paths import network_path_status, network_url_to_local
 
 _LOW_FREE_BYTES = 1 * 1024**3
 
@@ -15,10 +15,17 @@ def warnings_for_batch(root: str, candidates: list[str]) -> tuple[str, ...]:
     sample_paths = [root, *candidates[:10]]
     network = next((path for path in sample_paths if "://" in path), "")
     if network:
+        transport, mode = network_path_status(network)
         warnings.append(
-            "Network/VFS media detected. Generation may be slower and can be "
-            "interrupted by connectivity issues; use Fast seek for weak or remote devices."
+            f"{transport.upper()} media detected ({mode}). Generation may be slower "
+            "and can be interrupted by connectivity issues; use Fast seek for weak "
+            "or remote devices."
         )
+        if mode == "vfs-non-atomic":
+            warnings.append(
+                "The network share is not mapped to a local mount. Atomic sidecar "
+                "promotion is unavailable; map the share locally for safer writes."
+            )
 
     local = network_url_to_local(root) if "://" in root else root
     if not local:

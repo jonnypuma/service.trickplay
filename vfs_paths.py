@@ -115,6 +115,18 @@ def writable_os_path(path: str) -> str:
     return ""
 
 
+def network_path_status(path: str) -> tuple[str, str]:
+    """Return (transport, mode) for user-facing generation diagnostics."""
+    normalized = normalize_vfs_path(path)
+    if "://" not in normalized:
+        return "local", "atomic"
+    scheme = normalized.split("://", 1)[0].lower()
+    mapped = network_url_to_local(normalized)
+    if mapped:
+        return scheme, "mapped-atomic"
+    return scheme, "vfs-non-atomic"
+
+
 def _os_is_dir(path: str) -> bool:
     if not path or "://" in path:
         return False

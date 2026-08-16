@@ -8,6 +8,7 @@ import tempfile
 from typing import Any
 
 import xbmcvfs
+from vfs_paths import local_path
 
 _STATE_PATH = "special://profile/addon_data/service.trickplay/generation-state.json"
 
@@ -27,6 +28,15 @@ def _profile(root: str, settings: Any) -> dict[str, object]:
     }
 
 
+def _media_identity(path: str) -> dict[str, int] | None:
+    """Return cheap replacement-detection metadata for a media file."""
+    try:
+        stat = os.stat(local_path(path))
+    except (OSError, TypeError, ValueError):
+        return None
+    return {"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)}
+
+
 def load_completed(root: str, settings: Any) -> set[str]:
     """Return media paths completed for this exact folder/profile."""
     path = _local_state_path()
@@ -38,7 +48,20 @@ def load_completed(root: str, settings: Any) -> set[str]:
     if state.get("profile") != _profile(root, settings):
         return set()
     completed = state.get("completed")
-    return {str(item) for item in completed} if isinstance(completed, list) else set()
+    if not isinstance(completed, list):
+        return set()
+    identities = state.get("identities")
+    result: set[str] = set()
+    for item in completed:
+        media_path = str(item)
+        stored = identities.get(media_path) if isinstance(identities, dict) else None
+        current = _media_identity(media_path)
+        # Legacy entries without identity remain usable; new entries with an
+        # identity are rejected if the media was replaced or changed.
+        if stored is not None and current != stored:
+            continue
+        result.add(media_path)
+    return result
 
 
 def begin_or_update(root: str, settings: Any, completed: set[str]) -> None:
@@ -47,9 +70,13 @@ def begin_or_update(root: str, settings: Any, completed: set[str]) -> None:
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
     payload = {
-        "version": 1,
+        "version": 2,
         "profile": _profile(root, settings),
         "completed": sorted(completed),
+        "identities": {
+            media_path: _media_identity(media_path)
+            for media_path in completed
+        },
     }
     fd, temporary = tempfile.mkstemp(prefix=".generation-state-", suffix=".tmp", dir=directory)
     try:

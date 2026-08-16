@@ -32,6 +32,88 @@ def run_addon_status_dialog() -> None:
         return
     xbmcgui.Dialog().ok(_ADDON.getLocalizedString(32211), report)
 
+
+def run_setup_wizard_dialog() -> None:
+    """Run a guided first-time setup check and offer missing prerequisites."""
+    from addon_health import collect_addon_health, collect_setup_checks, format_setup_report
+
+    title = _ADDON.getLocalizedString(32242) or "Trickplay setup"
+    health = collect_addon_health()
+    checks = collect_setup_checks(health)
+    body = format_setup_report(checks)
+    if all(check.ok for check in checks):
+        xbmcgui.Dialog().ok(title, body + "\n\n" + (_ADDON.getLocalizedString(32243) or "Setup is complete."))
+        return
+
+    if not xbmcgui.Dialog().yesno(
+        title,
+        body + "\n\n" + (_ADDON.getLocalizedString(32244) or "Run the recommended setup actions now?"),
+        yeslabel=_ADDON.getLocalizedString(32164),
+        nolabel=_ADDON.getLocalizedString(32100),
+    ):
+        return
+
+    if health.snippet_state in ("missing", "stale"):
+        from script_skin import run_install_skin_dialog
+        from skin_snippet_installer import InstallScope
+
+        run_install_skin_dialog(InstallScope.CURRENT)
+    if not health.pillow_ok or health.ffmpeg == "(not found)":
+        from script_tools import run_install_tools_dialog
+
+        run_install_tools_dialog()
+    xbmcgui.Dialog().ok(
+        title,
+        (_ADDON.getLocalizedString(32245) or "Setup actions finished. Reopen setup to verify the result."),
+    )
+
+
+def run_skin_calibration_dialog() -> None:
+    """Persist per-skin scale and placement adjustments."""
+    from preview_settings import read_preview_adjustment_settings, save_skin_adjustment
+    from skin_profiles import current_skin_id
+
+    current = read_preview_adjustment_settings()
+    dialog = xbmcgui.Dialog()
+
+    def number(prompt: str, value: int) -> int:
+        try:
+            raw = dialog.input(prompt, str(value), type=xbmcgui.INPUT_NUMERIC)
+            return int(raw)
+        except (TypeError, ValueError, AttributeError):
+            return value
+
+    save_skin_adjustment(
+        current_skin_id() or "unknown",
+        scale_percent=number("Preview scale (%)", current.scale_percent),
+        offset_x=number("Preview horizontal offset", current.offset_x),
+        offset_y=number("Preview vertical offset", current.offset_y),
+    )
+    from preview_settings import clear_skin_adjustments_cache
+
+    clear_skin_adjustments_cache()
+    dialog.ok(
+        _ADDON.getLocalizedString(32246) or "Skin calibration",
+        _ADDON.getLocalizedString(32247) or "Saved for the active skin.",
+    )
+
+
+def run_diagnostic_report_dialog() -> None:
+    from diagnostic_report import write_diagnostic_report
+
+    title = _ADDON.getLocalizedString(32248) or "Diagnostic report"
+    try:
+        path = write_diagnostic_report()
+    except (OSError, RuntimeError, ValueError) as exc:
+        _log(f"Diagnostic report failed: {exc}")
+        xbmcgui.Dialog().ok(title, str(exc))
+        return
+    xbmcgui.Dialog().ok(
+        title,
+        (_ADDON.getLocalizedString(32249) or "Report written to:\n%s") % path,
+    )
+
+
 def _format_cache_bytes(size: int) -> str:
     if size < 1024:
         return f"{size} B"

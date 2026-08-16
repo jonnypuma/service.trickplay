@@ -24,6 +24,9 @@ from script_status import (  # noqa: E402
     run_addon_status_dialog,
     run_clear_preview_cache_dialog,
     run_generator_diagnostics_dialog,
+    run_diagnostic_report_dialog,
+    run_skin_calibration_dialog,
+    run_setup_wizard_dialog,
     run_validation_repair_dialog,
 )
 from script_tools import (  # noqa: E402
@@ -59,6 +62,10 @@ def _resolve_mode(argv: list[str]) -> str:
             return "install_skin"
         if normalized in ("addon_status", "show_status", "status"):
             return "addon_status"
+        if normalized in ("setup", "setup_wizard", "first_run_setup"):
+            return "setup"
+        if normalized in ("skin_calibration", "calibrate_skin"):
+            return "skin_calibration"
         if normalized in ("restore_skin", "restore_skin_snippet"):
             return "restore_skin"
         if normalized in (
@@ -78,6 +85,8 @@ def _resolve_mode(argv: list[str]) -> str:
             return "validate_repair"
         if normalized in ("generator_diagnostics", "diagnostics"):
             return "generator_diagnostics"
+        if normalized in ("diagnostic_report", "export_diagnostics"):
+            return "diagnostic_report"
         if normalized.endswith(".py"):
             continue
         if normalized:
@@ -108,6 +117,10 @@ if __name__ == "__main__":
         run_install_skin_dialog(scope, force=force)
     elif mode == "addon_status":
         run_addon_status_dialog()
+    elif mode == "setup":
+        run_setup_wizard_dialog()
+    elif mode == "skin_calibration":
+        run_skin_calibration_dialog()
     elif mode == "restore_skin":
         scope = _resolve_restore_skin_scope(sys.argv) or InstallScope.CURRENT
         run_restore_skin_dialog(scope)
@@ -121,5 +134,7 @@ if __name__ == "__main__":
         run_validation_repair_dialog()
     elif mode == "generator_diagnostics":
         run_generator_diagnostics_dialog()
+    elif mode == "diagnostic_report":
+        run_diagnostic_report_dialog()
     else:
         _log(f"Unsupported mode {mode!r}; no action taken", xbmc.LOGERROR)

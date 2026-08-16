@@ -952,3 +952,35 @@ msgstr "Gjeldende skin mangler trickplay-overlegget. Installere nå?"
 msgctxt "#32241"
 msgid "The current skin overlay is outdated. Reinstall the snippet now?"
 msgstr "Overlegget for gjeldende skin er utdatert. Installere snippetet på nytt nå?"
+
+msgctxt "#32242"
+msgid "Run setup wizard"
+msgstr "Run setup wizard"
+
+msgctxt "#32243"
+msgid "Setup is complete."
+msgstr "Setup is complete."
+
+msgctxt "#32244"
+msgid "Run the recommended setup actions now?"
+msgstr "Run the recommended setup actions now?"
+
+msgctxt "#32245"
+msgid "Setup actions finished. Reopen setup to verify the result."
+msgstr "Setup actions finished. Reopen setup to verify the result."
+
+msgctxt "#32246"
+msgid "Calibrate active skin"
+msgstr "Calibrate active skin"
+
+msgctxt "#32247"
+msgid "Save preview placement and size for the active skin."
+msgstr "Save preview placement and size for the active skin."
+
+msgctxt "#32248"
+msgid "Export diagnostic report"
+msgstr "Export diagnostic report"
+
+msgctxt "#32249"
+msgid "Report written to:\n%s"
+msgstr "Report written to:\n%s"
