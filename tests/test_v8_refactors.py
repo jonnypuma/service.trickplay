@@ -213,6 +213,24 @@ class OverlayRevisionTests(unittest.TestCase):
 
 
 class SnippetNudgeTests(_StubAddonMixin):
+    def test_stock_estuary_never_needs_overlay_attention(self) -> None:
+        from addon_health import AddonHealth
+        from snippet_nudge import snippet_needs_attention
+
+        health = _health("missing")
+        health = AddonHealth(
+            skin_id="skin.estuary",
+            skin_name="Estuary",
+            profile_label=health.profile_label,
+            snippet_file="",
+            target_xml="DialogSeekBar.xml",
+            snippet_state="missing",
+            pillow_ok=True,
+            ffmpeg="ffmpeg",
+            overlay_revision=OVERLAY_REVISION,
+        )
+        self.assertFalse(snippet_needs_attention(health))
+
     def test_needs_attention_for_missing_and_stale(self) -> None:
         from snippet_nudge import snippet_needs_attention
 

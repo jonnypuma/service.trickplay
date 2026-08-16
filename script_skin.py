@@ -9,6 +9,7 @@ import xbmc
 import xbmcgui
 
 from script_common import _ADDON, _ADDON_PATH, _log
+from skin_profiles import current_skin_id, snippet_install_supported
 from skin_snippet_installer import (
     InstallScope,
     build_install_plan,
@@ -144,6 +145,13 @@ def _execute_skin_plan_with_progress(
 
 def run_install_skin_dialog(scope: InstallScope, *, force: bool = False) -> None:
     _log(f"run_install_skin_dialog started (scope={scope.value}, force={force})")
+    if scope == InstallScope.CURRENT and not snippet_install_supported(current_skin_id()):
+        xbmcgui.Dialog().ok(
+            _ADDON.getLocalizedString(32158),
+            _ADDON.getLocalizedString(32250)
+            or "Stock Estuary is protected by Kodi; this addon cannot modify it.",
+        )
+        return
     plans = build_install_plan(scope, _ADDON_PATH, force=force)
     title = (
         _ADDON.getLocalizedString(32214)

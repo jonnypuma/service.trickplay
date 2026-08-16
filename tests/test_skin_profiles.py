@@ -19,11 +19,18 @@ from skin_profiles import (  # noqa: E402
     BELLO,
     BINGIE,
     profile_for_skin_id,
+    snippet_install_supported,
     snippet_spec_for_skin_id,
 )
 
 
 class SkinProfileSnippetTests(unittest.TestCase):
+    def test_stock_estuary_is_not_installable(self) -> None:
+        spec = snippet_spec_for_skin_id("skin.estuary")
+        self.assertFalse(snippet_install_supported("skin.estuary"))
+        self.assertEqual(spec.mode, "none")
+        self.assertEqual(spec.filename, "")
+
     def test_new_skin_snippet_registry(self) -> None:
         cases = (
             ("skin.arctic.fuse.2", "DialogSeekBar-skin.arctic.fuse.2.xml", "replace"),

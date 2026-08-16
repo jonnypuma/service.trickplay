@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.12.1] - 2026-08-16
+
+### Fixed
+
+- **Stock Estuary handling** — protected stock Estuary is excluded from overlay
+  missing/stale reminders and installation prompts because Kodi does not allow the
+  addon to modify its files.
+
 ## [8.12.0] - 2026-08-16
 
 ### Fixed

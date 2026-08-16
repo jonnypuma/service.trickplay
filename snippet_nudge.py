@@ -7,6 +7,7 @@ import xbmcaddon
 import xbmcgui
 
 from addon_health import AddonHealth, collect_addon_health
+from skin_profiles import snippet_install_supported
 
 _ADDON = xbmcaddon.Addon("service.trickplay")
 
@@ -19,7 +20,10 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 
 def snippet_needs_attention(health: AddonHealth | None = None) -> bool:
     report = health or collect_addon_health()
-    return report.snippet_state in SNIPPET_ATTENTION_STATES
+    return (
+        snippet_install_supported(report.skin_id)
+        and report.snippet_state in SNIPPET_ATTENTION_STATES
+    )
 
 
 def notify_stale_or_missing_snippet(health: AddonHealth | None = None) -> bool:

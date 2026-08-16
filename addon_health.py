@@ -8,7 +8,12 @@ from typing import Iterable
 import xbmcaddon
 
 from pillow_installer import pillow_is_available
-from skin_profiles import active_profile, current_skin_id, snippet_spec_for_skin_id
+from skin_profiles import (
+    active_profile,
+    current_skin_id,
+    snippet_install_supported,
+    snippet_spec_for_skin_id,
+)
 from skin_snippet_installer import (
     OVERLAY_REVISION,
     _skin_addon_path,
@@ -67,12 +72,13 @@ def collect_addon_health() -> AddonHealth:
     skin_id = current_skin_id() or ""
     profile = active_profile()
     spec = snippet_spec_for_skin_id(skin_id) if skin_id else None
-    snippet_file = spec.filename if spec else "(none)"
+    install_supported = snippet_install_supported(skin_id)
+    snippet_file = spec.filename if spec and spec.filename else "(not applicable)"
     target_xml = spec.target_xml if spec else "DialogSeekBar.xml"
     root = _skin_addon_path(skin_id, quiet=True) or "" if skin_id else ""
 
-    snippet_state = "no_target"
-    if skin_id and spec and root:
+    snippet_state = "not_applicable" if not install_supported else "no_target"
+    if install_supported and skin_id and spec and root:
         paths = find_skin_xml_paths(root, target_xml)
         if not paths:
             snippet_state = "no_target"
@@ -85,7 +91,7 @@ def collect_addon_health() -> AddonHealth:
             snippet_state = "stale"
         else:
             snippet_state = "missing"
-    elif skin_id and spec:
+    elif install_supported and skin_id and spec:
         snippet_state = "no_target"
 
     return AddonHealth(
@@ -107,6 +113,7 @@ def format_health_report(health: AddonHealth) -> str:
         "stale": "Installed but STALE — reinstall snippet",
         "missing": "Not installed",
         "no_target": f"Target {health.target_xml} not found",
+        "not_applicable": "Not applicable to protected stock Estuary",
     }
     snippet_line = state_labels.get(health.snippet_state, health.snippet_state)
     pillow_line = "OK" if health.pillow_ok else "Missing — Install Pillow"
@@ -129,9 +136,10 @@ def collect_setup_checks(health: AddonHealth | None = None) -> tuple[SetupCheck,
     checks = [
         SetupCheck(
             "Skin overlay",
-            health.snippet_state == "installed",
+            health.snippet_state in ("installed", "not_applicable"),
             {
                 "installed": "Installed and current",
+                "not_applicable": "Stock Estuary is protected; no overlay installation is required",
                 "stale": "Installed but outdated",
                 "missing": "Not installed",
                 "no_target": f"Target {health.target_xml} was not found",

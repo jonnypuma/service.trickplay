@@ -986,3 +986,7 @@ msgctxt "#32249"
 msgid "Report written to:\n%s"
 msgstr "Report written to:\n%s"
 
+msgctxt "#32250"
+msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
+msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."
+

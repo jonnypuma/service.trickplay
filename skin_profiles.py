@@ -457,10 +457,23 @@ SKIN_SNIPPET_REGISTRY: tuple[tuple[str, str, str], ...] = (
     ("bingie", "DialogSeekBar-skin.bingie.xml", "merge"),
 )
 UNIVERSAL_SNIPPET_FILENAME = "DialogSeekBar-universal-dynamic.xml"
+NON_INSTALLABLE_SKINS = frozenset({"skin.estuary"})
+
+
+def snippet_install_supported(skin_id: str) -> bool:
+    """Stock Estuary is protected and cannot be modified by the addon."""
+    normalized = normalize_skin_id(skin_id)
+    return normalized not in NON_INSTALLABLE_SKINS
 
 
 def snippet_spec_for_skin_id(skin_id: str) -> SkinSnippetSpec:
     normalized = normalize_skin_id(skin_id)
+    if not snippet_install_supported(normalized):
+        return SkinSnippetSpec(
+            filename="",
+            mode="none",
+            known=True,
+        )
     for entry in SKIN_SNIPPET_REGISTRY:
         marker = entry[0]
         filename = entry[1]
