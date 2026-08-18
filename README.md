@@ -188,7 +188,7 @@ and reports malformed names, unsupported grids, and invalid intervals separately
 - **Preview tile grid layout** — always visible: **From folder name** (default, reads `10x10` from `320 - 10x10 - 10000/`, etc.) or fixed **10×10**, **20×20**, **5×5**, **15×15**, **Custom** when sprites don't match the folder name
 - **Thumbnail interval (ms)** — used to select a matching sidecar folder and as fallback when the folder name has no interval (default `10000`)
 - **Interval selection** — when several sidecar folders share the same tile width (e.g. `320 - 10x10 - 5000` and `320 - 10x10 - 10000`), **Preferred interval** uses the thumbnail interval setting; **Shortest interval** picks the finest-grained previews available
-- **Seek poll interval (ms)** — refresh rate while scrubbing (default `100`)
+- **Seek poll interval (ms)** — refresh rate while scrubbing (default 100, range 25–250)
 - **Skin profile** — auto-detect active skin, or force a listed profile (Estuary Mod v2, Arctic Fuse 3, Aeon Nox SiLVO, Arctic Zephyr, Arctic Horizon)
 - **Enable debug logging** — logs seek targets, preview slots, visibility toggles, and active skin profile
 
@@ -205,14 +205,18 @@ and reports malformed names, unsupported grids, and invalid intervals separately
 
 - **Enable prefetch** — master toggle for background pre-cropping
 - **Prefetch on playback start** — warm cache around the current playhead when a video loads
+- **Prefetch during playback** — keep the window warm on both sides of the playhead while the video is playing
+- **Preload all sprites on playback** — copy every sprite tile to local temp as soon as playback starts, decode into RAM up to the sprite RAM limit, and pre-crop cells in the background
 - **Prefetch whole sprite tile** — queue extra cells from the current sprite JPG during scrubbing
 - **Prefetch idle sprite tile** — fill in the rest of the tile while the OSD is open and idle
 - **Prefetch window (seconds)** — time ahead/behind the playhead to pre-crop (default 120 = ±2 minutes). Converted to thumb indices from the sidecar interval. While playing, the window is capped at 50 seconds.
 - **Prefetch queue size** — max pending background crops (default 48)
-- **Crop cache limit (MB)** — LRU cap for cropped JPEGs (default 500; 0 = unlimited)
+- **Crop cache limit (MB)** — LRU cap for cropped JPEGs on disk (default 1000; 0 = unlimited)
+- **Sprite tiles in RAM** — how many decoded sprite JPGs to keep in RAM during playback (default 24; 0 = local copies only). Each default 320×10×10 tile is about 16 MB.
+- **Cropped thumbs in RAM (MB)** — keep cropped preview JPEGs in RAM so scrubbing does not re-encode (default 64; 0 = off)
 - **Cached thumb JPEG quality** — compression for cropped preview JPEGs (50–95, default 90)
 
-Scrub crops keep decoded sprite tiles in RAM for the current file (up to **24** tiles, default **8** when idle) so pause-and-scrub-back does not re-decode. The next sprite is copied and decoded once playhead prefetch reaches the last **20%** of the current tile. Live temp JPEGs publish immediately; durable cache writes finish in the background.
+A separate copy worker pulls every sprite to local temp starting with **0.jpg**; a decode worker then loads tiles into RAM and pre-crops cells. Fast scrub shows the nearest already-cropped thumb instead of freezing on the last frame, and does not cancel prefetch of tiles that are already local. Live temp JPEGs publish immediately; durable cache writes finish in the background. Install preview tools prefers the add-on Pillow wheel (libjpeg-turbo) when it is present.
 
 ### Trickplay generator (Settings → Trickplay generator)
 

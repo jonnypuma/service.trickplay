@@ -59,6 +59,8 @@ SEEKBAR_WINDOW_ID = 10115
 
 POLL_MS_IDLE = 1000
 POLL_MS_IDLE_GENERATOR = 500
+POLL_MS_MIN = 25
+POLL_MS_MAX = 250
 PLAYBACK_SCRUB_GUARD_SEC = 3.0
 
 PROP_TILE = "Trickplay.TileImage"
@@ -77,6 +79,14 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 def _debug(message: str) -> None:
     if read_runtime_settings().debug_logging:
         _log(message, xbmc.LOGINFO)
+
+
+def _clamp_poll_ms(value: int, default: int = 100) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(POLL_MS_MIN, min(parsed, POLL_MS_MAX))
 
 
 def _setting_int(setting_id: str, default: int) -> int:
@@ -181,7 +191,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         self.last_play_time = -1
         self.playback_started_at = 0.0
         self.cached_duration = 0
-        self.poll_ms = max(_setting_int("poll_ms", 100), 50)
+        self.poll_ms = _clamp_poll_ms(_setting_int("poll_ms", 100))
         self._next_poll_ms = self.poll_ms
         self._last_poll_scrubbing = False
         self._last_poll_seek_ui = False
@@ -207,7 +217,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
 
     def _on_addon_settings_changed(self) -> None:
         self.preview.on_settings_changed()
-        self.poll_ms = max(_setting_int("poll_ms", 100), 50)
+        self.poll_ms = _clamp_poll_ms(_setting_int("poll_ms", 100))
 
     def _log_skin_profile(self, force: bool = False) -> None:
         skin_id = current_skin_id()
@@ -428,7 +438,11 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             HOME_WINDOW.setProperty(PROP_AVAILABLE, "true")
             sync_trickplay_property(PROP_AVAILABLE, "true")
             sync_display_settings()
-            begin_decoded_tile_session(len(self.resolution.tile_paths))
+            prefetch_settings = read_prefetch_settings()
+            begin_decoded_tile_session(
+                len(self.resolution.tile_paths),
+                ram_max=prefetch_settings.decoded_tile_ram_max,
+            )
             _log(
                 f"Loaded trickplay for {media_path} "
                 f"({self.resolution.thumbnail_count} thumbs, "
@@ -450,7 +464,6 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             warm_lookup = lookup_thumbnail(
                 self.resolution, play_seconds, self._interval_ms()
             )
-            prefetch_settings = read_prefetch_settings()
             if warm_lookup is not None:
                 get_cropped_thumb_path(
                     warm_lookup.tile_path,
@@ -460,11 +473,23 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                     warm_lookup.thumb_height,
                     debug=runtime.debug_logging,
                 )
-                self.prefetch.schedule_all_tile_copies(
-                    self.resolution.tile_paths,
-                    prioritize=(warm_lookup.tile_path,),
-                    debug=runtime.debug_logging,
-                )
+                self.prefetch.note_tile_ready(warm_lookup.tile_path)
+            first_tile = (
+                self.resolution.tile_paths[0] if self.resolution.tile_paths else ""
+            )
+            prioritize = tuple(
+                path
+                for path in (first_tile, warm_lookup.tile_path if warm_lookup else "")
+                if path
+            )
+            self.prefetch.schedule_episode_preload(
+                self.resolution,
+                self._interval_ms(),
+                prioritize=prioritize,
+                settings=prefetch_settings,
+                debug=runtime.debug_logging,
+            )
+            if warm_lookup is not None:
                 self.prefetch.schedule_playhead_warm(
                     self.resolution,
                     warm_lookup,
@@ -472,13 +497,9 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                     settings=prefetch_settings,
                     debug=runtime.debug_logging,
                 )
-            elif self.resolution.tile_paths:
-                self.prefetch.schedule_all_tile_copies(
-                    self.resolution.tile_paths,
-                    debug=runtime.debug_logging,
-                )
             if playing_file == self.playing_file:
                 self._pending_seek_ui_warm = True
+            self._start_last_tile_refine(playing_file)
         except Exception as exc:
             _log(f"Trickplay load failed for {playing_file!r}: {exc}", xbmc.LOGERROR)
         finally:
@@ -511,6 +532,42 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             name="trickplay-load",
         )
         self._load_thread.start()
+
+    def _start_last_tile_refine(self, playing_file: str) -> None:
+        if self.resolution is None or len(self.resolution.tile_paths) <= 1:
+            return
+        threading.Thread(
+            target=self._refine_last_tile_count,
+            args=(playing_file,),
+            daemon=True,
+            name="trickplay-last-tile",
+        ).start()
+
+    def _refine_last_tile_count(self, playing_file: str) -> None:
+        """Probe the last sprite after 0.jpg is already local, to count a partial tile."""
+        if self.resolution is None or playing_file != self.playing_file:
+            return
+        runtime = read_runtime_settings()
+        try:
+            refined = enrich_resolution(
+                self.resolution,
+                self._effective_duration_seconds(),
+                self._interval_ms(),
+                auto_tile_grid=runtime.auto_tile_grid,
+                manual_tile_grid=runtime.manual_tile_grid,
+                debug=runtime.debug_logging,
+                probe_last_tile=True,
+            )
+        except Exception as exc:
+            _log(f"Last-tile count refine failed: {exc}", xbmc.LOGWARNING)
+            return
+        if playing_file != self.playing_file:
+            return
+        if refined.is_usable:
+            self.resolution = refined
+            _debug(
+                f"Refined thumbnail count from last tile: {refined.thumbnail_count}"
+            )
 
     def _publish_sprite_properties(self, lookup) -> None:
         """Publish thumb grid indices for skin/debug."""
@@ -581,10 +638,10 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             duration_seconds,
             self.player,
             eager=seeking,
+            resolution=self.resolution,
+            interval_ms=interval_ms,
         )
-        if seeking and self.preview.fast_scrub_active:
-            self.prefetch.cancel(clear_copies=False)
-        elif prefetch_settings.enabled:
+        if prefetch_settings.enabled:
             self.prefetch.schedule_neighbors(
                 self.resolution,
                 lookup,
@@ -593,6 +650,10 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                 settings=prefetch_settings,
                 debug=runtime.debug_logging,
             )
+            if seeking:
+                # Neighbour jobs for tiles that are still on NFS wait until
+                # the copy worker finishes; keep crops that are already local.
+                self.prefetch.yield_for_scrub(lookup.tile_path)
         return True
 
     def _adjacent_tile_path(self, lookup, scrub_direction: int) -> str | None:
@@ -829,6 +890,8 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         sync_display_settings()
         sync_trickplay_property(PROP_PREVIEW_VISIBLE, "true" if visible else "false")
         _debug(f"Preview visible -> {visible}")
+        if visible:
+            self.prefetch.enable_episode_precrop()
 
     def _preview_should_show(self, scrubbing: bool) -> bool:
         if not self.preview_active or self.last_preview_second < 0:

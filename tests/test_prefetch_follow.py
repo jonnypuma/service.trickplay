@@ -22,6 +22,8 @@ from prefetch import (
     ThumbPrefetch,
     _follow_warm_indices,
     _symmetric_window_indices,
+    copy_order_for_tiles,
+    nearest_ready_thumb_path,
     upcoming_tile_to_warm,
 )
 from prefetch_settings import (
@@ -62,6 +64,11 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
         self.assertEqual(settings.playback_warm_indices(10000), 5)
         self.assertEqual(settings.playback_warm_indices(5000), 10)
         self.assertEqual(settings.radius_symmetric(10000), 12)
+        defaults = PrefetchSettings()
+        self.assertEqual(defaults.cache_max_mb, 1000)
+        self.assertEqual(defaults.decoded_tile_ram_max, 24)
+        self.assertEqual(defaults.crop_ram_max_mb, 64)
+        self.assertTrue(defaults.preload_tiles)
 
     def test_thumb_indices_for_seconds_caps_and_floors(self) -> None:
         self.assertEqual(thumb_indices_for_seconds(120, 10000, cap=48), 12)
@@ -285,6 +292,8 @@ class PrefetchPriorityTests(unittest.TestCase):
     ) -> None:
         prefetch = ThumbPrefetch()
         prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
         prefetch._debug = False
 
         prefetch._enqueue(self._lookup(1, "/tiles/0.jpg"), high_priority=False)
@@ -298,6 +307,42 @@ class PrefetchPriorityTests(unittest.TestCase):
             tiles = [item.lookup.tile_path for item in prefetch._queue]
         self.assertEqual(indices, [201])
         self.assertEqual(tiles, ["/tiles/2.jpg"])
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_yield_for_scrub_keeps_already_local_tiles(
+        self, _mock_cached: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
+        prefetch._debug = False
+        prefetch._copy_done.add("/tiles/0.jpg")
+
+        prefetch._enqueue(self._lookup(1, "/tiles/0.jpg"), high_priority=False)
+        prefetch._enqueue(self._lookup(2, "/tiles/0.jpg"), high_priority=False)
+        prefetch._enqueue(self._lookup(201, "/tiles/2.jpg"), high_priority=True)
+
+        prefetch.yield_for_scrub("/tiles/2.jpg")
+
+        with prefetch._lock:
+            indices = [item.lookup.thumb_index for item in prefetch._queue]
+        self.assertEqual(indices, [201, 1, 2])
+
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_yield_for_scrub_skips_decode_when_tile_already_ready(
+        self, _mock_cached: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
+        prefetch._copy_done.add("/tiles/0.jpg")
+        prefetch._decoded_done.add("/tiles/0.jpg")
+        prefetch.yield_for_scrub("/tiles/0.jpg")
+        prefetch.prioritize_tile_copy.assert_called_once_with("/tiles/0.jpg")
+        prefetch._enqueue_tile_decode.assert_not_called()
 
 
 class ScrubChurnTests(unittest.TestCase):
@@ -339,6 +384,15 @@ class ScrubChurnTests(unittest.TestCase):
 
 
 class PrefetchTileCopyTests(unittest.TestCase):
+    def test_copy_order_puts_first_sprite_ahead_of_priority(self) -> None:
+        self.assertEqual(
+            copy_order_for_tiles(
+                ("/tiles/0.jpg", "/tiles/1.jpg", "/tiles/2.jpg"),
+                prioritize=("/tiles/2.jpg",),
+            ),
+            ["/tiles/0.jpg", "/tiles/2.jpg", "/tiles/1.jpg"],
+        )
+
     @patch("prefetch.temp_tile_copy", return_value="/local/tile.jpg")
     def test_schedule_all_tile_copies_priority_order(
         self, mock_copy: MagicMock
@@ -354,7 +408,7 @@ class PrefetchTileCopyTests(unittest.TestCase):
         with prefetch._copy_lock:
             ordered = list(prefetch._copy_queue)
         self.assertEqual(
-            ordered, ["/tiles/2.jpg", "/tiles/0.jpg", "/tiles/1.jpg"]
+            ordered, ["/tiles/0.jpg", "/tiles/2.jpg", "/tiles/1.jpg"]
         )
         prefetch._ensure_copy_worker.assert_called()
 
@@ -368,6 +422,157 @@ class PrefetchTileCopyTests(unittest.TestCase):
         with prefetch._copy_lock:
             ordered = list(prefetch._copy_queue)
         self.assertEqual(ordered[0], "/tiles/2.jpg")
+
+
+class EpisodePreloadTests(unittest.TestCase):
+    def _resolution(self) -> TrickplayResolution:
+        return TrickplayResolution(
+            width=320,
+            tile_width=10,
+            tile_height=10,
+            tiles_dir="/tiles",
+            tile_paths=("/tiles/0.jpg", "/tiles/1.jpg"),
+            thumb_width=320,
+            thumb_height=180,
+            thumbnail_count=200,
+        )
+
+    def test_schedule_episode_preload_copies_and_queues_decode(self) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch.schedule_all_tile_copies = MagicMock()  # type: ignore[method-assign]
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        settings = PrefetchSettings(enabled=True, preload_tiles=True)
+        prefetch.schedule_episode_preload(
+            self._resolution(),
+            10000,
+            prioritize=("/tiles/1.jpg",),
+            settings=settings,
+        )
+        self.assertFalse(prefetch._episode_precrop)
+        self.assertTrue(prefetch._episode_want_precrop)
+        prefetch.schedule_all_tile_copies.assert_called_once()
+        prefetch._enqueue_tile_decode.assert_called_once_with(
+            "/tiles/0.jpg", high_priority=True
+        )
+
+    def test_enable_episode_precrop_queues_first_tile_first(self) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        settings = PrefetchSettings(enabled=True, preload_tiles=True)
+        prefetch.schedule_all_tile_copies = MagicMock()  # type: ignore[method-assign]
+        prefetch.schedule_episode_preload(
+            self._resolution(), 10000, settings=settings
+        )
+        prefetch._enqueue_tile_decode.reset_mock()
+        prefetch.enable_episode_precrop()
+        self.assertTrue(prefetch._episode_precrop)
+        calls = [call.args[0] for call in prefetch._enqueue_tile_decode.call_args_list]
+        self.assertEqual(calls, ["/tiles/0.jpg", "/tiles/1.jpg"])
+        self.assertTrue(
+            prefetch._enqueue_tile_decode.call_args_list[0].kwargs.get("high_priority")
+        )
+
+    def test_enqueue_decode_is_fifo_unless_high_priority(self) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_decode_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._enqueue_tile_decode("/tiles/0.jpg")
+        prefetch._enqueue_tile_decode("/tiles/1.jpg")
+        prefetch._enqueue_tile_decode("/tiles/2.jpg")
+        with prefetch._decode_lock:
+            ordered = list(prefetch._decode_queue)
+        self.assertEqual(ordered, ["/tiles/0.jpg", "/tiles/1.jpg", "/tiles/2.jpg"])
+        prefetch._enqueue_tile_decode("/tiles/2.jpg", high_priority=True)
+        with prefetch._decode_lock:
+            ordered = list(prefetch._decode_queue)
+        self.assertEqual(ordered, ["/tiles/2.jpg", "/tiles/0.jpg", "/tiles/1.jpg"])
+
+    def test_schedule_copies_skips_already_copied_tiles(self) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_copy_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._copy_done.add("/tiles/0.jpg")
+        prefetch._copy_done.add("/tiles/1.jpg")
+        prefetch._copy_done.add("/tiles/2.jpg")
+        prefetch.schedule_all_tile_copies(
+            ("/tiles/0.jpg", "/tiles/1.jpg", "/tiles/2.jpg"),
+            debug=True,
+        )
+        with prefetch._copy_lock:
+            self.assertEqual(list(prefetch._copy_queue), [])
+        prefetch._ensure_copy_worker.assert_not_called()
+
+    def test_nearest_ready_returns_closest_cached_neighbor(self) -> None:
+        resolution = self._resolution()
+        lookup = TrickplayLookup(
+            tile_path="/tiles/0.jpg",
+            col=0,
+            row=1,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=10,
+            target_second=100,
+        )
+
+        def _ready(tile_path, col, row, thumb_w, thumb_h):
+            if col == 8 and row == 0:
+                return "/ready-8.jpg"
+            return None
+
+        with patch("prefetch.get_ready_thumb_path", side_effect=_ready):
+            path = nearest_ready_thumb_path(resolution, lookup, 10000)
+        self.assertEqual(path, "/ready-8.jpg")
+
+
+class FirstTileEnrichTests(unittest.TestCase):
+    def _resolution(self) -> TrickplayResolution:
+        return TrickplayResolution(
+            width=320,
+            tile_width=10,
+            tile_height=10,
+            tiles_dir="/tiles",
+            tile_paths=("/tiles/0.jpg", "/tiles/1.jpg", "/tiles/2.jpg"),
+        )
+
+    @patch("trickplay_resolver.probe_image_dimensions", return_value=(3200, 1800))
+    def test_initial_enrich_only_probes_first_sprite(
+        self, mock_probe: MagicMock
+    ) -> None:
+        from trickplay_resolver import enrich_resolution
+
+        enrich_resolution(
+            self._resolution(), 3600, 10000, probe_last_tile=False
+        )
+        mock_probe.assert_called_once_with("/tiles/0.jpg", debug=False)
+
+    @patch("trickplay_resolver.probe_image_dimensions", return_value=(3200, 1800))
+    def test_last_tile_refine_probes_final_sprite(
+        self, mock_probe: MagicMock
+    ) -> None:
+        from trickplay_resolver import enrich_resolution
+
+        enrich_resolution(
+            self._resolution(), 3600, 10000, probe_last_tile=True
+        )
+        probed = [call.args[0] for call in mock_probe.call_args_list]
+        self.assertEqual(probed, ["/tiles/0.jpg", "/tiles/2.jpg"])
+
+
+class SidecarLookupTests(unittest.TestCase):
+    def test_lookup_paths_do_not_stat_playing_video(self) -> None:
+        from trickplay_resolver import _sidecar_lookup_media_paths
+
+        url = (
+            "nfs://192.168.0.3/Media2/TV/Sugar (2024)/Season 1/"
+            "Sugar.2024.S01E01.Olivia.mkv"
+        )
+        with patch("vfs_paths.xbmcvfs.translatePath", side_effect=lambda p: p), patch(
+            "trickplay_resolver.resolve_media_path"
+        ) as resolve_media, patch(
+            "ffmpeg_media.resolve_ffmpeg_media_path"
+        ) as resolve_ff:
+            paths = _sidecar_lookup_media_paths(url)
+        resolve_media.assert_not_called()
+        resolve_ff.assert_not_called()
+        self.assertIn(url, paths)
 
 
 if __name__ == "__main__":

@@ -171,11 +171,11 @@
                     <level>2</level>
                     <default>100</default>
                     <constraints>
-                        <minimum>50</minimum>
-                        <maximum>1000</maximum>
-                        <step>50</step>
+                        <minimum>25</minimum>
+                        <maximum>250</maximum>
+                        <step>25</step>
                     </constraints>
-                    <control type="edit" format="integer">
+                    <control type="slider" format="integer">
                         <heading>32006</heading>
                     </control>
                 </setting>
@@ -216,6 +216,16 @@
                     <control type="toggle"/>
                 </setting>
                 <setting id="prefetch_on_start" type="boolean" label="32025" help="32026">
+                    <level>1</level>
+                    <default>true</default>
+                    <control type="toggle"/>
+                    <dependencies>
+                        <dependency type="visible">
+                            <condition setting="prefetch_enabled">true</condition>
+                        </dependency>
+                    </dependencies>
+                </setting>
+                <setting id="prefetch_preload_tiles" type="boolean" label="32251" help="32252">
                     <level>1</level>
                     <default>true</default>
                     <control type="toggle"/>
@@ -291,14 +301,38 @@
                 </setting>
                 <setting id="cache_max_mb" type="integer" label="32035" help="32036">
                     <level>2</level>
-                    <default>500</default>
+                    <default>1000</default>
                     <constraints>
                         <minimum>0</minimum>
-                        <maximum>5000</maximum>
+                        <maximum>8000</maximum>
                         <step>50</step>
                     </constraints>
                     <control type="edit" format="integer">
                         <heading>32035</heading>
+                    </control>
+                </setting>
+                <setting id="decoded_tile_ram_max" type="integer" label="32253" help="32254">
+                    <level>2</level>
+                    <default>24</default>
+                    <constraints>
+                        <minimum>0</minimum>
+                        <maximum>48</maximum>
+                        <step>1</step>
+                    </constraints>
+                    <control type="slider" format="integer">
+                        <heading>32253</heading>
+                    </control>
+                </setting>
+                <setting id="crop_ram_max_mb" type="integer" label="32255" help="32256">
+                    <level>2</level>
+                    <default>64</default>
+                    <constraints>
+                        <minimum>0</minimum>
+                        <maximum>256</maximum>
+                        <step>16</step>
+                    </constraints>
+                    <control type="slider" format="integer">
+                        <heading>32255</heading>
                     </control>
                 </setting>
                 <setting id="cache_jpeg_quality" type="integer" label="32216" help="32217">

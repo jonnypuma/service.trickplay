@@ -16,6 +16,11 @@ PLAYBACK_WARM_SECONDS = 50
 MIN_RADIUS_SECONDS = 15
 MAX_RADIUS_SECONDS = 300
 PLAYBACK_INDEX_CAP = 12
+DEFAULT_CACHE_MAX_MB = 1000
+DEFAULT_CROP_RAM_MAX_MB = 64
+MAX_CROP_RAM_MAX_MB = 256
+DEFAULT_DECODED_TILE_RAM_MAX = 24
+MAX_DECODED_TILE_RAM = 48
 
 
 def thumb_indices_for_seconds(
@@ -37,10 +42,13 @@ class PrefetchSettings:
     during_playback: bool = True
     whole_tile: bool = True
     idle_tile: bool = True
+    preload_tiles: bool = True
     radius_seconds: int = DEFAULT_RADIUS_SECONDS
     max_queue: int = 48
-    cache_max_mb: int = 500
+    cache_max_mb: int = DEFAULT_CACHE_MAX_MB
     cache_jpeg_quality: int = 90
+    decoded_tile_ram_max: int = DEFAULT_DECODED_TILE_RAM_MAX
+    crop_ram_max_mb: int = DEFAULT_CROP_RAM_MAX_MB
 
     @property
     def index_cap(self) -> int:
@@ -112,16 +120,25 @@ def _load_prefetch_settings() -> PrefetchSettings:
     quality = max(50, min(quality, 95))
     seconds = _setting_int("prefetch_radius_seconds", DEFAULT_RADIUS_SECONDS)
     seconds = max(MIN_RADIUS_SECONDS, min(seconds, MAX_RADIUS_SECONDS))
+    decoded_ram = _setting_int(
+        "decoded_tile_ram_max", DEFAULT_DECODED_TILE_RAM_MAX
+    )
+    decoded_ram = max(0, min(decoded_ram, MAX_DECODED_TILE_RAM))
+    crop_ram = _setting_int("crop_ram_max_mb", DEFAULT_CROP_RAM_MAX_MB)
+    crop_ram = max(0, min(crop_ram, MAX_CROP_RAM_MAX_MB))
     return PrefetchSettings(
         enabled=_setting_bool("prefetch_enabled", True),
         on_start=_setting_bool("prefetch_on_start", True),
         during_playback=_setting_bool("prefetch_during_playback", True),
         whole_tile=_setting_bool("prefetch_whole_tile", True),
         idle_tile=_setting_bool("prefetch_idle_tile", True),
+        preload_tiles=_setting_bool("prefetch_preload_tiles", True),
         radius_seconds=seconds,
         max_queue=max(_setting_int("prefetch_max_queue", 48), 8),
-        cache_max_mb=max(_setting_int("cache_max_mb", 500), 0),
+        cache_max_mb=max(_setting_int("cache_max_mb", DEFAULT_CACHE_MAX_MB), 0),
         cache_jpeg_quality=quality,
+        decoded_tile_ram_max=decoded_ram,
+        crop_ram_max_mb=crop_ram,
     )
 
 

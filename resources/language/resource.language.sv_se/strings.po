@@ -34,8 +34,8 @@ msgid "Seek poll interval (ms)"
 msgstr "Sökuppdateringsintervall (ms)"
 
 msgctxt "#32007"
-msgid "How often to refresh the preview while the seek bar is active. Lower values feel smoother but use more CPU."
-msgstr "Hur ofta förhandsvisningen ska uppdateras medan sökfältet är aktivt. Lägre värden känns jämnare men använder mer CPU."
+msgid "How often to refresh the preview while seeking (25–250 ms). Lower values feel smoother but use more CPU."
+msgstr "Hur ofta förhandsvisningen ska uppdateras under spolning (25–250 ms). Lägre värden känns jämnare men använder mer CPU."
 
 msgctxt "#32008"
 msgid "Enable debug logging"
@@ -194,8 +194,8 @@ msgid "Crop cache limit (MB)"
 msgstr "Beskärningsgräns för cache (MB)"
 
 msgctxt "#32036"
-msgid "Maximum disk space for cropped preview JPEGs. Oldest files are removed first. 0 = unlimited."
-msgstr "Maximalt diskutrymme för beskurna förhandsvisnings-JPEG:er. Äldsta filer tas bort först. 0 = obegränsat."
+msgid "Maximum disk space for cropped preview JPEGs (default 1000 MB). Oldest files are removed first. 0 = unlimited."
+msgstr "Maximalt diskutrymme för beskurna förhandsvisnings-JPEG:er (standard 1000 MB). Äldsta filer tas bort först. 0 = obegränsat."
 
 msgctxt "#32037"
 msgid "Prefetch"
@@ -988,3 +988,27 @@ msgstr "Report written to:\n%s"
 msgctxt "#32250"
 msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
 msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."
+
+msgctxt "#32251"
+msgid "Preload all sprites on playback"
+msgstr "Förhandsladda alla sprites vid uppspelning"
+
+msgctxt "#32252"
+msgid "As soon as playback starts, copy every sprite tile to local temp, decode into RAM up to the sprite RAM limit, and pre-crop cells in the background."
+msgstr "Så snart uppspelningen startar kopieras varje sprite-ruta till lokal temp, avkodas till RAM upp till gränsen och celler förhandsbeskärs i bakgrunden."
+
+msgctxt "#32253"
+msgid "Sprite tiles in RAM"
+msgstr "Sprite-rutor i RAM"
+
+msgctxt "#32254"
+msgid "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices)."
+msgstr "Hur många avkodade sprite-JPEG:er som ska hållas i RAM under uppspelning. Varje standardruta 320×10×10 är cirka 16 MB. 0 = kopiera bara till lokal temp (bättre för enheter med lite RAM)."
+
+msgctxt "#32255"
+msgid "Cropped thumbs in RAM (MB)"
+msgstr "Beskurna thumbs i RAM (MB)"
+
+msgctxt "#32256"
+msgid "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices)."
+msgstr "Behåll beskurna förhandsvisnings-JPEG:er i RAM så att spolning inte kodar om. 0 = av (bättre för enheter med lite RAM)."

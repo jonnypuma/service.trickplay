@@ -131,24 +131,48 @@ def _log_pillow_source() -> None:
     try:
         import PIL
 
-        from generator_settings import read_runtime_settings
-
-        if read_runtime_settings().debug_logging:
-            xbmc.log(
-                f"[service.trickplay] Pillow loaded from {PIL.__file__}",
-                xbmc.LOGINFO,
-            )
-    except ImportError:
+        decoder = pillow_jpeg_decoder_name()
+        xbmc.log(
+            f"[service.trickplay] Pillow JPEG decoder: {decoder} ({PIL.__file__})",
+            xbmc.LOGINFO,
+        )
+    except Exception:
         pass
 
 
+def pillow_jpeg_decoder_name() -> str:
+    """Return ``libjpeg-turbo`` when Pillow was built against it, else ``libjpeg``."""
+    try:
+        from PIL import features
+
+        if hasattr(features, "check") and features.check("libjpeg_turbo"):
+            return "libjpeg-turbo"
+    except (ImportError, AttributeError, RuntimeError, ValueError):
+        pass
+    return "libjpeg"
+
+
+def _addon_pillow_dir() -> str | None:
+    site = default_pillow_site_packages()
+    local = _local_path(site)
+    if not local:
+        return None
+    if os.path.isdir(os.path.join(local, "PIL")):
+        return local
+    return None
+
+
 def ensure_pillow_loaded(*, force: bool = False) -> bool:
-    """Import Pillow from Kodi's Python or the add-on site-packages folder."""
+    """Import Pillow from the add-on wheel (libjpeg-turbo) or Kodi's Python."""
     global _pillow_available
     if not force and _pillow_available is True:
         return True
     if not force and _pillow_available is False:
         return False
+
+    addon_dir = _addon_pillow_dir()
+    if addon_dir is not None and "PIL" not in sys.modules:
+        _register_site_packages()
 
     try:
         from PIL import Image  # noqa: F401

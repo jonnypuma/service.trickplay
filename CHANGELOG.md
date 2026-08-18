@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.15.2] - 2026-08-17
+
+### Fixed
+
+- **Faster first thumbs** — sidecar lookup no longer STAT-s the playing video
+  (NFS `exists()` on a 4K MKV while Kodi opens it was stalling `.trickplay`
+  discovery). Sprite JPEG size is read from the header past 64 KB so ffprobe is
+  not required. The first playhead cell is cropped and shown before the 100-cell
+  episode encode, which now starts only after the preview is visible. Already
+  copied/decoded tiles are not re-queued on every seek.
+
+## [8.15.1] - 2026-08-17
+
+### Fixed
+
+- **First sprite first** — playback load copies and crops `0.jpg` before any later
+  sprite. The last-tile dimension probe and remaining NFS copies run afterwards,
+  so the first thumbnails are not blocked behind `2.jpg` / the final tile.
+
+## [8.15.0] - 2026-08-17
+
+### Added
+
+- **Sprite preload worker** — as soon as playback starts, every sprite tile is
+  copied to local temp and decoded into RAM (up to the sprite RAM setting). When
+  **Preload all sprites on playback** is on, cells are pre-cropped in the
+  background so scrubbing hits ready thumbs.
+- **Cropped thumbs in RAM** — optional JPEG-bytes cache so scrubbing does not
+  re-encode. 0 MB disables it for low-RAM devices.
+- **Sprite tiles in RAM** — cap decoded sprite JPGs during playback (default 24,
+  0 = local copies only). Each default 320×10×10 tile is about 16 MB.
+
+### Changed
+
+- **Seek poll interval** is a 25–250 ms slider (default 100).
+- **Crop cache limit** default is 1000 MB.
+- Fast scrub shows the **nearest already-cropped thumb** instead of freezing on
+  the last frame, and no longer cancels prefetch of tiles that are already local.
+- Pillow load prefers the add-on PyPI wheel when present so **libjpeg-turbo** is
+  used for sprite decode.
+
 ## [8.14.0] - 2026-08-16
 
 ### Changed

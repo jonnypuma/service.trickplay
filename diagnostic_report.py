@@ -24,6 +24,8 @@ def write_diagnostic_report() -> str:
     """Write diagnostics without passwords, credentials, or full media paths."""
     try:
         addon_version = xbmcaddon.Addon("service.trickplay").getAddonInfo("version")
+        if not isinstance(addon_version, str) or not addon_version:
+            addon_version = "unknown"
     except (AttributeError, RuntimeError):
         addon_version = "unknown"
     health = collect_addon_health()

@@ -34,8 +34,8 @@ msgid "Seek poll interval (ms)"
 msgstr "Intervalo de actualización de búsqueda (ms)"
 
 msgctxt "#32007"
-msgid "How often to refresh the preview while the seek bar is active. Lower values feel smoother but use more CPU."
-msgstr "Frecuencia de actualización de la vista previa mientras la barra de búsqueda está activa. Valores más bajos son más fluidos pero usan más CPU."
+msgid "How often to refresh the preview while seeking (25–250 ms). Lower values feel smoother but use more CPU."
+msgstr "Frecuencia de actualización de la vista previa al buscar (25–250 ms). Valores más bajos son más fluidos pero usan más CPU."
 
 msgctxt "#32008"
 msgid "Enable debug logging"
@@ -194,8 +194,8 @@ msgid "Crop cache limit (MB)"
 msgstr "Límite de caché de recortes (MB)"
 
 msgctxt "#32036"
-msgid "Maximum disk space for cropped preview JPEGs. Oldest files are removed first. 0 = unlimited."
-msgstr "Espacio máximo en disco para JPEGs de vista previa recortados. Los archivos más antiguos se eliminan primero. 0 = ilimitado."
+msgid "Maximum disk space for cropped preview JPEGs (default 1000 MB). Oldest files are removed first. 0 = unlimited."
+msgstr "Espacio máximo en disco para JPEGs de vista previa recortados (1000 MB por defecto). Los archivos más antiguos se eliminan primero. 0 = ilimitado."
 
 msgctxt "#32037"
 msgid "Prefetch"
@@ -988,3 +988,27 @@ msgstr "Report written to:\n%s"
 msgctxt "#32250"
 msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
 msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."
+
+msgctxt "#32251"
+msgid "Preload all sprites on playback"
+msgstr "Precargar todos los sprites al reproducir"
+
+msgctxt "#32252"
+msgid "As soon as playback starts, copy every sprite tile to local temp, decode into RAM up to the sprite RAM limit, and pre-crop cells in the background."
+msgstr "En cuanto empieza la reproducción, copiar cada mosaico sprite a temp local, decodificar en RAM hasta el límite y precortar celdas en segundo plano."
+
+msgctxt "#32253"
+msgid "Sprite tiles in RAM"
+msgstr "Mosaicos sprite en RAM"
+
+msgctxt "#32254"
+msgid "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices)."
+msgstr "Cuántos JPG sprite decodificados mantener en RAM durante la reproducción. Cada mosaico 320×10×10 por defecto ocupa unos 16 MB. 0 = copiar solo a temp local (mejor para dispositivos con poca RAM)."
+
+msgctxt "#32255"
+msgid "Cropped thumbs in RAM (MB)"
+msgstr "Miniaturas recortadas en RAM (MB)"
+
+msgctxt "#32256"
+msgid "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices)."
+msgstr "Mantener los JPEG de vista previa recortados en RAM para no recodificar al buscar. 0 = desactivado (mejor para dispositivos con poca RAM)."

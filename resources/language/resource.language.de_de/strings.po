@@ -34,8 +34,8 @@ msgid "Seek poll interval (ms)"
 msgstr "Suchaktualisierungsintervall (ms)"
 
 msgctxt "#32007"
-msgid "How often to refresh the preview while the seek bar is active. Lower values feel smoother but use more CPU."
-msgstr "Wie oft die Vorschau aktualisiert wird, während die Suchleiste aktiv ist. Niedrigere Werte fühlen sich flüssiger an, verwenden aber mehr CPU."
+msgid "How often to refresh the preview while seeking (25–250 ms). Lower values feel smoother but use more CPU."
+msgstr "Wie oft die Vorschau beim Spulen aktualisiert wird (25–250 ms). Niedrigere Werte fühlen sich flüssiger an, verwenden aber mehr CPU."
 
 msgctxt "#32008"
 msgid "Enable debug logging"
@@ -194,8 +194,8 @@ msgid "Crop cache limit (MB)"
 msgstr "Zuschnitt-Cache-Grenze (MB)"
 
 msgctxt "#32036"
-msgid "Maximum disk space for cropped preview JPEGs. Oldest files are removed first. 0 = unlimited."
-msgstr "Maximaler Festplattenspeicher für zugeschnittene Vorschau-JPEGs. Älteste Dateien werden zuerst entfernt. 0 = unbegrenzt."
+msgid "Maximum disk space for cropped preview JPEGs (default 1000 MB). Oldest files are removed first. 0 = unlimited."
+msgstr "Maximaler Festplattenspeicher für zugeschnittene Vorschau-JPEGs (Standard 1000 MB). Älteste Dateien werden zuerst entfernt. 0 = unbegrenzt."
 
 msgctxt "#32037"
 msgid "Prefetch"
@@ -988,3 +988,27 @@ msgstr "Report written to:\n%s"
 msgctxt "#32250"
 msgid "Stock Estuary is protected by Kodi; this addon cannot modify it."
 msgstr "Stock Estuary is protected by Kodi; this addon cannot modify it."
+
+msgctxt "#32251"
+msgid "Preload all sprites on playback"
+msgstr "Alle Sprites beim Abspielen vorladen"
+
+msgctxt "#32252"
+msgid "As soon as playback starts, copy every sprite tile to local temp, decode into RAM up to the sprite RAM limit, and pre-crop cells in the background."
+msgstr "Sobald die Wiedergabe startet, jede Sprite-Kachel nach lokalem Temp kopieren, bis zum RAM-Limit dekodieren und Zellen im Hintergrund vorab zuschneiden."
+
+msgctxt "#32253"
+msgid "Sprite tiles in RAM"
+msgstr "Sprite-Kacheln im RAM"
+
+msgctxt "#32254"
+msgid "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices)."
+msgstr "Wie viele dekodierte Sprite-JPGs während der Wiedergabe im RAM bleiben. Jede Standard-Kachel 320×10×10 ist etwa 16 MB. 0 = nur nach lokalem Temp kopieren (besser für Geräte mit wenig RAM)."
+
+msgctxt "#32255"
+msgid "Cropped thumbs in RAM (MB)"
+msgstr "Zugeschnittene Vorschaubilder im RAM (MB)"
+
+msgctxt "#32256"
+msgid "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices)."
+msgstr "Zugeschnittene Vorschau-JPEGs im RAM halten, damit Spulen nicht neu kodiert. 0 = aus (besser für Geräte mit wenig RAM)."

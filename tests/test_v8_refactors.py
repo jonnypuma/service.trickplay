@@ -344,10 +344,30 @@ class SettingsLevelTests(unittest.TestCase):
         self.assertEqual(levels["generator_hw_decode_cuda"], 3)
         self.assertEqual(levels["cache_jpeg_quality"], 3)
         self.assertEqual(levels["prefetch_radius_seconds"], 2)
+        self.assertEqual(levels["prefetch_preload_tiles"], 1)
+        self.assertEqual(levels["decoded_tile_ram_max"], 2)
+        self.assertEqual(levels["crop_ram_max_mb"], 2)
+        poll = tree.find(".//setting[@id='poll_ms']")
+        self.assertIsNotNone(poll)
+        assert poll is not None
+        self.assertEqual(poll.findtext("default"), "100")
+        self.assertEqual(poll.findtext("constraints/minimum"), "25")
+        self.assertEqual(poll.findtext("constraints/maximum"), "250")
+        cache = tree.find(".//setting[@id='cache_max_mb']")
+        self.assertIsNotNone(cache)
+        assert cache is not None
+        self.assertEqual(cache.findtext("default"), "1000")
         self.assertGreater(
             levels["install_skin_snippet_force"],
             levels["install_skin_snippet_current"],
         )
+
+    def test_poll_ms_is_clamped_to_25_250(self) -> None:
+        import service
+
+        self.assertEqual(service._clamp_poll_ms(10), 25)
+        self.assertEqual(service._clamp_poll_ms(1000), 250)
+        self.assertEqual(service._clamp_poll_ms(100), 100)
 
 
 class ScriptDispatchTests(_StubAddonMixin):

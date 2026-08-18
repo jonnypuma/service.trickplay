@@ -9,7 +9,9 @@ import shutil
 import subprocess
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Tuple
 
 import xbmc
@@ -54,14 +56,15 @@ _tile_copy_locks_guard = threading.Lock()
 
 # Short-lived tile stat cache to avoid repeated VFS stats during prefetch/scrub.
 _tile_fingerprint_cache: dict[str, tuple[float, int, float]] = {}
-_TILE_FP_TTL_SEC = 2.0
+_TILE_FP_TTL_SEC = 60.0
+_JPEG_SOF_SCAN_MAX = 1024 * 1024
 
 # Keep fully-decoded sprite tiles in RAM so same-tile scrub/prefetch does not
-# re-decode the JPG for every cell. During playback the cap is raised to the
-# current sidecar's tile count so pause/scrub-back stays warm.
+# re-decode the JPG for every cell. During playback the cap is the user setting
+# (and never more than this file's tile count).
 # ~16.5 MiB/tile for default Jellyfin 320@10x10 (3200x1800 RGB).
 _DECODED_TILE_DEFAULT_MAX = 8
-_DECODED_TILE_HARD_MAX = 24
+_DECODED_TILE_HARD_MAX = 48
 # Backward-compatible alias for the idle/default cap (tests and callers).
 _DECODED_TILE_MAX = _DECODED_TILE_DEFAULT_MAX
 _decoded_tile_max = _DECODED_TILE_DEFAULT_MAX
@@ -70,6 +73,11 @@ _decoded_tile_lock = threading.Lock()
 _decoded_tiles: dict[str, tuple[float, int, object]] = {}
 _decoded_tile_order: list[str] = []
 _cache_stats = {"decoded_hits": 0, "decoded_misses": 0}
+
+# Cropped-cell JPEG bytes in RAM so scrubbing can skip re-encode.
+_crop_ram_lock = threading.Lock()
+_crop_ram: OrderedDict[ThumbCacheKey, bytes] = OrderedDict()
+_crop_ram_bytes = 0
 
 # Ping-pong live preview JPEGs so Kodi reloads textures while durable cache
 # is written asynchronously after the first RAM crop.
@@ -91,6 +99,19 @@ def _log(message: str, level=xbmc.LOGINFO) -> None:
 def _ensure_dir(path: str) -> None:
     if not xbmcvfs.exists(path):
         xbmcvfs.mkdirs(path)
+
+
+def _read_local_or_vfs_bytes(path: str, max_bytes: int | None = None) -> bytes:
+    """Read a local file with OS I/O, falling back to xbmcvfs."""
+    if path and "://" not in path:
+        try:
+            with open(path, "rb") as handle:
+                if max_bytes is None:
+                    return handle.read()
+                return handle.read(max_bytes)
+        except OSError:
+            pass
+    return _read_file_bytes(path, max_bytes=max_bytes)
 
 
 def _read_file_bytes(path: str, max_bytes: int | None = None) -> bytes:
@@ -229,14 +250,90 @@ def clear_decoded_tile_cache() -> None:
         _decoded_tile_order.clear()
 
 
-def begin_decoded_tile_session(tile_count: int) -> None:
-    """Pin decoded sprites for the current file (up to ``_DECODED_TILE_HARD_MAX``)."""
+def clear_crop_ram_cache() -> None:
+    """Drop in-memory cropped preview JPEG bytes."""
+    global _crop_ram_bytes
+    with _crop_ram_lock:
+        _crop_ram.clear()
+        _crop_ram_bytes = 0
+
+
+def _crop_ram_limit_bytes() -> int:
+    try:
+        from prefetch_settings import read_prefetch_settings
+
+        megabytes = int(read_prefetch_settings().crop_ram_max_mb)
+        return max(0, megabytes) * 1024 * 1024
+    except (ImportError, TypeError, ValueError, AttributeError, RuntimeError):
+        return 0
+
+
+def remember_crop_jpeg(key: ThumbCacheKey, data: bytes) -> None:
+    """Store encoded JPEG bytes for a cropped cell, respecting the RAM cap."""
+    global _crop_ram_bytes
+    if not data:
+        return
+    limit = _crop_ram_limit_bytes()
+    if limit <= 0:
+        return
+    with _crop_ram_lock:
+        previous = _crop_ram.pop(key, None)
+        if previous is not None:
+            _crop_ram_bytes = max(0, _crop_ram_bytes - len(previous))
+        _crop_ram[key] = data
+        _crop_ram_bytes += len(data)
+        while _crop_ram and _crop_ram_bytes > limit:
+            _, evicted = _crop_ram.popitem(last=False)
+            _crop_ram_bytes = max(0, _crop_ram_bytes - len(evicted))
+
+
+def crop_ram_has(key: ThumbCacheKey) -> bool:
+    with _crop_ram_lock:
+        return key in _crop_ram
+
+
+def get_crop_ram_jpeg(key: ThumbCacheKey) -> bytes | None:
+    with _crop_ram_lock:
+        data = _crop_ram.get(key)
+        if data is None:
+            return None
+        _crop_ram.move_to_end(key)
+        return data
+
+
+def materialize_crop_ram(key: ThumbCacheKey) -> str | None:
+    """Write a RAM-cached JPEG to a live preview path, or None if missing."""
+    data = get_crop_ram_jpeg(key)
+    if not data:
+        return None
+    live_path = _next_live_preview_path()
+    if not _write_file_bytes(live_path, data):
+        return None
+    _remember_live_preview(key, live_path)
+    return live_path
+
+
+def begin_decoded_tile_session(
+    tile_count: int, ram_max: int | None = None
+) -> None:
+    """Pin decoded sprites for the current file up to the user RAM cap."""
     global _decoded_tile_max
+    if ram_max is None:
+        try:
+            from prefetch_settings import read_prefetch_settings
+
+            ram_max = read_prefetch_settings().decoded_tile_ram_max
+        except (ImportError, TypeError, ValueError, AttributeError, RuntimeError):
+            ram_max = _DECODED_TILE_HARD_MAX
+    try:
+        allowed = max(0, min(int(ram_max), _DECODED_TILE_HARD_MAX))
+    except (TypeError, ValueError):
+        allowed = _DECODED_TILE_HARD_MAX
     count = max(0, int(tile_count))
-    _decoded_tile_max = max(
-        _DECODED_TILE_DEFAULT_MAX,
-        min(count, _DECODED_TILE_HARD_MAX),
-    )
+    if allowed <= 0 or count <= 0:
+        _decoded_tile_max = 0
+        return
+    _decoded_tile_max = min(count, allowed)
 
 
 def end_decoded_tile_session() -> None:
@@ -244,6 +341,7 @@ def end_decoded_tile_session() -> None:
     global _decoded_tile_max
     _decoded_tile_max = _DECODED_TILE_DEFAULT_MAX
     clear_decoded_tile_cache()
+    clear_crop_ram_cache()
 
 
 def decoded_tile_capacity() -> int:
@@ -393,6 +491,7 @@ def clear_preview_cache() -> PreviewCacheClearResult:
     tile_files, tile_bytes = _delete_jpg_files(TEMP_DIR, top_level_only=True)
 
     _clear_memory_cache_index()
+    clear_crop_ram_cache()
     _cache_stats["decoded_hits"] = 0
     _cache_stats["decoded_misses"] = 0
     with _prepared_temp_lock:
@@ -420,6 +519,8 @@ def clear_preview_cache() -> PreviewCacheClearResult:
 
 
 def _remember_decoded_tile(source_path: str, mtime: float, size: int, image: object) -> None:
+    if _decoded_tile_max <= 0:
+        return
     with _decoded_tile_lock:
         if source_path in _decoded_tile_order:
             _decoded_tile_order.remove(source_path)
@@ -461,11 +562,22 @@ def _get_decoded_tile_image(source_path: str, mtime: float, size: int):
 def preview_cache_stats() -> dict[str, int]:
     """Return lightweight cache counters for diagnostics."""
     with _decoded_tile_lock:
-        return {
-            **_cache_stats,
-            "decoded_entries": len(_decoded_tiles),
-            "decoded_capacity": _decoded_tile_max,
-        }
+        decoded_entries = len(_decoded_tiles)
+        decoded_capacity = _decoded_tile_max
+        hits = _cache_stats["decoded_hits"]
+        misses = _cache_stats["decoded_misses"]
+    with _crop_ram_lock:
+        crop_entries = len(_crop_ram)
+        crop_bytes = _crop_ram_bytes
+    return {
+        "decoded_hits": hits,
+        "decoded_misses": misses,
+        "decoded_entries": decoded_entries,
+        "decoded_capacity": decoded_capacity,
+        "crop_ram_entries": crop_entries,
+        "crop_ram_bytes": crop_bytes,
+        "crop_ram_limit_bytes": _crop_ram_limit_bytes(),
+    }
 
 
 def _cache_tile_fingerprint(tile_path: str, mtime: float, size: int) -> None:
@@ -681,6 +793,29 @@ def get_cached_thumb_path(
     return None
 
 
+def get_ready_thumb_path(
+    tile_path: str,
+    col: int,
+    row: int,
+    thumb_w: int,
+    thumb_h: int,
+) -> str | None:
+    """Return a displayable JPEG path from disk, live ping-pong, or RAM."""
+    cached = get_cached_thumb_path(tile_path, col, row, thumb_w, thumb_h)
+    if cached:
+        return cached
+    key = thumb_cache_key(tile_path, col, row, thumb_w, thumb_h)
+    return materialize_crop_ram(key)
+
+
+def has_prepared_temp_copy(tile_path: str) -> bool:
+    """True when this sprite was already copied to local temp this session."""
+    if not tile_path:
+        return False
+    with _prepared_temp_lock:
+        return tile_path in _prepared_temp_tiles
+
+
 def temp_tile_copy(tile_path: str) -> str | None:
     """Copy a sprite JPG to local temp storage for reliable probing and cropping."""
     if not tile_path:
@@ -725,6 +860,13 @@ def temp_tile_copy(tile_path: str) -> str | None:
 
 
 def _source_fingerprint(tile_path: str) -> tuple[float, int]:
+    """Return (mtime, size) for cache keys without re-STAT-ing NFS after a local copy."""
+    with _prepared_temp_lock:
+        prepared = _prepared_temp_tiles.get(tile_path)
+    if prepared is not None:
+        _local, mtime, size = prepared
+        return mtime, size
+
     try:
         stat_obj = xbmcvfs.Stat(tile_path)
         mtime = getattr(stat_obj, "st_mtime", None)
@@ -919,7 +1061,7 @@ def probe_image_dimensions(tile_path: str, debug: bool = False) -> tuple[int, in
         _log(f"Could not copy tile for dimension probe: {tile_path}", xbmc.LOGWARNING)
         return 0, 0
 
-    header = _read_file_bytes(local, max_bytes=65536)
+    header = _read_local_or_vfs_bytes(local, max_bytes=_JPEG_SOF_SCAN_MAX)
     size = _read_jpeg_dimensions_from_bytes(header)
     if size != (0, 0):
         if debug:
@@ -1032,23 +1174,43 @@ def _crop_cell_from_decoded_tile(
         return None
 
 
-def _save_jpeg(image, output_path: str) -> bool:
+def _encode_jpeg_bytes(image) -> bytes:
+    buffer = BytesIO()
+    image.save(
+        buffer,
+        "JPEG",
+        quality=_jpeg_quality(),
+        optimize=False,
+        progressive=False,
+    )
+    return buffer.getvalue()
+
+
+def _write_jpeg_bytes(output_path: str, data: bytes) -> bool:
     output_local = _local_path(output_path)
-    if not output_local:
+    if not output_local or not data:
         return False
     try:
         os.makedirs(os.path.dirname(output_local), exist_ok=True)
-        image.save(
-            output_local,
-            "JPEG",
-            quality=_jpeg_quality(),
-            optimize=False,
-            progressive=False,
-        )
-    except (OSError, ValueError) as exc:
+        with open(output_local, "wb") as handle:
+            handle.write(data)
+    except OSError as exc:
         _log(f"JPEG save failed for {output_path}: {exc}", xbmc.LOGWARNING)
         return False
     return _has_file_content(output_path)
+
+
+def _save_jpeg(
+    image, output_path: str, key: ThumbCacheKey | None = None
+) -> bool:
+    try:
+        data = _encode_jpeg_bytes(image)
+    except (OSError, ValueError) as exc:
+        _log(f"JPEG encode failed for {output_path}: {exc}", xbmc.LOGWARNING)
+        return False
+    if key is not None:
+        remember_crop_jpeg(key, data)
+    return _write_jpeg_bytes(output_path, data)
 
 
 def _crop_thumb_to_cache(
@@ -1126,7 +1288,7 @@ def get_cropped_thumb_path(
                 )
         else:
             live_path = _next_live_preview_path()
-            if _save_jpeg(cropped, live_path):
+            if _save_jpeg(cropped, live_path, key=key):
                 _remember_live_preview(key, live_path)
                 result = live_path
                 threading.Thread(
@@ -1135,7 +1297,7 @@ def get_cropped_thumb_path(
                     daemon=True,
                     name="trickplay-cache-persist",
                 ).start()
-            elif _save_jpeg(cropped, durable):
+            elif _save_jpeg(cropped, durable, key=key):
                 # Live write failed; fall back to durable path only.
                 _mark_thumb_cached(key, durable)
                 try:
@@ -1182,6 +1344,12 @@ def crop_tile_cells_batch(
     if not pending:
         return 0
 
+    if debug:
+        _log(
+            f"Episode pre-crop {len(pending)} uncached cell(s) from "
+            f"{os.path.basename(tile_path)}"
+        )
+
     source = temp_tile_copy(tile_path)
     if not source:
         _log(f"Could not copy sprite tile locally for batch crop: {tile_path}", xbmc.LOGWARNING)
@@ -1208,7 +1376,10 @@ def crop_tile_cells_batch(
                     f"{os.path.basename(tile_path)} cell ({col},{row})"
                 )
             cropped = img.crop((left, top, left + crop_w, top + crop_h))
-            cropped.save(output_local, "JPEG", quality=_jpeg_quality())
+            data = _encode_jpeg_bytes(cropped)
+            remember_crop_jpeg(key, data)
+            if not _write_jpeg_bytes(cached, data):
+                continue
         except (OSError, ValueError) as exc:
             _log(
                 f"Batch Pillow crop failed for {tile_path} cell ({col},{row}): {exc}",

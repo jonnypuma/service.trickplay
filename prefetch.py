@@ -14,8 +14,11 @@ from prefetch_settings import PrefetchSettings, read_prefetch_settings
 from thumb_cropper import (
     ThumbCacheKey,
     crop_tile_cells_batch,
+    decoded_tile_capacity,
     get_cached_thumb_path,
     get_cropped_thumb_path,
+    get_ready_thumb_path,
+    has_prepared_temp_copy,
     temp_tile_copy,
     thumb_cache_key,
     warm_decoded_tile,
@@ -26,6 +29,7 @@ from trickplay_resolver import (
     lookup_by_index,
     lookup_thumbnail,
 )
+from vfs_paths import is_remote_vfs_url, local_path as _vfs_local_path
 
 MAX_TILE_ENQUEUE = 20
 # Cap idle whole-tile floods so NFS sprite copies do not starve scrub crops.
@@ -33,6 +37,23 @@ IDLE_TILE_MAX_ENQUEUE = 24
 # Copy+decode the next sprite once playhead prefetch is this far through the
 # current tile, so the first cell of 1.jpg is already in RAM.
 UPCOMING_TILE_WARM_FRACTION = 0.80
+NEAREST_READY_MAX_DISTANCE = 12
+
+
+def copy_order_for_tiles(
+    tile_paths: tuple[str, ...] | list[str],
+    prioritize: tuple[str, ...] | list[str] = (),
+) -> list[str]:
+    """Return sprite copy order: ``0.jpg`` first, then priority tiles, then the rest."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    first = tile_paths[0] if tile_paths else ""
+    for path in [first, *prioritize, *tile_paths]:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        ordered.append(path)
+    return ordered
 
 
 def _cache_key(lookup: TrickplayLookup) -> ThumbCacheKey:
@@ -206,6 +227,76 @@ def upcoming_tile_to_warm(
     return adjacent_tile_path(resolution, thumb_index, warm_direction)
 
 
+def nearest_ready_thumb_path(
+    resolution: TrickplayResolution,
+    lookup: TrickplayLookup,
+    interval_ms: int,
+    *,
+    max_distance: int = NEAREST_READY_MAX_DISTANCE,
+) -> str | None:
+    """Return the closest already-cropped thumb path around ``lookup``."""
+    if not resolution.is_usable:
+        return None
+    exact = get_ready_thumb_path(
+        lookup.tile_path,
+        lookup.col,
+        lookup.row,
+        lookup.thumb_width,
+        lookup.thumb_height,
+    )
+    if exact:
+        return exact
+
+    max_index = _max_thumb_index(resolution)
+    for distance in range(1, max(1, int(max_distance)) + 1):
+        for index in (lookup.thumb_index + distance, lookup.thumb_index - distance):
+            if index < 0 or index > max_index:
+                continue
+            neighbor = lookup_by_index(resolution, index, interval_ms)
+            if neighbor is None:
+                continue
+            path = get_ready_thumb_path(
+                neighbor.tile_path,
+                neighbor.col,
+                neighbor.row,
+                neighbor.thumb_width,
+                neighbor.thumb_height,
+            )
+            if path:
+                return path
+    return None
+
+
+def _tile_cell_specs(
+    resolution: TrickplayResolution,
+    tile_path: str,
+    interval_ms: int,
+) -> list[tuple[int, int, int, int]]:
+    """Return (col, row, thumb_w, thumb_h) for every cell in one sprite."""
+    if not resolution.tile_paths:
+        return []
+    try:
+        tile_index = resolution.tile_paths.index(tile_path)
+    except ValueError:
+        return []
+    per_tile = resolution.thumbs_per_tile
+    if per_tile <= 0:
+        return []
+    start = tile_index * per_tile
+    end = start + per_tile
+    if resolution.thumbnail_count > 0:
+        end = min(end, resolution.thumbnail_count)
+    cells: list[tuple[int, int, int, int]] = []
+    for index in range(start, end):
+        lookup = lookup_by_index(resolution, index, interval_ms)
+        if lookup is None:
+            continue
+        cells.append(
+            (lookup.col, lookup.row, lookup.thumb_width, lookup.thumb_height)
+        )
+    return cells
+
+
 @dataclass(frozen=True)
 class _PrefetchItem:
     lookup: TrickplayLookup
@@ -235,6 +326,17 @@ class ThumbPrefetch:
         self._copy_worker: threading.Thread | None = None
         self._copy_generation = 0
         self._warmed_tiles: set[str] = set()
+        self._decode_lock = threading.Lock()
+        self._decode_queue: deque[str] = deque()
+        self._decode_queued: set[str] = set()
+        self._decode_worker: threading.Thread | None = None
+        self._decode_generation = 0
+        self._decoded_done: set[str] = set()
+        self._precropped_done: set[str] = set()
+        self._episode_resolution: TrickplayResolution | None = None
+        self._episode_interval = 0
+        self._episode_want_precrop = False
+        self._episode_precrop = False
 
     def cancel(self, *, clear_copies: bool = True) -> None:
         with self._lock:
@@ -247,44 +349,88 @@ class ThumbPrefetch:
             self._last_playback_follow_at = 0.0
             if clear_copies:
                 self._warmed_tiles.clear()
+                self._decoded_done.clear()
+                self._precropped_done.clear()
         if clear_copies:
             with self._copy_lock:
                 self._copy_generation += 1
                 self._copy_queue.clear()
                 self._copy_queued.clear()
                 self._copy_done.clear()
+            with self._decode_lock:
+                self._decode_generation += 1
+                self._decode_queue.clear()
+                self._decode_queued.clear()
+                self._episode_resolution = None
+                self._episode_interval = 0
+                self._episode_want_precrop = False
+                self._episode_precrop = False
+
+    def tile_is_locally_ready(self, tile_path: str) -> bool:
+        """True when the sprite is already copied locally or is a local file."""
+        if not tile_path:
+            return False
+        with self._copy_lock:
+            if tile_path in self._copy_done:
+                return True
+        if has_prepared_temp_copy(tile_path):
+            return True
+        if is_remote_vfs_url(tile_path):
+            return False
+        local = _vfs_local_path(tile_path)
+        try:
+            return bool(local and os.path.isfile(local))
+        except OSError:
+            return False
 
     def yield_for_scrub(self, preferred_tile: str | None = None) -> None:
-        """Drop queued work that would contend with a scrub crop.
+        """Drop queued NFS work that would contend with a scrub crop.
 
-        Keeps high-priority items for ``preferred_tile`` (if set) so neighbor
-        warm can continue; clears everything else so NFS bandwidth is free for
-        the foreground crop worker.
+        Keeps high-priority items for ``preferred_tile`` and any crops whose
+        sprite is already local so fast scrub does not cancel ready work.
         """
+        with self._copy_lock:
+            copied = set(self._copy_done)
         with self._lock:
             if not self._queue:
-                return
-            kept: deque[_PrefetchItem] = deque()
-            keys: set[tuple[str, int, int, int, int]] = set()
-            for item in self._queue:
-                if (
-                    preferred_tile
-                    and item.high_priority
-                    and item.lookup.tile_path == preferred_tile
-                ):
-                    kept.append(item)
-                    keys.add(_cache_key(item.lookup))
-            dropped = len(self._queue) - len(kept)
-            self._queue = kept
-            self._queued_keys = keys
+                dropped = 0
+            else:
+                kept: deque[_PrefetchItem] = deque()
+                keys: set[tuple[str, int, int, int, int]] = set()
+                for item in self._queue:
+                    tile = item.lookup.tile_path
+                    keep_preferred = (
+                        bool(preferred_tile)
+                        and item.high_priority
+                        and tile == preferred_tile
+                    )
+                    if keep_preferred or self._tile_work_is_local(tile, copied):
+                        kept.append(item)
+                        keys.add(_cache_key(item.lookup))
+                dropped = len(self._queue) - len(kept)
+                self._queue = kept
+                self._queued_keys = keys
             if dropped and self._debug:
                 _log(
                     f"Prefetch yield for scrub"
                     f"{f' tile={preferred_tile}' if preferred_tile else ''}"
-                    f" dropped {dropped} queued cell(s)"
+                    f" dropped {dropped} remote cell(s)"
                 )
         if preferred_tile:
             self.prioritize_tile_copy(preferred_tile)
+            if not self._tile_decode_is_done(preferred_tile):
+                self._enqueue_tile_decode(preferred_tile, high_priority=True)
+
+    def _tile_work_is_local(self, tile_path: str, copied: set[str]) -> bool:
+        if tile_path in copied or has_prepared_temp_copy(tile_path):
+            return True
+        if is_remote_vfs_url(tile_path):
+            return False
+        local = _vfs_local_path(tile_path)
+        try:
+            return bool(local and os.path.isfile(local))
+        except OSError:
+            return False
 
     def schedule_all_tile_copies(
         self,
@@ -293,15 +439,9 @@ class ThumbPrefetch:
         prioritize: tuple[str, ...] | list[str] = (),
         debug: bool = False,
     ) -> None:
-        """Copy every sprite JPG to local temp in the background (priority first)."""
+        """Copy every sprite JPG to local temp in the background (0.jpg first)."""
         self._debug = debug
-        ordered: list[str] = []
-        seen: set[str] = set()
-        for path in [*prioritize, *tile_paths]:
-            if not path or path in seen:
-                continue
-            seen.add(path)
-            ordered.append(path)
+        ordered = copy_order_for_tiles(tile_paths, prioritize)
         if not ordered:
             return
 
@@ -316,12 +456,207 @@ class ThumbPrefetch:
             self._copy_queue = new_queue
             self._copy_queued = queued
 
-        if debug:
+        pending = len(new_queue)
+        if pending and debug:
             _log(
-                f"Scheduled local copies for {len(ordered)} sprite tile(s) "
+                f"Scheduled local copies for {pending} sprite tile(s) "
                 f"(priority {len([p for p in prioritize if p])})"
             )
-        self._ensure_copy_worker()
+        if pending:
+            self._ensure_copy_worker()
+
+    def schedule_episode_preload(
+        self,
+        resolution: TrickplayResolution,
+        interval_ms: int,
+        *,
+        prioritize: tuple[str, ...] | list[str] = (),
+        settings: PrefetchSettings | None = None,
+        debug: bool = False,
+    ) -> None:
+        """Copy every sprite locally and decode into RAM. Cell pre-crop waits
+        until ``enable_episode_precrop`` so the first thumb can publish first.
+        """
+        settings = settings or read_prefetch_settings()
+        if not settings.enabled or not resolution.is_usable:
+            return
+        self._debug = debug
+        with self._decode_lock:
+            self._episode_resolution = resolution
+            self._episode_interval = interval_ms
+            self._episode_want_precrop = settings.preload_tiles
+            self._episode_precrop = False
+        self.schedule_all_tile_copies(
+            resolution.tile_paths,
+            prioritize=prioritize,
+            debug=debug,
+        )
+        first = resolution.tile_paths[0] if resolution.tile_paths else ""
+        if first:
+            self._enqueue_tile_decode(first, high_priority=True)
+
+    def note_tile_ready(self, tile_path: str) -> None:
+        """Mark a sprite already copied and decoded (e.g. first playhead crop)."""
+        if not tile_path:
+            return
+        with self._copy_lock:
+            self._copy_done.add(tile_path)
+        with self._lock:
+            self._warmed_tiles.add(tile_path)
+            self._decoded_done.add(tile_path)
+
+    def enable_episode_precrop(self) -> None:
+        """Start background cell encodes after the first thumb is on screen."""
+        with self._decode_lock:
+            if self._episode_precrop or not self._episode_want_precrop:
+                return
+            self._episode_precrop = True
+            resolution = self._episode_resolution
+        if resolution is None or not resolution.tile_paths:
+            return
+        first = resolution.tile_paths[0]
+        self._enqueue_tile_decode(first, high_priority=True)
+        for tile_path in resolution.tile_paths[1:]:
+            self._enqueue_tile_decode(tile_path)
+
+    def _tile_decode_is_done(self, tile_path: str) -> bool:
+        with self._lock:
+            decoded = tile_path in self._decoded_done
+            precropped = tile_path in self._precropped_done
+        with self._decode_lock:
+            want_precrop = self._episode_precrop
+        if not decoded:
+            return False
+        if want_precrop and not precropped:
+            return False
+        return True
+
+    def _enqueue_tile_decode(
+        self, tile_path: str, *, high_priority: bool = False
+    ) -> None:
+        if not tile_path:
+            return
+        if self._tile_decode_is_done(tile_path):
+            return
+        with self._decode_lock:
+            if tile_path in self._decode_queued:
+                if high_priority:
+                    try:
+                        self._decode_queue.remove(tile_path)
+                    except ValueError:
+                        pass
+                    self._decode_queue.appendleft(tile_path)
+            else:
+                self._decode_queued.add(tile_path)
+                if high_priority:
+                    self._decode_queue.appendleft(tile_path)
+                else:
+                    self._decode_queue.append(tile_path)
+        self._ensure_decode_worker()
+
+    def _ensure_decode_worker(self) -> None:
+        with self._decode_lock:
+            if self._decode_worker is not None and self._decode_worker.is_alive():
+                return
+            generation = self._decode_generation
+            self._decode_worker = threading.Thread(
+                target=self._run_tile_decodes,
+                args=(generation,),
+                daemon=True,
+                name="trickplay-tile-decode",
+            )
+            self._decode_worker.start()
+
+    def _run_tile_decodes(self, generation: int) -> None:
+        while True:
+            with self._decode_lock:
+                if generation != self._decode_generation:
+                    return
+                if not self._decode_queue:
+                    self._decode_worker = None
+                    return
+                tile_path = self._decode_queue.popleft()
+                self._decode_queued.discard(tile_path)
+                resolution = self._episode_resolution
+                interval_ms = self._episode_interval
+                precrop = self._episode_precrop
+            self._decode_one_tile(
+                tile_path,
+                resolution=resolution,
+                interval_ms=interval_ms,
+                precrop=precrop,
+            )
+
+    def _decode_one_tile(
+        self,
+        tile_path: str,
+        *,
+        resolution: TrickplayResolution | None,
+        interval_ms: int,
+        precrop: bool,
+    ) -> None:
+        if not self.tile_is_locally_ready(tile_path):
+            if self._debug:
+                _log(
+                    f"Defer sprite decode until local copy "
+                    f"{os.path.basename(tile_path)}"
+                )
+            return
+        with self._lock:
+            already_decoded = tile_path in self._decoded_done
+            already_precropped = tile_path in self._precropped_done
+            self._warmed_tiles.add(tile_path)
+        if not already_decoded and decoded_tile_capacity() > 0:
+            try:
+                ok = warm_decoded_tile(tile_path)
+                if self._debug:
+                    _log(
+                        f"Decoded sprite warm {os.path.basename(tile_path)} ok={ok}"
+                    )
+                if ok:
+                    with self._lock:
+                        self._decoded_done.add(tile_path)
+            except (OSError, RuntimeError, ValueError) as exc:
+                _log(
+                    f"Sprite decode failed for {tile_path}: {exc}",
+                    xbmc.LOGWARNING,
+                )
+        elif not already_decoded:
+            with self._lock:
+                self._decoded_done.add(tile_path)
+        if not precrop or resolution is None:
+            return
+        if already_precropped:
+            return
+        cells = _tile_cell_specs(resolution, tile_path, interval_ms)
+        if not cells:
+            with self._lock:
+                self._precropped_done.add(tile_path)
+            return
+        pending = [
+            cell
+            for cell in cells
+            if not get_cached_thumb_path(tile_path, cell[0], cell[1], cell[2], cell[3])
+        ]
+        if not pending:
+            with self._lock:
+                self._precropped_done.add(tile_path)
+            return
+        if self._debug:
+            _log(
+                f"Episode pre-crop {len(pending)} uncached cell(s) from "
+                f"{os.path.basename(tile_path)}"
+            )
+        try:
+            crop_tile_cells_batch(tile_path, pending, debug=False)
+        except (OSError, RuntimeError, ValueError) as exc:
+            _log(
+                f"Episode pre-crop failed for {tile_path}: {exc}",
+                xbmc.LOGWARNING,
+            )
+            return
+        with self._lock:
+            self._precropped_done.add(tile_path)
 
     def prioritize_tile_copy(self, tile_path: str) -> None:
         """Move a sprite tile to the front of the local-copy queue."""
@@ -372,6 +707,8 @@ class ThumbPrefetch:
                     return
                 if local:
                     self._copy_done.add(tile_path)
+            if local:
+                self._enqueue_tile_decode(tile_path)
 
     def schedule_playhead_follow(
         self,
@@ -538,26 +875,8 @@ class ThumbPrefetch:
         if self._debug:
             _log(f"Warm upcoming sprite {os.path.basename(tile_path)}")
         self.prioritize_tile_copy(tile_path)
-        threading.Thread(
-            target=self._decode_tile_warm,
-            args=(tile_path,),
-            daemon=True,
-            name="trickplay-tile-warm",
-        ).start()
+        self._enqueue_tile_decode(tile_path, high_priority=True)
         return tile_path
-
-    def _decode_tile_warm(self, tile_path: str) -> None:
-        try:
-            ok = warm_decoded_tile(tile_path)
-            if self._debug:
-                _log(
-                    f"Decoded sprite warm {os.path.basename(tile_path)} ok={ok}"
-                )
-        except (OSError, RuntimeError, ValueError) as exc:
-            _log(
-                f"Upcoming tile decode failed for {tile_path}: {exc}",
-                xbmc.LOGWARNING,
-            )
 
     def schedule_neighbors(
         self,

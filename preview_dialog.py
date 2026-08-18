@@ -13,9 +13,10 @@ import xbmcgui
 import xbmcvfs
 
 from osd_layout import preview_layout_mode, preview_placement
+from prefetch import nearest_ready_thumb_path
 from settings_cache import get_cached
-from thumb_cropper import get_cached_thumb_path, get_cropped_thumb_path
-from trickplay_resolver import TrickplayLookup
+from thumb_cropper import get_cropped_thumb_path, get_ready_thumb_path
+from trickplay_resolver import TrickplayLookup, TrickplayResolution
 
 HOME_WINDOW = xbmcgui.Window(10000)
 SEEKBAR_WINDOW_ID = 10115
@@ -508,6 +509,8 @@ class PreviewDialogController:
         player: xbmc.Player | None = None,
         *,
         eager: bool = False,
+        resolution: TrickplayResolution | None = None,
+        interval_ms: int = 10000,
     ) -> None:
         fast_scrub = self._scrub_churn_active(lookup, seeking=eager)
         self._fast_scrub_active = fast_scrub
@@ -515,7 +518,7 @@ class PreviewDialogController:
         self._last_scrub_thumb_index = lookup.thumb_index
 
         cache_key = lookup_cache_key(lookup)
-        cached = get_cached_thumb_path(
+        cached = get_ready_thumb_path(
             lookup.tile_path,
             lookup.col,
             lookup.row,
@@ -523,20 +526,25 @@ class PreviewDialogController:
             lookup.thumb_height,
         )
 
-        # Fast scrub: always refresh PreviewSlot/placement every seek and keep a
-        # thumb on-screen (cached or last frame). Do not wait for scrub settle.
-        if fast_scrub:
-            image = cached or self._last_thumb_path
-            if cached:
-                self._shown_thumb_index = lookup.thumb_index
-                self._last_thumb_path = cached
-            self._publish_preview_state(lookup, duration_seconds, image, player)
-            return
-
         if cached:
             self._shown_thumb_index = lookup.thumb_index
             self._last_thumb_path = cached
             self._publish_preview_state(lookup, duration_seconds, cached, player)
+            return
+
+        ready = None
+        if resolution is not None:
+            ready = nearest_ready_thumb_path(
+                resolution, lookup, interval_ms
+            )
+        display = ready or self._last_thumb_path
+
+        # Fast scrub: keep a nearby ready thumb on-screen instead of freezing
+        # on the last exact cell. Exact crops continue in the background.
+        if fast_scrub:
+            if ready:
+                self._last_thumb_path = ready
+            self._publish_preview_state(lookup, duration_seconds, display, player)
             return
 
         use_eager = eager
@@ -558,9 +566,6 @@ class PreviewDialogController:
                 )
                 return
 
-        same_bucket = lookup.thumb_index == self._shown_thumb_index
-        stale_image = self._last_thumb_path if same_bucket else None
-
         with self._crop_lock:
             pending_key = (
                 lookup_cache_key(self._pending_lookup)
@@ -574,7 +579,7 @@ class PreviewDialogController:
             self._pending_player = player
             self._crop_failed = False
 
-        self._publish_preview_state(lookup, duration_seconds, stale_image, player)
+        self._publish_preview_state(lookup, duration_seconds, display, player)
         self._ensure_crop_worker(_debug_logging())
 
     def _ensure_crop_worker(self, debug: bool) -> None:

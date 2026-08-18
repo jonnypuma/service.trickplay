@@ -133,34 +133,34 @@ def _list_tile_jpg_names(tiles_dir: str) -> list[str]:
 
 
 def _sidecar_lookup_media_paths(media_path: str) -> tuple[str, ...]:
-    """Paths that may share the same on-disk .trickplay sibling folder."""
-    from ffmpeg_media import resolve_ffmpeg_media_path
+    """Paths that may share the same on-disk .trickplay sibling folder.
 
-    seen: set[str] = set()
-    ordered: list[str] = []
+    Does not STAT the playing video. ``xbmcvfs.exists()`` on an NFS 4K MKV
+    while Kodi is opening the same file can stall sidecar discovery for
+    seconds. ``.trickplay`` folders are listed from URL/path variants and
+    cheap OS mount maps instead.
+    """
+    path = (media_path or "").strip()
+    if not path:
+        return ()
+    if path.lower().startswith(("plugin://", "http://", "https://")):
+        return ()
 
-    def add(path: str) -> None:
-        cleaned = (path or "").strip()
-        if not cleaned or cleaned in seen:
-            return
-        seen.add(cleaned)
-        ordered.append(cleaned)
-        for variant in path_variants(cleaned):
-            if variant not in seen:
-                seen.add(variant)
-                ordered.append(variant)
+    if path.lower().endswith(".strm"):
+        try:
+            with xbmcvfs.File(path, "r") as handle:
+                target = (handle.read() or "").strip()
+        except OSError:
+            target = ""
+        if target and not target.lower().startswith(
+            ("plugin://", "http://", "https://")
+        ):
+            path = target
 
-    add(media_path)
-    resolved = resolve_media_path(media_path)
-    if resolved:
-        add(resolved)
+    if path.startswith("special://"):
+        path = xbmcvfs.translatePath(path)
 
-    for candidate in list(ordered):
-        ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(candidate)
-        if ffmpeg_input and not use_vfs_stream:
-            add(ffmpeg_input)
-
-    return tuple(ordered)
+    return path_variants(path)
 
 
 def resolve_media_path(playing_file: str) -> str | None:
@@ -478,8 +478,15 @@ def enrich_resolution(
     auto_tile_grid: bool = True,
     manual_tile_grid: str = "10x10",
     debug: bool = False,
+    *,
+    probe_last_tile: bool = True,
 ) -> TrickplayResolution:
-    """Fill in thumb dimensions and total thumbnail count."""
+    """Fill in thumb dimensions and total thumbnail count.
+
+    ``probe_last_tile`` copies the last sprite to count a partial final tile.
+    Skip it on first load so ``0.jpg`` can be copied and cropped before any
+    later NFS sprite download.
+    """
     if not resolution.tile_paths:
         return resolution
 
@@ -514,15 +521,18 @@ def enrich_resolution(
 
     thumbs_per_tile = grid_cols * grid_rows
     full_tiles = max(len(resolution.tile_paths) - 1, 0)
-    last_tile_thumbs = _count_thumbs_in_last_tile(
-        resolution,
-        thumb_width,
-        thumb_height,
-        full_tiles,
-        grid_cols,
-        grid_rows,
-        debug=debug,
-    )
+    if probe_last_tile and len(resolution.tile_paths) > 1:
+        last_tile_thumbs = _count_thumbs_in_last_tile(
+            resolution,
+            thumb_width,
+            thumb_height,
+            full_tiles,
+            grid_cols,
+            grid_rows,
+            debug=debug,
+        )
+    else:
+        last_tile_thumbs = thumbs_per_tile
     from_files = full_tiles * thumbs_per_tile + last_tile_thumbs
     if duration_seconds > 0 and interval_ms > 0:
         interval_sec = max(interval_ms / 1000.0, 0.001)
@@ -681,6 +691,7 @@ def load_trickplay_for_file(
             auto_tile_grid=auto_tile_grid,
             manual_tile_grid=manual_tile_grid,
             debug=debug,
+            probe_last_tile=False,
         )
 
     _log_debug(
