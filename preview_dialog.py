@@ -353,6 +353,10 @@ class PreviewDialogController:
         self._pending_duration = 0
         self._pending_player: xbmc.Player | None = None
         self._crop_failed = False
+        self._crop_ready: tuple[TrickplayLookup, int, str, xbmc.Player | None] | None = (
+            None
+        )
+        self._requested_key: tuple[str, int, int, int, int] | None = None
         self._shown_thumb_index = -1
         self._last_thumb_path: str | None = None
         self._last_placement_key: tuple[int, int, float, bool, str] | None = None
@@ -379,7 +383,9 @@ class PreviewDialogController:
             self._pending_lookup = None
             self._pending_duration = 0
             self._pending_player = None
+            self._crop_ready = None
         self._crop_failed = False
+        self._requested_key = None
         self._shown_thumb_index = -1
         self._last_thumb_path = None
         self._last_placement_key = None
@@ -404,8 +410,9 @@ class PreviewDialogController:
         ):
             fast = True
         # Large index jumps only count as churn when updates are already arriving
-        # quickly — a single leap from playhead to scrub target must still use
-        # cache / eager crop so the first thumb is not delayed.
+        # quickly. A single leap still publishes the last/nearest thumb immediately
+        # and queues the exact crop; this detector only affects nearest-ready
+        # selection and prefetch yield.
         recent = (
             self._last_scrub_at > 0.0
             and now - self._last_scrub_at < SCRUB_GAP_SEC
@@ -461,13 +468,14 @@ class PreviewDialogController:
         _set_property(PROP_PREVIEW_LABEL_H, str(placement.label_h))
         _set_property(PROP_PREVIEW_TOTAL_H, str(total_h))
 
-        xbmc.log(
-            f"[service.trickplay] Preview slot {placement.slot} "
-            f"({placement.left},{placement.top}) "
-            f"{placement.preview_w}x{placement.preview_h} @ {lookup.target_second}s "
-            f"(duration={duration_seconds}s)",
-            xbmc.LOGINFO,
-        )
+        if _debug_logging():
+            xbmc.log(
+                f"[service.trickplay] Preview slot {placement.slot} "
+                f"({placement.left},{placement.top}) "
+                f"{placement.preview_w}x{placement.preview_h} @ {lookup.target_second}s "
+                f"(duration={duration_seconds}s)",
+                xbmc.LOGINFO,
+            )
 
     def _publish_preview_state(
         self,
@@ -475,6 +483,8 @@ class PreviewDialogController:
         duration_seconds: int,
         image_path: str | None,
         player: xbmc.Player | None = None,
+        *,
+        keep_existing_image: bool = False,
     ) -> None:
         sync_display_settings()
         if show_timestamp_enabled():
@@ -497,7 +507,7 @@ class PreviewDialogController:
                     f"[service.trickplay] Preview texture: {texture}",
                     xbmc.LOGINFO,
                 )
-        else:
+        elif not keep_existing_image:
             _clear_property(PROP_PREVIEW_IMAGE)
         if _dialog_seekbar_visible():
             resync_preview_to_seekbar(force=True)
@@ -518,6 +528,7 @@ class PreviewDialogController:
         self._last_scrub_thumb_index = lookup.thumb_index
 
         cache_key = lookup_cache_key(lookup)
+        self._requested_key = cache_key
         cached = get_ready_thumb_path(
             lookup.tile_path,
             lookup.col,
@@ -527,45 +538,46 @@ class PreviewDialogController:
         )
 
         if cached:
+            with self._crop_lock:
+                self._crop_target_id += 1
+                self._pending_lookup = None
+                self._crop_ready = None
             self._shown_thumb_index = lookup.thumb_index
             self._last_thumb_path = cached
-            self._publish_preview_state(lookup, duration_seconds, cached, player)
+            self._publish_preview_state(
+                lookup,
+                duration_seconds,
+                cached,
+                player,
+                keep_existing_image=True,
+            )
             return
 
         ready = None
         if resolution is not None:
-            ready = nearest_ready_thumb_path(
-                resolution, lookup, interval_ms
-            )
+            ready = nearest_ready_thumb_path(resolution, lookup, interval_ms)
         display = ready or self._last_thumb_path
+        if display:
+            self._last_thumb_path = display
 
-        # Fast scrub: keep a nearby ready thumb on-screen instead of freezing
-        # on the last exact cell. Exact crops continue in the background.
-        if fast_scrub:
-            if ready:
-                self._last_thumb_path = ready
-            self._publish_preview_state(lookup, duration_seconds, display, player)
-            return
+        # Overlay follows the cursor immediately. Exact crops never run on the
+        # service thread — even a single long jump queues the worker.
+        self._publish_preview_state(
+            lookup,
+            duration_seconds,
+            display,
+            player,
+            keep_existing_image=True,
+        )
+        self._queue_exact_crop(lookup, duration_seconds, player, cache_key)
 
-        use_eager = eager
-        if use_eager:
-            debug = _debug_logging()
-            thumb_path = get_cropped_thumb_path(
-                lookup.tile_path,
-                lookup.col,
-                lookup.row,
-                lookup.thumb_width,
-                lookup.thumb_height,
-                debug=debug,
-            )
-            if thumb_path:
-                self._shown_thumb_index = lookup.thumb_index
-                self._last_thumb_path = thumb_path
-                self._publish_preview_state(
-                    lookup, duration_seconds, thumb_path, player
-                )
-                return
-
+    def _queue_exact_crop(
+        self,
+        lookup: TrickplayLookup,
+        duration_seconds: int,
+        player: xbmc.Player | None,
+        cache_key: tuple[str, int, int, int, int],
+    ) -> None:
         with self._crop_lock:
             pending_key = (
                 lookup_cache_key(self._pending_lookup)
@@ -578,8 +590,6 @@ class PreviewDialogController:
             self._pending_duration = duration_seconds
             self._pending_player = player
             self._crop_failed = False
-
-        self._publish_preview_state(lookup, duration_seconds, display, player)
         self._ensure_crop_worker(_debug_logging())
 
     def _ensure_crop_worker(self, debug: bool) -> None:
@@ -624,8 +634,33 @@ class PreviewDialogController:
                     continue
                 if not thumb_path:
                     self._crop_failed = True
+                    self._pending_lookup = None
                     return
+                self._crop_ready = (lookup, duration, thumb_path, player)
+                pending = self._pending_lookup
+                if (
+                    pending is not None
+                    and lookup_cache_key(pending) != lookup_cache_key(lookup)
+                ):
+                    continue
+                self._pending_lookup = None
+                return
 
+    def poll(self) -> None:
+        ready = None
+        failed = False
+        with self._crop_lock:
+            ready = self._crop_ready
+            self._crop_ready = None
+            if self._crop_failed:
+                failed = True
+                self._crop_failed = False
+        if ready is not None:
+            lookup, duration, thumb_path, player = ready
+            if (
+                self._requested_key is None
+                or lookup_cache_key(lookup) == self._requested_key
+            ):
                 self._last_thumb_path = thumb_path
                 self._shown_thumb_index = lookup.thumb_index
                 self._publish_preview_state(
@@ -633,18 +668,9 @@ class PreviewDialogController:
                     duration,
                     thumb_path,
                     player,
+                    keep_existing_image=True,
                 )
-
-                pending = self._pending_lookup
-                if (
-                    pending is not None
-                    and lookup_cache_key(pending) != lookup_cache_key(lookup)
-                ):
-                    continue
-                return
-
-    def poll(self) -> None:
-        if self._crop_failed and (
+        if failed and (
             self._crop_thread is None or not self._crop_thread.is_alive()
         ):
             xbmc.log(
@@ -652,4 +678,3 @@ class PreviewDialogController:
                 "use Install preview tools in add-on settings",
                 xbmc.LOGWARNING,
             )
-            self._crop_failed = False

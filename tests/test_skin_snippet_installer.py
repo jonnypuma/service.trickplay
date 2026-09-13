@@ -19,6 +19,7 @@ sys.modules["xbmc"].LOGINFO = 1
 sys.modules["xbmc"].LOGWARNING = 2
 sys.modules["xbmcvfs"].translatePath = lambda path: path
 
+from overlay_revision import OVERLAY_REVISION  # noqa: E402
 from skin_snippet_installer import (  # noqa: E402
     AH2_VIDEO_OSD_SLIDE_MARKER,
     BELLO_CENTER_SEEK_MARKER,
@@ -484,8 +485,21 @@ class SkinSnippetMergeTests(unittest.TestCase):
             path = os.path.join(ROOT, "resources", "skin-snippet", name)
             with open(path, encoding="utf-8") as handle:
                 text = handle.read()
-            self.assertIn("trickplay-overlay-rev:9", text, msg=name)
+            self.assertIn(f"trickplay-overlay-rev:{OVERLAY_REVISION}", text, msg=name)
             self.assertIn(SKIPPY_SEEKBAR_VISIBLE_MARKER, text, msg=name)
+
+    def test_estuary_snippet_uses_preview_left(self) -> None:
+        snippet_path = os.path.join(
+            ROOT,
+            "resources",
+            "skin-snippet",
+            "DialogSeekBar-skin.estuary.modv2.xml",
+        )
+        overlay = extract_overlay_xml_text(snippet_path)
+        self.assertIn("$INFO[Window.Property(Trickplay.PreviewLeft)]", overlay)
+        self.assertIn("$INFO[Window.Property(Trickplay.PreviewLeftWide)]", overlay)
+        self.assertIn("$INFO[Window.Property(Trickplay.PreviewTop)]", overlay)
+        self.assertNotIn("Trickplay.PreviewSlot),100)", overlay)
 
     def test_seekbar_has_host_controls(self) -> None:
         self.assertTrue(seekbar_has_host_controls(SAMPLE_SEEKBAR))

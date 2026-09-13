@@ -20,6 +20,7 @@ _NETWORK_URL_RE = re.compile(r"^(nfs|smb|smb2|smb3)://([^/]+)/(.+)$", re.IGNOREC
 _MOUNT_CACHE_TTL_SEC = 60.0
 _mount_cache_at = 0.0
 _mount_cache: list[tuple[str, str, str]] = []
+_win_unc_share_cache: dict[tuple[str, str], bool] = {}
 
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
@@ -93,6 +94,39 @@ def _load_mount_table() -> list[tuple[str, str, str]]:
     return mounts
 
 
+def _windows_unc_share_ok(host: str, share: str) -> bool:
+    """One STAT per share per session. Do not walk drive letters."""
+    key = (host.lower(), share.lower())
+    cached = _win_unc_share_cache.get(key)
+    if cached is not None:
+        return cached
+    unc_share = f"\\\\{host}\\{share}"
+    try:
+        ok = os.path.isdir(unc_share)
+    except OSError:
+        ok = False
+    _win_unc_share_cache[key] = ok
+    return ok
+
+
+def _map_windows_unc(host: str, remote_path: str) -> str | None:
+    if os.name != "nt":
+        return None
+    parts = [part for part in remote_path.replace("\\", "/").split("/") if part]
+    if not parts:
+        return None
+    share = parts[0]
+    if not _windows_unc_share_ok(host, share):
+        return None
+    candidate = "\\\\" + host + "\\" + "\\".join(parts)
+    try:
+        if os.path.isfile(candidate) or os.path.isdir(candidate):
+            return candidate
+    except OSError:
+        return None
+    return None
+
+
 def _map_network_url_to_local(path: str) -> str | None:
     match = _NETWORK_URL_RE.match(path.strip())
     if not match:
@@ -144,6 +178,11 @@ def _map_network_url_to_local(path: str) -> str | None:
     if best and _is_local_filesystem_path(best):
         _log(f"Mapped {path} -> {best} via VFS existence check")
         return best
+
+    windows = _map_windows_unc(host, remote_path)
+    if windows:
+        _log(f"Mapped {path} -> {windows} via Windows UNC")
+        return windows
 
     return None
 

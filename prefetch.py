@@ -505,6 +505,12 @@ class ThumbPrefetch:
             self._warmed_tiles.add(tile_path)
             self._decoded_done.add(tile_path)
 
+    def tile_copy_is_done(self, tile_path: str) -> bool:
+        if not tile_path:
+            return False
+        with self._copy_lock:
+            return tile_path in self._copy_done
+
     def enable_episode_precrop(self) -> None:
         """Start background cell encodes after the first thumb is on screen."""
         with self._decode_lock:

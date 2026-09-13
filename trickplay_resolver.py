@@ -467,7 +467,8 @@ def _estimate_thumbnail_count(
     if duration_seconds > 0 and interval_ms > 0:
         interval_sec = max(interval_ms / 1000.0, 0.001)
         from_duration = int(duration_seconds / interval_sec) + 1
-        return min(from_files, from_duration)
+        if from_duration >= max(from_files // 2, 2):
+            return min(from_files, from_duration)
     return from_files
 
 
@@ -537,7 +538,12 @@ def enrich_resolution(
     if duration_seconds > 0 and interval_ms > 0:
         interval_sec = max(interval_ms / 1000.0, 0.001)
         from_duration = int(duration_seconds / interval_sec) + 1
-        thumbnail_count = min(from_files, from_duration)
+        # Kodi often reports 0–1s until metadata is ready. Never shrink the
+        # file-based count until duration can explain most of the sprite set.
+        if from_duration >= max(from_files // 2, 2):
+            thumbnail_count = min(from_files, from_duration)
+        else:
+            thumbnail_count = from_files
     else:
         thumbnail_count = from_files
 

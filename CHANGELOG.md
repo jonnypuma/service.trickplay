@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.16.0] - 2026-09-10
+
+### Fixed
+
+- **Overlay follows the cursor first** — seeking always publishes slot/time and the
+  last or nearest ready thumb on the service thread, then crops the exact cell in
+  the background. A single long jump no longer freezes the overlay on Pillow
+  encode. The crop worker stores the result; the poll loop applies it.
+- **Preview image stays up while seeking** — a missed crop no longer clears
+  `PreviewImage` (Estuary hides the group when that property is empty).
+- **Sidecar load no longer STAT-s the playing video** — NFS `exists()` on the MKV
+  was gating `.trickplay` discovery. Lookup uses the playing URL; `resolve_media_path`
+  remains for generation.
+- **Unset duration does not shrink thumb count** — a 0–1s player duration no longer
+  `min()`s the sprite file count down to one cell.
+- **Estuary Mod v2 overlay tracks `PreviewLeft`** — slots 0–11 were all `end="0,0"`,
+  so the thumb sat at a fixed X. The snippet now binds `PreviewLeft` /
+  `PreviewLeftWide`. Reinstall the skin snippet (overlay revision 10).
+- **Episode pre-crop waits for idle seek UI** — 100-cell JPEG encodes no longer
+  start the moment the preview appears, which was stalling live scrub on GIL.
+- **Last-tile probe is delayed** — `2.jpg` is not STAT-ed at playback start; it
+  waits until later tiles are copied or the seek UI has been idle.
+- **Windows NFS/SMB mapping** — `nfs://` / `smb://` try `\\host\share\…` with one
+  share STAT (no drive-letter scan) so sprites can use local copies when the UNC
+  path exists.
+
 ## [8.15.2] - 2026-08-17
 
 ### Fixed

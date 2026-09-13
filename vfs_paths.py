@@ -60,7 +60,7 @@ def vfs_join(base: str, *parts: str) -> str:
 
 
 def network_url_to_local(path: str) -> str | None:
-    """Map nfs:// or smb:// URL to an OS mount path when /proc/mounts has a match."""
+    """Map nfs:// or smb:// URL to an OS path (/proc/mounts or Windows UNC)."""
     if not path or "://" not in path:
         return None
     try:

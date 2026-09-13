@@ -38,7 +38,6 @@ from trickplay_resolver import (
     enrich_resolution,
     load_trickplay_for_file,
     lookup_thumbnail,
-    resolve_media_path,
     TrickplayResolution,
 )
 
@@ -62,6 +61,8 @@ POLL_MS_IDLE_GENERATOR = 500
 POLL_MS_MIN = 25
 POLL_MS_MAX = 250
 PLAYBACK_SCRUB_GUARD_SEC = 3.0
+EPISODE_PRECROP_IDLE_SEC = 1.5
+LAST_TILE_REFINE_IDLE_SEC = 2.0
 
 PROP_TILE = "Trickplay.TileImage"
 PROP_COL = "Trickplay.TileCol"
@@ -203,6 +204,8 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         self._had_seek_ui = False
         self._pending_seek_ui_warm = False
         self._last_idle_prefetch_at = 0.0
+        self._last_seek_activity_at = 0.0
+        self._last_tile_refine_started_for = ""
         self._load_target = ""
         self._load_settled_for = ""
         self._load_thread: threading.Thread | None = None
@@ -301,6 +304,8 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         self._had_seek_ui = False
         self._pending_seek_ui_warm = False
         self._last_idle_prefetch_at = 0.0
+        self._last_seek_activity_at = 0.0
+        self._last_tile_refine_started_for = ""
         self._load_target = ""
         self._load_settled_for = ""
         self._skippy_skipping_latched = False
@@ -388,11 +393,6 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
 
     def _load_trickplay_worker(self, playing_file: str) -> None:
         try:
-            media_path = resolve_media_path(playing_file)
-            if not media_path:
-                _debug(f"No local trickplay path for {playing_file!r}")
-                return
-
             duration_seconds = _player_duration_seconds(self.player)
             if duration_seconds > 0:
                 self.cached_duration = duration_seconds
@@ -413,7 +413,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                 debug=runtime.debug_logging,
             )
             if resolution is None:
-                _log(f"No trickplay data for {media_path}")
+                _log(f"No trickplay data for {playing_file}")
                 return
 
             if playing_file != self.playing_file:
@@ -426,7 +426,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             if self.resolution is None or not self.resolution.is_usable:
                 tile_count = len(self.resolution.tile_paths) if self.resolution else 0
                 _log(
-                    f"Trickplay folder found but metadata unusable for {media_path} "
+                    f"Trickplay folder found but metadata unusable for {playing_file} "
                     f"(tiles={tile_count})",
                     xbmc.LOGWARNING,
                 )
@@ -444,7 +444,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                 ram_max=prefetch_settings.decoded_tile_ram_max,
             )
             _log(
-                f"Loaded trickplay for {media_path} "
+                f"Loaded trickplay for {playing_file} "
                 f"({self.resolution.thumbnail_count} thumbs, "
                 f"{self.resolution.thumb_width}x{self.resolution.thumb_height}, "
                 f"{len(self.resolution.tile_paths)} tile file(s))"
@@ -499,7 +499,6 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                 )
             if playing_file == self.playing_file:
                 self._pending_seek_ui_warm = True
-            self._start_last_tile_refine(playing_file)
         except Exception as exc:
             _log(f"Trickplay load failed for {playing_file!r}: {exc}", xbmc.LOGERROR)
         finally:
@@ -536,6 +535,9 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
     def _start_last_tile_refine(self, playing_file: str) -> None:
         if self.resolution is None or len(self.resolution.tile_paths) <= 1:
             return
+        if self._last_tile_refine_started_for == playing_file:
+            return
+        self._last_tile_refine_started_for = playing_file
         threading.Thread(
             target=self._refine_last_tile_count,
             args=(playing_file,),
@@ -890,8 +892,33 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         sync_display_settings()
         sync_trickplay_property(PROP_PREVIEW_VISIBLE, "true" if visible else "false")
         _debug(f"Preview visible -> {visible}")
-        if visible:
+
+    def _maybe_idle_heavy_work(self, seeking_active: bool) -> None:
+        """Episode pre-crop and last-tile probe wait until scrubbing is idle."""
+        if self.resolution is None or not self.playing_file:
+            return
+        now = time.monotonic()
+        busy = (
+            seeking_active
+            or self._last_poll_scrubbing
+            or self.preview.fast_scrub_active
+        )
+        if busy:
+            self._last_seek_activity_at = now
+            return
+        started = self._last_seek_activity_at or self.playback_started_at
+        idle_for = now - started if started else 0.0
+        if idle_for >= EPISODE_PRECROP_IDLE_SEC and self.preview_visible:
             self.prefetch.enable_episode_precrop()
+        last_tile = (
+            self.resolution.tile_paths[-1] if self.resolution.tile_paths else ""
+        )
+        copies_ready = (
+            len(self.resolution.tile_paths) <= 1
+            or self.prefetch.tile_copy_is_done(last_tile)
+        )
+        if copies_ready or idle_for >= LAST_TILE_REFINE_IDLE_SEC:
+            self._start_last_tile_refine(self.playing_file)
 
     def _preview_should_show(self, scrubbing: bool) -> bool:
         if not self.preview_active or self.last_preview_second < 0:
@@ -1067,6 +1094,7 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         seeking_active = scrubbing or xbmc.getCondVisibility(
             "Player.Seeking | !String.IsEmpty(Player.SeekNumeric)"
         )
+        self._maybe_idle_heavy_work(seeking_active)
         seek_ui_rising = seek_ui and not self._had_seek_ui
         self._last_poll_seek_ui = seek_ui
 

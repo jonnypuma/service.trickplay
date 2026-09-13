@@ -383,6 +383,107 @@ class ScrubChurnTests(unittest.TestCase):
         )
 
 
+class SeekingCropPublishTests(unittest.TestCase):
+    def _lookup(self, thumb_index: int = 50) -> TrickplayLookup:
+        return TrickplayLookup(
+            tile_path="/t/0.jpg",
+            col=0,
+            row=1,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=thumb_index,
+            target_second=thumb_index * 10,
+        )
+
+    def test_seeking_publishes_last_image_without_eager_crop(self) -> None:
+        from preview_dialog import PreviewDialogController
+
+        controller = PreviewDialogController("/addon")
+        controller._last_thumb_path = "/last.jpg"
+        lookup = self._lookup(240)
+        with patch("preview_dialog.get_ready_thumb_path", return_value=None), patch(
+            "preview_dialog.nearest_ready_thumb_path", return_value=None
+        ), patch("preview_dialog.get_cropped_thumb_path") as crop, patch(
+            "preview_dialog._debug_logging", return_value=False
+        ), patch.object(
+            controller, "_publish_preview_state"
+        ) as publish, patch.object(
+            controller, "_ensure_crop_worker"
+        ) as worker:
+            controller.show_preview(lookup, 3600, eager=True)
+
+        crop.assert_not_called()
+        publish.assert_called_once()
+        self.assertEqual(publish.call_args.args[2], "/last.jpg")
+        self.assertTrue(publish.call_args.kwargs.get("keep_existing_image"))
+        worker.assert_called_once()
+        self.assertEqual(controller._pending_lookup, lookup)
+
+    def test_publish_keeps_image_when_path_missing(self) -> None:
+        from preview_dialog import PROP_PREVIEW_IMAGE, PreviewDialogController
+
+        controller = PreviewDialogController("/addon")
+        lookup = self._lookup()
+        with patch("preview_dialog._set_property"), patch(
+            "preview_dialog._clear_property"
+        ) as clear_prop, patch("preview_dialog.sync_display_settings"), patch(
+            "preview_dialog.show_timestamp_enabled", return_value=False
+        ), patch(
+            "preview_dialog.preview_layout_mode", return_value="estuary"
+        ), patch.object(
+            controller, "_publish_placement"
+        ), patch(
+            "preview_dialog._dialog_seekbar_visible", return_value=False
+        ):
+            controller._publish_preview_state(
+                lookup, 100, None, keep_existing_image=True
+            )
+        cleared = [call.args[0] for call in clear_prop.call_args_list]
+        self.assertNotIn(PROP_PREVIEW_IMAGE, cleared)
+
+    def test_poll_applies_crop_worker_result(self) -> None:
+        from preview_dialog import PreviewDialogController
+
+        controller = PreviewDialogController("/addon")
+        lookup = self._lookup()
+        controller._crop_ready = (lookup, 3600, "/exact.jpg", None)
+        with patch.object(controller, "_publish_preview_state") as publish:
+            controller.poll()
+        publish.assert_called_once()
+        self.assertEqual(publish.call_args.args[2], "/exact.jpg")
+        self.assertIsNone(controller._crop_ready)
+        self.assertEqual(controller._last_thumb_path, "/exact.jpg")
+
+    def test_poll_ignores_stale_crop_after_cursor_moved(self) -> None:
+        from preview_dialog import PreviewDialogController, lookup_cache_key
+
+        controller = PreviewDialogController("/addon")
+        stale = TrickplayLookup(
+            tile_path="/t/0.jpg",
+            col=0,
+            row=0,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=10,
+            target_second=100,
+        )
+        current = TrickplayLookup(
+            tile_path="/t/2.jpg",
+            col=1,
+            row=4,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=241,
+            target_second=2410,
+        )
+        controller._requested_key = lookup_cache_key(current)
+        controller._crop_ready = (stale, 3600, "/stale.jpg", None)
+        with patch.object(controller, "_publish_preview_state") as publish:
+            controller.poll()
+        publish.assert_not_called()
+        self.assertIsNone(controller._crop_ready)
+
+
 class PrefetchTileCopyTests(unittest.TestCase):
     def test_copy_order_puts_first_sprite_ahead_of_priority(self) -> None:
         self.assertEqual(
@@ -554,6 +655,28 @@ class FirstTileEnrichTests(unittest.TestCase):
         )
         probed = [call.args[0] for call in mock_probe.call_args_list]
         self.assertEqual(probed, ["/tiles/0.jpg", "/tiles/2.jpg"])
+
+    @patch("trickplay_resolver.probe_image_dimensions", return_value=(3200, 1800))
+    def test_zero_duration_keeps_file_based_count(
+        self, mock_probe: MagicMock
+    ) -> None:
+        from trickplay_resolver import enrich_resolution
+
+        enriched = enrich_resolution(
+            self._resolution(), 0, 10000, probe_last_tile=False
+        )
+        self.assertEqual(enriched.thumbnail_count, 300)
+
+    @patch("trickplay_resolver.probe_image_dimensions", return_value=(3200, 1800))
+    def test_tiny_duration_does_not_shrink_count(
+        self, mock_probe: MagicMock
+    ) -> None:
+        from trickplay_resolver import enrich_resolution
+
+        enriched = enrich_resolution(
+            self._resolution(), 1, 10000, probe_last_tile=False
+        )
+        self.assertEqual(enriched.thumbnail_count, 300)
 
 
 class SidecarLookupTests(unittest.TestCase):

@@ -397,15 +397,14 @@ def main() -> None:
             indent=fuse_indent,
         )
 
-    # Estuary Mod v2: normal + wide
-    patch_replace_snippet(
-        os.path.join(out_dir, "DialogSeekBar-skin.estuary.modv2.xml"),
-        bar=(460, 990, 1430),
-        wide=(30, 990, 1860),
-        top_override=599,
-        wide_top_override=599,
-        indent="\t\t\t\t",
+    # Estuary Mod v2 uses PreviewLeft / PreviewLeftWide (not slot slides).
+    estuary = os.path.join(out_dir, "DialogSeekBar-skin.estuary.modv2.xml")
+    estuary_text = _REV_RE.sub(
+        f"trickplay-overlay-rev:{OVERLAY_REVISION}",
+        open(estuary, encoding="utf-8").read(),
     )
+    open(estuary, "w", encoding="utf-8", newline="\n").write(estuary_text)
+    print(f"bumped rev {os.path.basename(estuary)}")
 
     # Bump rev on universal + bello
     for name in (
