@@ -11,6 +11,8 @@ import xbmc
 
 from generation_state import mark_completed, load_completed
 from generator_settings import GeneratorSettings, read_generator_settings
+from generator_status import GeneratorQueueSnapshot, write_queue_snapshot
+from library_recent import apply_recent_idle_filter
 from trickplay_generator import (
     collect_generation_candidates,
     generate_trickplay_for_media,
@@ -70,11 +72,35 @@ class GeneratorWorker:
         with self._lock:
             return self._last_error
 
+    @property
+    def current_path(self) -> str:
+        with self._lock:
+            return self._current_path
+
+    def snapshot(self) -> GeneratorQueueSnapshot:
+        with self._lock:
+            remaining = max(0, len(self._idle_candidates) - self._idle_scan_cursor)
+            return GeneratorQueueSnapshot(
+                state=self._state.value,
+                current_path=self._current_path,
+                queued=list(self._queue),
+                idle_remaining=remaining,
+                last_error=self._last_error,
+                paused=self._paused,
+            )
+
+    def _publish_status(self) -> None:
+        try:
+            write_queue_snapshot(self.snapshot())
+        except (OSError, TypeError, ValueError) as exc:
+            _log(f"Could not write generator queue snapshot: {exc}", xbmc.LOGWARNING)
+
     def pause_for_playback(self) -> None:
         with self._lock:
             self._paused = True
             if self._current_path:
                 self._state = GeneratorState.PAUSED
+        self._publish_status()
 
     def resume_after_playback(self) -> None:
         with self._lock:
@@ -82,6 +108,7 @@ class GeneratorWorker:
             if self._current_path:
                 self._state = GeneratorState.RUNNING
             has_queue = bool(self._queue)
+        self._publish_status()
         if has_queue:
             self._ensure_worker()
 
@@ -93,6 +120,7 @@ class GeneratorWorker:
             self._queued.clear()
             self._idle_candidates.clear()
             self._idle_scan_cursor = 0
+        self._publish_status()
 
     def enqueue_paths(self, paths: list[str]) -> int:
         added = 0
@@ -107,6 +135,7 @@ class GeneratorWorker:
             self._state = GeneratorState.QUEUED
         if added:
             _log(f"Queued {added} file(s) for trickplay generation")
+            self._publish_status()
             self._ensure_worker()
         return added
 
@@ -138,6 +167,7 @@ class GeneratorWorker:
         root = settings.library_path
         if not root:
             self._idle_candidates = []
+            self._publish_status()
             return
         candidates = collect_generation_candidates(root, settings).candidates
         completed = load_completed(root, settings)
@@ -147,12 +177,23 @@ class GeneratorWorker:
             skipped = before - len(candidates)
             if skipped:
                 _log(f"Idle resume: skipping {skipped} completed file(s) under {root}")
+        if getattr(settings, "idle_recent_only", False):
+            days = max(int(getattr(settings, "idle_recent_days", 14) or 14), 1)
+            before_recent = len(candidates)
+            candidates = apply_recent_idle_filter(candidates, days)
+            dropped = before_recent - len(candidates)
+            if dropped:
+                _log(
+                    f"Idle recent-only: dropped {dropped} older file(s); "
+                    f"{len(candidates)} remain from the last {days} day(s)"
+                )
         self._idle_candidates = candidates
         self._idle_scan_cursor = 0
         if settings.debug and self._idle_candidates:
             _log(
                 f"Idle scan found {len(self._idle_candidates)} candidate(s) under {root}"
             )
+        self._publish_status()
 
     def _ensure_worker(self) -> None:
         with self._lock:
@@ -174,13 +215,16 @@ class GeneratorWorker:
             self._queued.discard(path)
             self._current_path = path
             self._state = GeneratorState.RUNNING
-            return path
+            current = path
+        self._publish_status()
+        return current
 
     def _finish_job(self) -> None:
         with self._lock:
             self._current_path = ""
             if self._stop:
                 self._state = GeneratorState.IDLE
+        self._publish_status()
 
     def _should_cancel(self) -> bool:
         with self._lock:
@@ -193,6 +237,7 @@ class GeneratorWorker:
                 with self._lock:
                     if not self._stop:
                         self._state = GeneratorState.IDLE
+                self._publish_status()
                 return
 
             settings = read_generator_settings()
@@ -222,9 +267,12 @@ class GeneratorWorker:
             with self._lock:
                 if not self._stop and self._state != GeneratorState.FAILED:
                     self._state = GeneratorState.COMPLETE
+            self._publish_status()
 
             with self._lock:
-                if self._stop or not self._queue:
-                    if not self._stop:
-                        self._state = GeneratorState.IDLE
-                    return
+                stopping = self._stop or not self._queue
+                if stopping and not self._stop:
+                    self._state = GeneratorState.IDLE
+            if stopping:
+                self._publish_status()
+                return

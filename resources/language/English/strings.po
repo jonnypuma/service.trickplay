@@ -354,8 +354,8 @@ msgid "Frame extraction mode"
 msgstr "Frame extraction mode"
 
 msgctxt "#32077"
-msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
-msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate); a failed stamp reuses the previous JPEG. Fast: seek before input per thumbnail for intervals above 5s, or one fps decode pass per tile at 5s or denser (falls back to per-frame seek if that pass is short or fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate); a failed stamp reuses the previous JPEG. Fast: seek before input per thumbnail for intervals above 5s, or one fps decode pass per tile at 5s or denser (falls back to per-frame seek if that pass is short or fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
 
 msgctxt "#32080"
 msgid "Accurate (slow)"
@@ -1013,4 +1013,40 @@ msgstr "Cropped thumbs in RAM (MB)"
 msgctxt "#32256"
 msgid "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices)."
 msgstr "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices)."
+
+msgctxt "#32257"
+msgid "Show generator queue"
+msgstr "Show generator queue"
+
+msgctxt "#32258"
+msgid "Shows the file currently generating and the next items waiting in the idle/batch queue."
+msgstr "Shows the file currently generating and the next items waiting in the idle/batch queue."
+
+msgctxt "#32259"
+msgid "Idle: recently added only"
+msgstr "Idle: recently added only"
+
+msgctxt "#32260"
+msgid "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails."
+msgstr "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails."
+
+msgctxt "#32261"
+msgid "Weak device preset"
+msgstr "Weak device preset"
+
+msgctxt "#32262"
+msgid "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media."
+msgstr "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media."
+
+msgctxt "#32263"
+msgid "Applied Fast seek. HDR tone mapping and hardware decode are off."
+msgstr "Applied Fast seek. HDR tone mapping and hardware decode are off."
+
+msgctxt "#32264"
+msgid "Idle recent window (days)"
+msgstr "Idle recent window (days)"
+
+msgctxt "#32265"
+msgid "How many days of recently added library videos idle generation should consider (1–90)."
+msgstr "How many days of recently added library videos idle generation should consider (1–90)."
 

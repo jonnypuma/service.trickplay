@@ -244,3 +244,39 @@ def run_generator_diagnostics_dialog() -> None:
     _log(f"Generator diagnostics:\n{body}")
     xbmcgui.Dialog().ok(_ADDON.getLocalizedString(32237), body)
 
+
+def run_generator_queue_dialog() -> None:
+    """Show the live idle/batch generation queue written by the service."""
+    from generator_status import format_queue_report, read_queue_snapshot
+
+    title = _ADDON.getLocalizedString(32257) or "Generator queue"
+    snapshot = read_queue_snapshot()
+    body = format_queue_report(snapshot)
+    _log(f"Generator queue:\n{body}")
+    try:
+        xbmcgui.Dialog().textviewer(title, body)
+    except (TypeError, AttributeError, RuntimeError):
+        xbmcgui.Dialog().ok(title, body)
+
+
+def run_weak_device_preset_dialog() -> None:
+    """Confirm and apply Fast seek generator settings for weaker devices."""
+    from generator_settings import apply_weak_device_generator_preset
+
+    title = _ADDON.getLocalizedString(32261) or "Weak device preset"
+    if not _dialog_yesno(
+        title,
+        _ADDON.getLocalizedString(32262)
+        or "Use Fast seek, and turn off HDR tone mapping and hardware decode?",
+        yeslabel=_ADDON.getLocalizedString(32164) or "Yes",
+        nolabel=_ADDON.getLocalizedString(32100) or "No",
+        default_yes=True,
+    ):
+        return
+    apply_weak_device_generator_preset()
+    xbmcgui.Dialog().ok(
+        title,
+        _ADDON.getLocalizedString(32263)
+        or "Applied Fast seek. HDR tone mapping and hardware decode are off.",
+    )
+

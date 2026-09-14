@@ -95,12 +95,20 @@ def _run_batch_generation(
 
         label = os.path.basename(media_path)
         status = _ADDON.getLocalizedString(32070) % (index + 1, total)
+        base_line = f"{status} — {label}"
+        file_span = 100 / max(total, 1)
+        file_start_pct = int(index * file_span)
+
+        def _on_status(detail: str, fraction: float) -> None:
+            if progress is None:
+                return
+            pct = file_start_pct + int(file_span * max(0.0, min(fraction, 1.0)))
+            pct = min(99, max(1, pct))
+            line = f"{base_line} — {detail}" if detail else base_line
+            progress.update(pct, line)
+
         if progress is not None:
-            # Kodi v19+ DialogProgress.update() accepts only percent + one message line.
-            progress.update(
-                int((index * 100) / max(total, 1)),
-                f"{status} — {label}",
-            )
+            _on_status("", 0.0)
         else:
             _log(f"{status}: {label}")
 
@@ -109,6 +117,7 @@ def _run_batch_generation(
             media_path,
             settings,
             should_cancel=_should_cancel,
+            on_status=_on_status,
         )
         result = (
             raw_result

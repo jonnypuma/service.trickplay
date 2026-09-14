@@ -70,6 +70,57 @@ class PreferFastSeekTests(unittest.TestCase):
             )
         )
 
+    def test_default_interval_does_not_use_fps_batch(self) -> None:
+        self.assertFalse(
+            _should_use_fps_batch(
+                10.0,
+                apply_tonemap=False,
+                hw_state=None,
+            )
+        )
+
+    def test_dense_interval_uses_fps_batch(self) -> None:
+        self.assertTrue(
+            _should_use_fps_batch(
+                5.0,
+                apply_tonemap=False,
+                hw_state=None,
+            )
+        )
+        self.assertTrue(
+            _should_use_fps_batch(
+                1.0,
+                apply_tonemap=False,
+                hw_state=None,
+            )
+        )
+
+    @patch("trickplay_generator._extract_tile_fast_seek")
+    @patch("trickplay_generator._extract_tile_batch_fps")
+    def test_wide_interval_skips_fps_batch(
+        self,
+        mock_batch: MagicMock,
+        mock_seek: MagicMock,
+    ) -> None:
+        mock_seek.return_value = [f"a{index}.jpg" for index in range(10)]
+
+        paths = _extract_tile_fast(
+            ffmpeg="ffmpeg",
+            env={},
+            ffmpeg_input="/media.mkv",
+            start_index=0,
+            frame_count=10,
+            interval_sec=10.0,
+            tile_width=320,
+            output_dir="/tmp/tile",
+            thumb_vf="scale=320:-1",
+            batch_vf="fps=1/10,scale=320:-1",
+        )
+
+        mock_batch.assert_not_called()
+        mock_seek.assert_called_once()
+        self.assertEqual(len(paths), 10)
+
     @patch("trickplay_generator._extract_tile_fast_seek")
     @patch("trickplay_generator._extract_tile_batch_fps")
     def test_prefer_fast_seek_skips_fps_batch(
@@ -86,7 +137,7 @@ class PreferFastSeekTests(unittest.TestCase):
             ffmpeg_input="/media.mkv",
             start_index=0,
             frame_count=10,
-            interval_sec=10.0,
+            interval_sec=1.0,
             tile_width=320,
             output_dir="/tmp/tile",
             thumb_vf="scale=320:-1",
@@ -117,7 +168,7 @@ class PreferFastSeekTests(unittest.TestCase):
             ffmpeg_input="/media.mkv",
             start_index=0,
             frame_count=10,
-            interval_sec=10.0,
+            interval_sec=1.0,
             tile_width=320,
             output_dir="/tmp/tile1",
             thumb_vf="scale=320:-1",
@@ -141,7 +192,7 @@ class PreferFastSeekTests(unittest.TestCase):
             ffmpeg_input="/media.mkv",
             start_index=10,
             frame_count=10,
-            interval_sec=10.0,
+            interval_sec=1.0,
             tile_width=320,
             output_dir="/tmp/tile2",
             thumb_vf="scale=320:-1",
@@ -174,7 +225,7 @@ class PreferFastSeekTests(unittest.TestCase):
             ffmpeg_input="/media.mkv",
             start_index=0,
             frame_count=2,
-            interval_sec=10.0,
+            interval_sec=1.0,
             tile_width=320,
             output_dir="/tmp/tile",
             thumb_vf="scale=320:-1",
@@ -208,7 +259,7 @@ class FpsBatchSeekFallbackTests(unittest.TestCase):
             ffmpeg_input="/media.mkv",
             start_index=0,
             frame_count=10,
-            interval_sec=10.0,
+            interval_sec=1.0,
             tile_width=320,
             output_dir="/tmp/tile",
             thumb_vf="scale=320:-1",
@@ -239,7 +290,7 @@ class FpsBatchSeekFallbackTests(unittest.TestCase):
             ffmpeg_input="/media.mkv",
             start_index=0,
             frame_count=2,
-            interval_sec=10.0,
+            interval_sec=1.0,
             tile_width=320,
             output_dir="/tmp/tile",
             thumb_vf="scale=320:-1",
@@ -247,6 +298,37 @@ class FpsBatchSeekFallbackTests(unittest.TestCase):
         )
 
         mock_seek.assert_not_called()
+        self.assertEqual(paths, ["a.jpg", "b.jpg"])
+
+    @patch("trickplay_generator._extract_tile_fast_seek")
+    @patch("trickplay_generator._extract_tile_batch_fps")
+    @patch("trickplay_generator._should_use_fps_batch", return_value=True)
+    @patch("trickplay_generator._clear_jpg_files")
+    def test_incomplete_fps_batch_falls_back_to_seek(
+        self,
+        mock_clear: MagicMock,
+        _mock_should: MagicMock,
+        mock_batch: MagicMock,
+        mock_seek: MagicMock,
+    ) -> None:
+        mock_batch.return_value = ["a.jpg"]
+        mock_seek.return_value = ["a.jpg", "b.jpg"]
+
+        paths = _extract_tile_fast(
+            ffmpeg="ffmpeg",
+            env={},
+            ffmpeg_input="/media.mkv",
+            start_index=0,
+            frame_count=2,
+            interval_sec=1.0,
+            tile_width=320,
+            output_dir="/tmp/tile",
+            thumb_vf="scale=320:-1",
+            batch_vf="fps=1/1,scale=320:-1",
+        )
+
+        mock_clear.assert_called_once_with("/tmp/tile")
+        mock_seek.assert_called_once()
         self.assertEqual(paths, ["a.jpg", "b.jpg"])
 
 

@@ -78,9 +78,12 @@ _VIDEO_EXTENSIONS = frozenset(
     }
 )
 
-_ACCURATE_FRAME_TIMEOUT_BASE_SEC = 600.0
-_ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC = 0.2
-_FAST_FRAME_TIMEOUT_SEC = 120.0
+# Healthy fast seeks are ~0.3s. 120s let one corrupt AU stall the tile (and
+# freeze Kodi when batch_background is off). Match batch-seeks chunk=1 wait.
+_FAST_FRAME_TIMEOUT_SEC = 25.0
+# Accurate still decodes from the start, so later stamps get more time, but a
+# hung/corrupt AU must not sit on the 10-minute floor used previously.
+_ACCURATE_FRAME_TIMEOUT_CAP_SEC = 180.0
 _FAST_BATCH_FPS_MAX_INTERVAL_SEC = 5.0
 # Fps-batch wall clock: decode ~frame_count*interval of video. Cap so corrupt
 # demux/H.264 hangs fail in ~15 min (weak hardware budget) instead of ~50+.
@@ -154,8 +157,40 @@ class FastExtractState:
             self._logged_sticky_seek = True
 
 
-def _accurate_frame_timeout_sec(thumb_index: int) -> float:
-    return _ACCURATE_FRAME_TIMEOUT_BASE_SEC + max(thumb_index, 0) * _ACCURATE_FRAME_TIMEOUT_PER_THUMB_SEC
+@dataclass
+class AccurateExtractState:
+    """Sticky Fast-seek fallback after accurate decode-from-start hits a corrupt AU."""
+
+    fast_fallback_active: bool = False
+    _logged_fallback: bool = field(default=False, repr=False)
+
+    def activate_fast_fallback(self, timestamp: float) -> None:
+        if self.fast_fallback_active:
+            return
+        self.fast_fallback_active = True
+        if not self._logged_fallback:
+            _log(
+                f"Accurate extract failed at {timestamp:.1f}s; remaining thumbs "
+                "use Fast seek (decode-from-start cannot pass this corrupt region)",
+                xbmc.LOGWARNING,
+            )
+            self._logged_fallback = True
+
+
+def _accurate_frame_timeout_sec(timestamp: float) -> float:
+    """Wall-clock budget for one accurate (decode-then-seek) frame.
+
+    Floor matches Fast seek so a corrupt AU skips in ~25s; cap keeps late
+    stamps from waiting 10+ minutes the way the old 600s base did.
+    """
+    ts = max(float(timestamp), 0.0)
+    return max(
+        _FAST_FRAME_TIMEOUT_SEC,
+        min(
+            _ACCURATE_FRAME_TIMEOUT_CAP_SEC,
+            _FAST_FRAME_TIMEOUT_SEC + ts * 0.2,
+        ),
+    )
 
 
 def _fps_batch_timeout_sec(
@@ -176,8 +211,35 @@ def _fps_batch_timeout_sec(
     )
 
 
+def _thumb_count_for_duration(duration: float, interval_sec: float) -> int:
+    """Count thumbs at 0, interval, 2*interval, ... strictly before duration.
+
+    ``int(duration / interval) + 1`` also schedules a seek at exactly EOF when
+    duration is a multiple of the interval; ffmpeg then exits 0 with no JPEG.
+    """
+    span = max(float(duration), 0.0)
+    step = max(float(interval_sec), 0.001)
+    count = int(span / step)
+    if span > count * step:
+        count += 1
+    return max(count, 1)
+
+
 def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay.generator] {message}", level)
+
+
+def _emit_status(
+    on_status: Callable[[str, float], None] | None,
+    detail: str,
+    fraction: float,
+) -> None:
+    if on_status is None:
+        return
+    try:
+        on_status(detail, max(0.0, min(fraction, 1.0)))
+    except Exception:
+        pass
 
 
 def _debug(settings: GeneratorSettings, message: str) -> None:
@@ -655,13 +717,10 @@ def _should_use_fps_batch(
 ) -> bool:
     if force_fast_seek:
         return False
-    if interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC:
-        return True
-    if apply_tonemap:
-        return False
-    if hw_state is not None and hw_state.hw_enabled:
-        return False
-    return True
+    # Dense stamps: one continuous decode is faster. Default 10s interval is
+    # a wide seek; fps-batch on a corrupt AU blocked a tile for ~15 minutes.
+    _ = (apply_tonemap, hw_state)
+    return interval_sec <= _FAST_BATCH_FPS_MAX_INTERVAL_SEC
 
 
 def _active_batch_extract(
@@ -708,7 +767,7 @@ def _extract_frame_accurate(
 
     local_out = _local_path(output_path)
     _ensure_local_dir(os.path.dirname(local_out))
-    timeout = _accurate_frame_timeout_sec(thumb_index)
+    timeout = _accurate_frame_timeout_sec(timestamp)
     cmd = [
         *_ffmpeg_cmd_prefix(ffmpeg, ffmpeg_input_args),
         "-i",
@@ -756,7 +815,6 @@ def _extract_frame_accurate(
                 output_color_args=output_color_args,
                 ffmpeg_input_args=sw[1],
                 hw_state=hw_state,
-                timeout_cap_sec=timeout_cap_sec,
             )
         _log(f"Frame extract failed at {timestamp:.1f}s: {detail}", xbmc.LOGWARNING)
         return False
@@ -993,6 +1051,110 @@ def _extract_tile_batch_fps(
     return frame_paths
 
 
+def _copy_fast_frame(src: str, dest: str) -> bool:
+    """Copy a local JPEG so a missed timestamp still occupies its grid cell."""
+    local_src = _local_path(src)
+    local_dest = _local_path(dest)
+    if not local_src or not os.path.isfile(local_src):
+        return False
+    if local_src == local_dest:
+        return True
+    try:
+        _ensure_local_dir(os.path.dirname(local_dest))
+        shutil.copy2(local_src, local_dest)
+    except OSError:
+        return False
+    return os.path.isfile(local_dest)
+
+
+def _extract_tile_with_reuse(
+    start_index: int,
+    frame_count: int,
+    interval_sec: float,
+    output_dir: str,
+    tile_index: int,
+    tile_count: int,
+    should_cancel: Callable[[], bool] | None,
+    mode_label: str,
+    extract_one: Callable[[int, float, str], bool],
+) -> list[str]:
+    """Per-frame extract; copy the previous JPEG when a timestamp fails."""
+    if _is_cancelled(should_cancel) or frame_count <= 0:
+        return []
+
+    _ensure_local_dir(output_dir)
+    tile_start = start_index * interval_sec
+    started_at = time.monotonic()
+    _log(
+        f"Tile {tile_index + 1}/{tile_count}: {mode_label} "
+        f"{frame_count} frame(s) every {interval_sec:.1f}s from {tile_start:.1f}s"
+    )
+
+    frame_paths: list[str] = []
+    pending_holes: list[str] = []
+    skipped = 0
+    for offset in range(frame_count):
+        if _is_cancelled(should_cancel):
+            return []
+        thumb_index = start_index + offset
+        timestamp = thumb_index * interval_sec
+        frame_path = os.path.join(output_dir, f"{offset:05d}.jpg")
+        extracted = extract_one(thumb_index, timestamp, frame_path)
+        if not extracted:
+            reused = False
+            if frame_paths and _copy_fast_frame(frame_paths[-1], frame_path):
+                reused = True
+                skipped += 1
+                frame_paths.append(frame_path)
+            else:
+                pending_holes.append(frame_path)
+            if reused:
+                _log(
+                    f"Tile {tile_index + 1}/{tile_count}: thumb "
+                    f"{offset + 1}/{frame_count} at {timestamp:.1f}s failed; "
+                    "reused previous frame and continuing",
+                    xbmc.LOGWARNING,
+                )
+            else:
+                _log(
+                    f"Tile {tile_index + 1}/{tile_count}: {mode_label} failed at "
+                    f"{timestamp:.1f}s (no frames yet); trying later timestamps",
+                    xbmc.LOGWARNING,
+                )
+            continue
+        if pending_holes:
+            for hole in pending_holes:
+                if _copy_fast_frame(frame_path, hole):
+                    frame_paths.append(hole)
+                    skipped += 1
+            pending_holes.clear()
+        frame_paths.append(frame_path)
+        elapsed = time.monotonic() - started_at
+        completed = offset + 1
+        remaining = frame_count - completed
+        eta = (elapsed / completed) * remaining if completed else 0.0
+        _log(
+            f"Tile {tile_index + 1}/{tile_count}: thumb {offset + 1}/{frame_count} "
+            f"at {timestamp:.1f}s ({elapsed:.1f}s elapsed, "
+            f"~{eta:.0f}s remaining)"
+        )
+
+    if pending_holes and not frame_paths:
+        _log(
+            f"Tile {tile_index + 1}/{tile_count}: {mode_label} failed "
+            f"(no frames extracted)",
+            xbmc.LOGWARNING,
+        )
+        return []
+
+    _log(
+        f"Tile {tile_index + 1}/{tile_count}: {mode_label} extracted "
+        f"{len(frame_paths)} frame(s)"
+        + (f" ({skipped} reused after failed seek)" if skipped else "")
+    )
+    return frame_paths
+
+
 def _extract_tile_fast_seek(
     ffmpeg: str,
     env: dict[str, str],
@@ -1013,25 +1175,9 @@ def _extract_tile_fast_seek(
     hw_state: HwExtractState | None = None,
 ) -> list[str]:
     """Extract one frame per interval via fast seek (-ss before -i)."""
-    if _is_cancelled(should_cancel) or frame_count <= 0:
-        return []
 
-    _ensure_local_dir(output_dir)
-    tile_start = start_index * interval_sec
-    started_at = time.monotonic()
-    _log(
-        f"Tile {tile_index + 1}/{tile_count}: fast seek "
-        f"{frame_count} frame(s) every {interval_sec:.1f}s from {tile_start:.1f}s"
-    )
-
-    frame_paths: list[str] = []
-    for offset in range(frame_count):
-        if _is_cancelled(should_cancel):
-            return []
-        thumb_index = start_index + offset
-        timestamp = thumb_index * interval_sec
-        frame_path = os.path.join(output_dir, f"{offset:05d}.jpg")
-        if not _extract_frame_fast(
+    def _one(_thumb_index: int, timestamp: float, frame_path: str) -> bool:
+        return _extract_frame_fast(
             ffmpeg,
             env,
             ffmpeg_input,
@@ -1045,30 +1191,92 @@ def _extract_tile_fast_seek(
             ffmpeg_input_args=ffmpeg_input_args,
             sw_fallback=sw_fallback,
             hw_state=hw_state,
-        ):
-            if not frame_paths:
-                _log(
-                    f"Tile {tile_index + 1}/{tile_count}: fast seek failed at "
-                    f"{timestamp:.1f}s (no frames yet); aborting tile",
-                    xbmc.LOGWARNING,
-                )
-            return frame_paths
-        frame_paths.append(frame_path)
-        elapsed = time.monotonic() - started_at
-        completed = offset + 1
-        remaining = frame_count - completed
-        eta = (elapsed / completed) * remaining if completed else 0.0
-        _log(
-            f"Tile {tile_index + 1}/{tile_count}: thumb {offset + 1}/{frame_count} "
-            f"at {timestamp:.1f}s ({elapsed:.1f}s elapsed, "
-            f"~{eta:.0f}s remaining)"
         )
 
-    _log(
-        f"Tile {tile_index + 1}/{tile_count}: fast seek extracted "
-        f"{len(frame_paths)} frame(s)"
+    return _extract_tile_with_reuse(
+        start_index,
+        frame_count,
+        interval_sec,
+        output_dir,
+        tile_index,
+        tile_count,
+        should_cancel,
+        "fast seek",
+        _one,
     )
-    return frame_paths
+
+
+def _extract_tile_accurate(
+    ffmpeg: str,
+    env: dict[str, str],
+    ffmpeg_input: str,
+    start_index: int,
+    frame_count: int,
+    interval_sec: float,
+    tile_width: int,
+    output_dir: str,
+    thumb_vf: str,
+    tile_index: int = 0,
+    tile_count: int = 1,
+    debug: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+    output_color_args: tuple[str, ...] = (),
+    ffmpeg_input_args: tuple[str, ...] = (),
+    sw_fallback: tuple[str, tuple[str, ...]] | None = None,
+    hw_state: HwExtractState | None = None,
+    accurate_state: AccurateExtractState | None = None,
+) -> list[str]:
+    """Extract one frame per interval via accurate seek (-ss after -i)."""
+    if accurate_state is None:
+        accurate_state = AccurateExtractState()
+
+    def _one(thumb_index: int, timestamp: float, frame_path: str) -> bool:
+        if not accurate_state.fast_fallback_active:
+            if _extract_frame_accurate(
+                ffmpeg,
+                env,
+                ffmpeg_input,
+                timestamp,
+                tile_width,
+                frame_path,
+                thumb_vf,
+                thumb_index=thumb_index,
+                debug=debug,
+                should_cancel=should_cancel,
+                output_color_args=output_color_args,
+                ffmpeg_input_args=ffmpeg_input_args,
+                sw_fallback=sw_fallback,
+                hw_state=hw_state,
+            ):
+                return True
+            accurate_state.activate_fast_fallback(timestamp)
+        return _extract_frame_fast(
+            ffmpeg,
+            env,
+            ffmpeg_input,
+            timestamp,
+            tile_width,
+            frame_path,
+            thumb_vf,
+            debug=debug,
+            should_cancel=should_cancel,
+            output_color_args=output_color_args,
+            ffmpeg_input_args=ffmpeg_input_args,
+            sw_fallback=sw_fallback,
+            hw_state=hw_state,
+        )
+
+    return _extract_tile_with_reuse(
+        start_index,
+        frame_count,
+        interval_sec,
+        output_dir,
+        tile_index,
+        tile_count,
+        should_cancel,
+        "accurate",
+        _one,
+    )
 
 
 def _extract_tile_fast(
@@ -1097,12 +1305,13 @@ def _extract_tile_fast(
 ) -> list[str]:
     tile_start = start_index * interval_sec
     force_fast_seek = bool(fast_state and fast_state.seek_mode_active)
-    if _should_use_fps_batch(
+    use_fps_batch = _should_use_fps_batch(
         interval_sec,
         apply_tonemap=apply_tonemap,
         hw_state=hw_state,
         force_fast_seek=force_fast_seek,
-    ):
+    )
+    if use_fps_batch:
         frame_paths = _extract_tile_batch_fps(
             ffmpeg,
             env,
@@ -1123,14 +1332,16 @@ def _extract_tile_fast(
             hw_state=hw_state,
             timeout_cap_sec=timeout_cap_sec,
         )
-        if frame_paths or _is_cancelled(should_cancel):
+        if _is_cancelled(should_cancel):
+            return frame_paths
+        if len(frame_paths) >= frame_count:
             return frame_paths
         # Corrupt remuxes / EBML glitches / weak hardware often make continuous
-        # fps decode hang or exit with zero JPEGs; per-frame seeks can still
-        # succeed. Sticky for remaining tiles on this file.
+        # fps decode hang, exit empty, or return a short tile; per-frame seeks
+        # can still fill the grid. Sticky for remaining tiles on this file.
         _log(
-            f"Tile {tile_index + 1}/{tile_count}: fps batch yielded no frames; "
-            "falling back to per-frame fast seek",
+            f"Tile {tile_index + 1}/{tile_count}: fps batch incomplete "
+            f"({len(frame_paths)}/{frame_count}); falling back to per-frame fast seek",
             xbmc.LOGWARNING,
         )
         _clear_jpg_files(output_dir)
@@ -1269,6 +1480,7 @@ def _generate_trickplay_for_media(
     settings: GeneratorSettings,
     should_cancel: Callable[[], bool] | None = None,
     _metrics: dict[str, object] | None = None,
+    on_status: Callable[[str, float], None] | None = None,
 ) -> bool:
     """Write Jellyfin-format trickplay sprites next to media_path."""
     metrics = _metrics if _metrics is not None else {}
@@ -1429,6 +1641,7 @@ def _generate_trickplay_for_media(
     fast_state = FastExtractState(
         seek_mode_active=settings.extract_mode == EXTRACT_MODE_FAST_SEEK,
     )
+    accurate_state = AccurateExtractState()
 
     interval_sec = max(settings.interval_ms / 1000.0, 0.001)
     batch_vf = build_fps_batch_filter(
@@ -1449,7 +1662,7 @@ def _generate_trickplay_for_media(
     if use_vfs_stream:
         _log(f"Using VFS stream generation for {media_path}")
 
-    thumb_count = int(duration / interval_sec) + 1
+    thumb_count = _thumb_count_for_duration(duration, interval_sec)
     thumbs_per_tile = cols * rows
     tile_count = (thumb_count + thumbs_per_tile - 1) // thumbs_per_tile
     metrics["tile_count"] = tile_count
@@ -1496,6 +1709,7 @@ def _generate_trickplay_for_media(
         f"{settings.tile_width}px, {settings.interval_ms}ms, {extract_mode}{hdr_note}{hw_note}) "
         f"-> {final_output_dir}"
     )
+    _emit_status(on_status, f"{tile_count} tile(s), {extract_mode}", 0.0)
 
     success = True
     cancelled = False
@@ -1702,6 +1916,12 @@ def _generate_trickplay_for_media(
                 if chunk_count <= 0:
                     break
 
+                _emit_status(
+                    on_status,
+                    f"Tile {tile_index + 1}/{tile_count}",
+                    tile_index / max(tile_count, 1),
+                )
+
                 tile_work_dir = os.path.join(work_dir, f"t{tile_index:04d}")
                 _ensure_local_dir(tile_work_dir)
 
@@ -1754,11 +1974,13 @@ def _generate_trickplay_for_media(
                     ):
                         _log(
                             f"Tile {tile_index + 1}/{tile_count}: batch seeks incomplete "
-                            f"({len(frame_paths)}/{chunk_count}); retrying with Fast",
+                            f"({len(frame_paths)}/{chunk_count}); retrying with Fast seek",
                             xbmc.LOGWARNING,
                         )
                         _remove_tree(tile_work_dir)
                         _ensure_local_dir(tile_work_dir)
+                        if fast_state is not None:
+                            fast_state.activate_seek_fallback()
                         frame_paths = _extract_tile_fast(
                             ffmpeg,
                             env,
@@ -1813,37 +2035,26 @@ def _generate_trickplay_for_media(
                         timeout_cap_sec=settings.fps_batch_timeout_cap_sec,
                     )
                 elif settings.extract_mode == EXTRACT_MODE_ACCURATE:
-                    frame_paths = []
-                    for thumb_index in range(start_index, end_index):
-                        if _is_cancelled(should_cancel):
-                            cancelled = True
-                            break
-                        timestamp = thumb_index * interval_sec
-                        frame_path = os.path.join(
-                            tile_work_dir, f"f{thumb_index:05d}.jpg"
-                        )
-                        if not _extract_frame_accurate(
-                            ffmpeg,
-                            env,
-                            ffmpeg_input,
-                            timestamp,
-                            settings.tile_width,
-                            frame_path,
-                            thumb_vf,
-                            thumb_index=thumb_index,
-                            debug=settings.debug,
-                            should_cancel=should_cancel,
-                            output_color_args=output_color_args,
-                            ffmpeg_input_args=ffmpeg_input_args,
-                            sw_fallback=sw_extract_fallback,
-                            hw_state=hw_state,
-                        ):
-                            if _is_cancelled(should_cancel):
-                                cancelled = True
-                            else:
-                                success = False
-                            break
-                        frame_paths.append(frame_path)
+                    frame_paths = _extract_tile_accurate(
+                        ffmpeg,
+                        env,
+                        ffmpeg_input,
+                        start_index,
+                        chunk_count,
+                        interval_sec,
+                        settings.tile_width,
+                        tile_work_dir,
+                        thumb_vf,
+                        tile_index=tile_index,
+                        tile_count=tile_count,
+                        debug=settings.debug,
+                        should_cancel=should_cancel,
+                        output_color_args=output_color_args,
+                        ffmpeg_input_args=ffmpeg_input_args,
+                        sw_fallback=sw_extract_fallback,
+                        hw_state=hw_state,
+                        accurate_state=accurate_state,
+                    )
                 else:
                     _log(
                         f"Unknown extract mode {settings.extract_mode!r}; "
@@ -1934,6 +2145,11 @@ def _generate_trickplay_for_media(
 
                 _log(f"Tile {tile_index + 1}/{tile_count}: wrote {tile_path}")
                 tiles_written += 1
+                _emit_status(
+                    on_status,
+                    f"Tile {tile_index + 1}/{tile_count}",
+                    tiles_written / max(tile_count, 1),
+                )
                 _remove_tree(tile_work_dir)
 
         if success and not cancelled and not _is_cancelled(should_cancel) and atomic_staging:
@@ -1992,6 +2208,7 @@ def generate_trickplay_for_media(
     media_path: str,
     settings: GeneratorSettings,
     should_cancel: Callable[[], bool] | None = None,
+    on_status: Callable[[str, float], None] | None = None,
 ) -> GenerationResult:
     """Generate one sidecar and return timing and tile metrics."""
     started_at = time.monotonic()
@@ -2001,6 +2218,7 @@ def generate_trickplay_for_media(
         settings,
         should_cancel=should_cancel,
         _metrics=metrics,
+        on_status=on_status,
     )
     cancelled = bool(metrics.get("cancelled", False)) or (
         bool(should_cancel and should_cancel()) and not success

@@ -216,7 +216,12 @@ and reports malformed names, unsupported grids, and invalid intervals separately
 - **Cropped thumbs in RAM (MB)** — keep cropped preview JPEGs in RAM so scrubbing does not re-encode (default 64; 0 = off)
 - **Cached thumb JPEG quality** — compression for cropped preview JPEGs (50–95, default 90)
 
-A separate copy worker pulls every sprite to local temp starting with **0.jpg**; a decode worker then loads tiles into RAM and pre-crops cells. Fast scrub shows the nearest already-cropped thumb instead of freezing on the last frame, and does not cancel prefetch of tiles that are already local. Live temp JPEGs publish immediately; durable cache writes finish in the background. Install preview tools prefers the add-on Pillow wheel (libjpeg-turbo) when it is present.
+A separate copy worker pulls every sprite to local temp starting with **0.jpg**; a decode worker then loads tiles into RAM and pre-crops cells. Episode-wide pre-crop runs in eight-cell chunks and yields whenever an exact visible thumb is pending. Fast scrub shows the nearest already-cropped thumb instead of freezing on the last frame, and does not cancel prefetch of tiles that are already local. Six rotating live temp JPEGs publish immediately; one bounded worker persists immutable JPEG bytes to the durable cache in the background. Known cache paths and LRU timestamp updates are debounced to avoid per-scrub filesystem metadata writes. Install preview tools prefers the add-on Pillow wheel (libjpeg-turbo) when it is present.
+
+The exported diagnostic report includes cache-source counts and cumulative
+copy/decode/crop/JPEG/write/exact-request timings (`*_count`, `*_ms_avg`,
+`*_ms_max`, and `*_ms_total`) so slow devices can be diagnosed without media
+paths being included.
 
 ### Trickplay generator (Settings → Trickplay generator)
 
@@ -224,6 +229,10 @@ Off by default. When disabled, all generator options are hidden.
 
 - **Enable trickplay generator** — master toggle
 - **Generate while idle** — when Kodi is not playing video, generate one missing sidecar at a time from the library folder (background service)
+- **Idle: recently added only** — optional; idle generation only considers videos added to the Kodi library in the last N days (default 14)
+- **Idle recent window (days)** — how far back “recently added” looks (1–90)
+- **Show generator queue** — current file, paused/running state, and the next idle/batch items
+- **Weak device preset** — sets Fast seek and turns off HDR tone mapping and hardware decode
 - **Generate on library update** — after a library scan, batch-generate trickplay only for videos added during that scan (separate from idle generation)
 - **Library update: only when not playing** — defer the post-scan batch until playback has stopped (default on)
 - **Frame extraction mode** — **Accurate** (slow, frame-accurate), **Fast** (default; may use an fps decode pass per tile), **Fast seek (weaker devices)** (always one seek per thumbnail; recommended for Amlogic/CoreELEC, 4K, or network media), or **Fast (batch seeks)** (several seeks per ffmpeg process with Fast fallback; biggest gains on local SDR). Fast automatically avoids batch seeks when HDR/DV tone mapping or hardware decode is active; a failed fps-batch falls back to per-frame seek for the remaining tiles in that file.

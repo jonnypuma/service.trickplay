@@ -15,6 +15,7 @@ from thumb_cropper import (
     ThumbCacheKey,
     crop_tile_cells_batch,
     decoded_tile_capacity,
+    foreground_crop_pending,
     get_cached_thumb_path,
     get_cropped_thumb_path,
     get_ready_thumb_path,
@@ -578,6 +579,12 @@ class ThumbPrefetch:
             with self._decode_lock:
                 if generation != self._decode_generation:
                     return
+            if foreground_crop_pending():
+                # Keep episode-wide JPEG work out of the visible exact-thumb
+                # request's critical path.
+                time.sleep(0.025)
+                continue
+            with self._decode_lock:
                 if not self._decode_queue:
                     self._decode_worker = None
                     return
@@ -653,13 +660,30 @@ class ThumbPrefetch:
                 f"Episode pre-crop {len(pending)} uncached cell(s) from "
                 f"{os.path.basename(tile_path)}"
             )
+        yielded = False
+
+        def _yield_to_foreground() -> bool:
+            nonlocal yielded
+            yielded = foreground_crop_pending()
+            return yielded
+
         try:
-            crop_tile_cells_batch(tile_path, pending, debug=False)
+            crop_tile_cells_batch(
+                tile_path,
+                pending,
+                debug=False,
+                chunk_size=8,
+                should_yield=_yield_to_foreground,
+            )
         except (OSError, RuntimeError, ValueError) as exc:
             _log(
                 f"Episode pre-crop failed for {tile_path}: {exc}",
                 xbmc.LOGWARNING,
             )
+            return
+        if yielded:
+            # Resume this tile after the foreground request settles.
+            self._enqueue_tile_decode(tile_path)
             return
         with self._lock:
             self._precropped_done.add(tile_path)

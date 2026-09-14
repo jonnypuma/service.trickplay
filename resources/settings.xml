@@ -370,6 +370,51 @@
                         </dependency>
                     </dependencies>
                 </setting>
+                <setting id="generator_idle_recent_only" type="boolean" label="32259" help="32260">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                    <dependencies>
+                        <dependency type="visible">
+                            <and>
+                                <condition setting="generator_enabled">true</condition>
+                                <condition setting="generator_while_idle">true</condition>
+                            </and>
+                        </dependency>
+                    </dependencies>
+                </setting>
+                <setting id="generator_idle_recent_days" type="integer" label="32264" help="32265">
+                    <level>1</level>
+                    <default>14</default>
+                    <constraints>
+                        <minimum>1</minimum>
+                        <maximum>90</maximum>
+                        <step>1</step>
+                    </constraints>
+                    <control type="edit" format="integer">
+                        <heading>32264</heading>
+                    </control>
+                    <dependencies>
+                        <dependency type="visible">
+                            <and>
+                                <condition setting="generator_enabled">true</condition>
+                                <condition setting="generator_while_idle">true</condition>
+                                <condition setting="generator_idle_recent_only">true</condition>
+                            </and>
+                        </dependency>
+                    </dependencies>
+                </setting>
+                <setting id="generator_queue_status" type="action" label="32257" help="32258">
+                    <level>0</level>
+                    <control type="button" format="action">
+                        <data>RunScript(service.trickplay,generator_queue)</data>
+                    </control>
+                    <dependencies>
+                        <dependency type="visible">
+                            <condition setting="generator_enabled">true</condition>
+                        </dependency>
+                    </dependencies>
+                </setting>
                 <setting id="generator_on_library_update" type="boolean" label="32084" help="32085">
                     <level>1</level>
                     <default>false</default>
@@ -414,6 +459,17 @@
                     </constraints>
                     <control type="list" format="string">
                         <heading>32076</heading>
+                    </control>
+                    <dependencies>
+                        <dependency type="visible">
+                            <condition setting="generator_enabled">true</condition>
+                        </dependency>
+                    </dependencies>
+                </setting>
+                <setting id="generator_weak_device_preset" type="action" label="32261" help="32262">
+                    <level>0</level>
+                    <control type="button" format="action">
+                        <data>RunScript(service.trickplay,weak_device_preset)</data>
                     </control>
                     <dependencies>
                         <dependency type="visible">

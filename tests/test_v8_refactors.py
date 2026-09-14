@@ -357,6 +357,9 @@ class SettingsLevelTests(unittest.TestCase):
         self.assertIsNotNone(cache)
         assert cache is not None
         self.assertEqual(cache.findtext("default"), "1000")
+        self.assertEqual(levels["generator_queue_status"], 0)
+        self.assertEqual(levels["generator_weak_device_preset"], 0)
+        self.assertEqual(levels["generator_idle_recent_only"], 1)
         self.assertGreater(
             levels["install_skin_snippet_force"],
             levels["install_skin_snippet_current"],

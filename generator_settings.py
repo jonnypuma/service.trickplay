@@ -30,6 +30,8 @@ class RuntimeSettings:
 class GeneratorSettings:
     enabled: bool = False
     while_idle: bool = False
+    idle_recent_only: bool = False
+    idle_recent_days: int = 14
     on_library_update: bool = False
     on_library_update_while_idle: bool = True
     overwrite_existing: bool = False
@@ -191,6 +193,11 @@ def _load_generator_settings() -> GeneratorSettings:
     return GeneratorSettings(
         enabled=_setting_bool("generator_enabled", False),
         while_idle=_setting_bool("generator_while_idle", False),
+        idle_recent_only=_setting_bool("generator_idle_recent_only", False),
+        idle_recent_days=min(
+            max(_setting_int("generator_idle_recent_days", 14), 1),
+            90,
+        ),
         on_library_update=_setting_bool("generator_on_library_update", False),
         on_library_update_while_idle=_setting_bool(
             "generator_on_library_update_while_idle", True
@@ -249,3 +256,42 @@ def save_generator_ffmpeg_path(path: str) -> None:
     from settings_cache import invalidate_settings_cache
 
     invalidate_settings_cache()
+
+
+def apply_weak_device_generator_preset() -> dict[str, str]:
+    """Apply Fast seek and turn off expensive generator options for weak boxes."""
+    from generator_extract_modes import EXTRACT_MODE_FAST_SEEK
+
+    addon = _addon()
+    applied = {
+        "extract_mode": EXTRACT_MODE_FAST_SEEK,
+        "hdr_tone_map": "false",
+        "hw_decode": "false",
+    }
+    if addon is None:
+        return applied
+
+    def _set_string(setting_id: str, value: str) -> None:
+        try:
+            addon.setSettingString(setting_id, value)
+        except (RuntimeError, TypeError, ValueError, AttributeError):
+            try:
+                addon.setSetting(setting_id, value)
+            except (RuntimeError, TypeError, ValueError, AttributeError):
+                pass
+
+    def _set_bool(setting_id: str, value: bool) -> None:
+        try:
+            addon.setSettingBool(setting_id, value)
+        except (RuntimeError, TypeError, ValueError, AttributeError):
+            _set_string(setting_id, "true" if value else "false")
+
+    _set_string("generator_extract_mode", EXTRACT_MODE_FAST_SEEK)
+    _set_bool("generator_hdr_tone_map", False)
+    _set_bool("generator_hdr_dovi_tool_fallback", False)
+    _set_bool("generator_hw_decode", False)
+    _set_bool("generator_hw_decode_cuda", False)
+    from settings_cache import invalidate_settings_cache
+
+    invalidate_settings_cache()
+    return applied

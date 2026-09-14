@@ -36,6 +36,7 @@ def write_diagnostic_report() -> str:
         generator_summary = {
             "enabled": bool(settings.enabled),
             "while_idle": bool(settings.while_idle),
+            "idle_recent_only": bool(settings.idle_recent_only),
             "extract_mode": str(settings.extract_mode),
             "tile_width": int(settings.tile_width),
             "grid": str(settings.grid),

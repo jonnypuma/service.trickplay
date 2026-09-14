@@ -9,10 +9,10 @@ import shutil
 import subprocess
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Tuple
+from typing import Callable, Tuple
 
 import xbmc
 import xbmcvfs
@@ -45,8 +45,27 @@ ThumbCacheKey = Tuple[str, int, int, int, int, float, int]
 # In-memory cache index + in-flight crop deduplication.
 _INFLIGHT_WAIT_SEC = 30.0
 _memory_cache_keys: set[ThumbCacheKey] = set()
+_cache_validation_at: dict[ThumbCacheKey, float] = {}
+_cache_touch_at: dict[str, float] = {}
+_CACHE_VALIDATE_INTERVAL_SEC = 30.0
+_CACHE_TOUCH_INTERVAL_SEC = 60.0
 _inflight_lock = threading.Lock()
 _inflight_crops: dict[ThumbCacheKey, threading.Event] = {}
+
+# Foreground exact crops preempt episode-wide background encodes.
+_foreground_crop_pending = threading.Event()
+
+# One bounded durable writer replaces one daemon thread per cold crop. Queue
+# entries carry immutable encoded bytes, so rotating live files cannot race.
+_PERSIST_QUEUE_MAX = 64
+_persist_lock = threading.Lock()
+_persist_queue: deque[tuple[str, bytes, ThumbCacheKey]] = deque()
+_persist_queued: set[ThumbCacheKey] = set()
+_persist_worker: threading.Thread | None = None
+
+# Lightweight cumulative timings exposed in diagnostics. Values are integer ms.
+_latency_lock = threading.Lock()
+_latency_stats: dict[str, int] = {}
 
 # Shared local temp copies of sprite JPGs (thread-safe, source fingerprinted).
 _prepared_temp_tiles: dict[str, tuple[str, float, int]] = {}
@@ -79,9 +98,9 @@ _crop_ram_lock = threading.Lock()
 _crop_ram: OrderedDict[ThumbCacheKey, bytes] = OrderedDict()
 _crop_ram_bytes = 0
 
-# Ping-pong live preview JPEGs so Kodi reloads textures while durable cache
+# Rotating live preview JPEGs so Kodi reloads textures while durable cache
 # is written asynchronously after the first RAM crop.
-_LIVE_SLOT_COUNT = 2
+_LIVE_SLOT_COUNT = 6
 _live_slot = 0
 _live_slot_lock = threading.Lock()
 _live_preview_by_key: dict[ThumbCacheKey, str] = {}
@@ -94,6 +113,42 @@ def _live_dir() -> str:
 
 def _log(message: str, level=xbmc.LOGINFO) -> None:
     xbmc.log(f"[service.trickplay] {message}", level)
+
+
+def _record_latency(stage: str, started: float) -> None:
+    elapsed_ms = max(0, int(round((time.perf_counter() - started) * 1000)))
+    with _latency_lock:
+        count_key = f"{stage}_count"
+        total_key = f"{stage}_ms_total"
+        max_key = f"{stage}_ms_max"
+        _latency_stats[count_key] = _latency_stats.get(count_key, 0) + 1
+        _latency_stats[total_key] = _latency_stats.get(total_key, 0) + elapsed_ms
+        _latency_stats[max_key] = max(
+            _latency_stats.get(max_key, 0), elapsed_ms
+        )
+
+
+def _record_counter(name: str) -> None:
+    with _latency_lock:
+        _latency_stats[name] = _latency_stats.get(name, 0) + 1
+
+
+def set_foreground_crop_pending(pending: bool) -> None:
+    """Tell episode pre-crop to yield to the visible exact-thumb request."""
+    if pending:
+        _foreground_crop_pending.set()
+    else:
+        _foreground_crop_pending.clear()
+
+
+def foreground_crop_pending() -> bool:
+    return _foreground_crop_pending.is_set()
+
+
+def record_preview_latency(started: float) -> None:
+    """Record request-to-publish latency for the exact visible thumbnail."""
+    if started > 0:
+        _record_latency("preview_publish", started)
 
 
 def _ensure_dir(path: str) -> None:
@@ -183,6 +238,10 @@ def _has_file_content(path: str) -> bool:
 
 
 def _touch_cached_file(path: str) -> None:
+    now = time.monotonic()
+    if now - _cache_touch_at.get(path, 0.0) < _CACHE_TOUCH_INTERVAL_SEC:
+        return
+    _cache_touch_at[path] = now
     local = _local_path(path)
     if not local or not os.path.exists(local):
         return
@@ -239,6 +298,8 @@ def prune_thumb_cache(max_mb: int) -> int:
 
 def _clear_memory_cache_index() -> None:
     _memory_cache_keys.clear()
+    _cache_validation_at.clear()
+    _cache_touch_at.clear()
     _tile_fingerprint_cache.clear()
     clear_decoded_tile_cache()
 
@@ -307,8 +368,11 @@ def materialize_crop_ram(key: ThumbCacheKey) -> str | None:
     if not data:
         return None
     live_path = _next_live_preview_path()
+    started = time.perf_counter()
     if not _write_file_bytes(live_path, data):
         return None
+    _record_latency("ram_materialize", started)
+    _record_counter("ram_cache_hits")
     _remember_live_preview(key, live_path)
     return live_path
 
@@ -368,7 +432,7 @@ def warm_decoded_tile(tile_path: str) -> bool:
 
 
 def _next_live_preview_path() -> str:
-    """Return the next ping-pong live JPEG path under special://temp."""
+    """Return the next rotating live JPEG path under special://temp."""
     global _live_slot
     live_root = _live_dir()
     try:
@@ -399,26 +463,76 @@ def _live_preview_for_key(key: ThumbCacheKey) -> str | None:
     return None
 
 
-def _persist_live_to_durable_cache(
-    live_path: str,
-    durable_path: str,
-    key: ThumbCacheKey,
-) -> None:
-    """Copy the live JPEG into the durable thumb cache (background-safe)."""
+def _write_jpeg_bytes_atomic(output_path: str, data: bytes) -> bool:
+    output_local = _local_path(output_path)
+    if not output_local or not data:
+        return False
+    temporary = f"{output_local}.tmp"
+    started = time.perf_counter()
     try:
-        if not _has_file_content(live_path):
+        os.makedirs(os.path.dirname(output_local), exist_ok=True)
+        with open(temporary, "wb") as handle:
+            handle.write(data)
+        os.replace(temporary, output_local)
+    except OSError as exc:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        _log(f"Durable JPEG write failed for {output_path}: {exc}", xbmc.LOGWARNING)
+        return False
+    _record_latency("durable_write", started)
+    return _has_file_content(output_path)
+
+
+def _ensure_persist_worker() -> None:
+    global _persist_worker
+    with _persist_lock:
+        if _persist_worker is not None and _persist_worker.is_alive():
             return
-        if _has_file_content(durable_path):
-            _mark_thumb_cached(key, durable_path)
-            _forget_live_preview(key)
+        _persist_worker = threading.Thread(
+            target=_run_persist_queue,
+            daemon=True,
+            name="trickplay-cache-persist",
+        )
+        _persist_worker.start()
+
+
+def _enqueue_durable_jpeg(
+    durable_path: str, data: bytes, key: ThumbCacheKey
+) -> None:
+    if not durable_path or not data:
+        return
+    with _persist_lock:
+        if key in _persist_queued:
             return
-        durable_local = _local_path(durable_path)
-        if not durable_local:
-            return
-        os.makedirs(os.path.dirname(durable_local), exist_ok=True)
-        live_local = _local_path(live_path) or live_path
-        shutil.copy2(live_local, durable_local)
-        if _has_file_content(durable_path):
+        if len(_persist_queue) >= _PERSIST_QUEUE_MAX:
+            _old_path, _old_data, old_key = _persist_queue.popleft()
+            _persist_queued.discard(old_key)
+            _forget_live_preview(old_key)
+            _record_counter("persist_queue_drops")
+        _persist_queue.append((durable_path, data, key))
+        _persist_queued.add(key)
+        depth = len(_persist_queue)
+    with _latency_lock:
+        _latency_stats["persist_queue_depth_max"] = max(
+            _latency_stats.get("persist_queue_depth_max", 0), depth
+        )
+    _ensure_persist_worker()
+
+
+def _run_persist_queue() -> None:
+    global _persist_worker
+    while True:
+        with _persist_lock:
+            if not _persist_queue:
+                _persist_worker = None
+                return
+            durable_path, data, key = _persist_queue.popleft()
+            _persist_queued.discard(key)
+        if _has_file_content(durable_path) or _write_jpeg_bytes_atomic(
+            durable_path, data
+        ):
             _mark_thumb_cached(key, durable_path)
             _forget_live_preview(key)
             try:
@@ -427,8 +541,6 @@ def _persist_live_to_durable_cache(
                 maybe_prune_thumb_cache(read_prefetch_settings().cache_max_mb)
             except ImportError:  # pragma: no cover
                 pass
-    except OSError as exc:
-        _log(f"Live→durable cache copy failed: {exc}", xbmc.LOGWARNING)
 
 
 @dataclass(frozen=True)
@@ -494,10 +606,16 @@ def clear_preview_cache() -> PreviewCacheClearResult:
     clear_crop_ram_cache()
     _cache_stats["decoded_hits"] = 0
     _cache_stats["decoded_misses"] = 0
+    with _latency_lock:
+        _latency_stats.clear()
     with _prepared_temp_lock:
         _prepared_temp_tiles.clear()
     with _live_preview_lock:
         _live_preview_by_key.clear()
+    with _persist_lock:
+        _persist_queue.clear()
+        _persist_queued.clear()
+    set_foreground_crop_pending(False)
     live_files, live_bytes = _delete_jpg_files(_live_dir(), top_level_only=True)
     tile_files += live_files
     tile_bytes += live_bytes
@@ -550,10 +668,12 @@ def _get_decoded_tile_image(source_path: str, mtime: float, size: int):
     _cache_stats["decoded_misses"] += 1
     from PIL import Image
 
+    started = time.perf_counter()
     with Image.open(source_path) as opened:
         # Force full decode and detach from the file handle before caching.
         image = opened.convert("RGB") if opened.mode not in ("RGB", "L") else opened.copy()
         image.load()
+    _record_latency("decode", started)
 
     _remember_decoded_tile(source_path, mtime, size, image)
     return image
@@ -569,6 +689,14 @@ def preview_cache_stats() -> dict[str, int]:
     with _crop_ram_lock:
         crop_entries = len(_crop_ram)
         crop_bytes = _crop_ram_bytes
+    with _latency_lock:
+        timings = dict(_latency_stats)
+    for key, count in list(timings.items()):
+        if not key.endswith("_count") or count <= 0:
+            continue
+        stage = key[: -len("_count")]
+        total = timings.get(f"{stage}_ms_total", 0)
+        timings[f"{stage}_ms_avg"] = int(round(total / count))
     return {
         "decoded_hits": hits,
         "decoded_misses": misses,
@@ -577,6 +705,7 @@ def preview_cache_stats() -> dict[str, int]:
         "crop_ram_entries": crop_entries,
         "crop_ram_bytes": crop_bytes,
         "crop_ram_limit_bytes": _crop_ram_limit_bytes(),
+        **timings,
     }
 
 
@@ -609,6 +738,7 @@ def thumb_cache_key(
 
 def _mark_thumb_cached(key: ThumbCacheKey, cached_path: str) -> None:
     _memory_cache_keys.add(key)
+    _cache_validation_at[key] = time.monotonic()
     note_thumb_cache_write(cached_path)
 
 
@@ -767,29 +897,42 @@ def get_cached_thumb_path(
     cached = cache_path_for_thumb(tile_path, col, row, thumb_w, thumb_h)
 
     if key in _memory_cache_keys:
+        now = time.monotonic()
+        last_validated = _cache_validation_at.get(key, 0.0)
+        if now - last_validated < _CACHE_VALIDATE_INTERVAL_SEC:
+            _record_counter("disk_cache_hits")
+            _touch_cached_file(cached)
+            return cached
         if _has_file_content(cached):
+            _cache_validation_at[key] = now
+            _record_counter("disk_cache_hits")
             _touch_cached_file(cached)
             return cached
         _memory_cache_keys.discard(key)
+        _cache_validation_at.pop(key, None)
 
     if _has_file_content(cached):
         _memory_cache_keys.add(key)
+        _cache_validation_at[key] = time.monotonic()
+        _record_counter("disk_cache_hits")
         _touch_cached_file(cached)
         return cached
 
     live = _live_preview_for_key(key)
     if live:
+        _record_counter("live_cache_hits")
         return live
 
     legacy = _legacy_cache_path_for_thumb(tile_path, col, row, thumb_w, thumb_h)
     if _has_file_content(legacy) and not _source_newer_than_cache(tile_path, legacy):
         if _migrate_cache_file(legacy, cached):
             _memory_cache_keys.add(key)
+            _cache_validation_at[key] = time.monotonic()
             _touch_cached_file(cached)
             return cached
-        _memory_cache_keys.add(key)
         _touch_cached_file(legacy)
         return legacy
+    _record_counter("cache_misses")
     return None
 
 
@@ -800,7 +943,7 @@ def get_ready_thumb_path(
     thumb_w: int,
     thumb_h: int,
 ) -> str | None:
-    """Return a displayable JPEG path from disk, live ping-pong, or RAM."""
+    """Return a displayable JPEG path from disk, live rotation, or RAM."""
     cached = get_cached_thumb_path(tile_path, col, row, thumb_w, thumb_h)
     if cached:
         return cached
@@ -842,16 +985,20 @@ def temp_tile_copy(tile_path: str) -> str | None:
             return local
 
         try:
+            started = time.perf_counter()
             xbmcvfs.copy(tile_path, temp_path)
             if _has_file_content(temp_path):
+                _record_latency("tile_copy", started)
                 local = _local_path(temp_path)
                 _remember_prepared_temp(tile_path, local, mtime, size)
                 return local
         except (OSError, RuntimeError, ValueError):
             pass
 
+        started = time.perf_counter()
         tile_bytes = _read_file_bytes(tile_path)
         if tile_bytes and _write_file_bytes(temp_path, tile_bytes):
+            _record_latency("tile_copy", started)
             local = _local_path(temp_path)
             _remember_prepared_temp(tile_path, local, mtime, size)
             return local
@@ -1168,13 +1315,17 @@ def _crop_cell_from_decoded_tile(
     try:
         mtime, size = _source_fingerprint(tile_path)
         img = _get_decoded_tile_image(source, mtime, size)
-        return img.crop((left, top, left + crop_w, top + crop_h))
+        started = time.perf_counter()
+        cropped = img.crop((left, top, left + crop_w, top + crop_h))
+        _record_latency("cell_crop", started)
+        return cropped
     except (OSError, ValueError) as exc:
         _log(f"Pillow crop failed for {tile_path} cell ({col},{row}): {exc}", xbmc.LOGWARNING)
         return None
 
 
 def _encode_jpeg_bytes(image) -> bytes:
+    started = time.perf_counter()
     buffer = BytesIO()
     image.save(
         buffer,
@@ -1183,13 +1334,16 @@ def _encode_jpeg_bytes(image) -> bytes:
         optimize=False,
         progressive=False,
     )
-    return buffer.getvalue()
+    data = buffer.getvalue()
+    _record_latency("jpeg_encode", started)
+    return data
 
 
 def _write_jpeg_bytes(output_path: str, data: bytes) -> bool:
     output_local = _local_path(output_path)
     if not output_local or not data:
         return False
+    started = time.perf_counter()
     try:
         os.makedirs(os.path.dirname(output_local), exist_ok=True)
         with open(output_local, "wb") as handle:
@@ -1197,6 +1351,7 @@ def _write_jpeg_bytes(output_path: str, data: bytes) -> bool:
     except OSError as exc:
         _log(f"JPEG save failed for {output_path}: {exc}", xbmc.LOGWARNING)
         return False
+    _record_latency("jpeg_write", started)
     return _has_file_content(output_path)
 
 
@@ -1241,7 +1396,7 @@ def get_cropped_thumb_path(
 ) -> str | None:
     """Return a JPEG path for one sprite cell, or None if cropping failed.
 
-    On cache miss: crop from the in-RAM decoded sprite, write a live ping-pong
+    On cache miss: crop from the in-RAM decoded sprite, write a rotating live
     JPEG for immediate skin display, then persist the durable cache copy in a
     background thread.
     """
@@ -1270,6 +1425,7 @@ def get_cropped_thumb_path(
         wait_event.wait(_INFLIGHT_WAIT_SEC)
         return get_cached_thumb_path(tile_path, col, row, thumb_w, thumb_h)
 
+    exact_started = time.perf_counter()
     result: str | None = None
     try:
         cropped = _crop_cell_from_decoded_tile(
@@ -1287,17 +1443,19 @@ def get_cropped_thumb_path(
                     xbmc.LOGWARNING,
                 )
         else:
+            try:
+                data = _encode_jpeg_bytes(cropped)
+            except (OSError, ValueError) as exc:
+                _log(f"JPEG encode failed for live preview: {exc}", xbmc.LOGWARNING)
+                data = b""
+            if data:
+                remember_crop_jpeg(key, data)
             live_path = _next_live_preview_path()
-            if _save_jpeg(cropped, live_path, key=key):
+            if data and _write_jpeg_bytes(live_path, data):
                 _remember_live_preview(key, live_path)
                 result = live_path
-                threading.Thread(
-                    target=_persist_live_to_durable_cache,
-                    args=(live_path, durable, key),
-                    daemon=True,
-                    name="trickplay-cache-persist",
-                ).start()
-            elif _save_jpeg(cropped, durable, key=key):
+                _enqueue_durable_jpeg(durable, data, key)
+            elif data and _write_jpeg_bytes_atomic(durable, data):
                 # Live write failed; fall back to durable path only.
                 _mark_thumb_cached(key, durable)
                 try:
@@ -1308,6 +1466,7 @@ def get_cropped_thumb_path(
                     pass
                 result = durable
     finally:
+        _record_latency("exact_crop", exact_started)
         with _inflight_lock:
             _inflight_crops.pop(key, None)
         wait_event.set()
@@ -1319,6 +1478,9 @@ def crop_tile_cells_batch(
     tile_path: str,
     cells: list[tuple[int, int, int, int]],
     debug: bool = False,
+    *,
+    chunk_size: int = 8,
+    should_yield: Callable[[], bool] | None = None,
 ) -> int:
     """Crop many cells from one sprite tile in a single decode pass.
 
@@ -1363,7 +1525,17 @@ def crop_tile_cells_batch(
         return 0
 
     written = 0
-    for col, row, thumb_w, thumb_h, cached, key in pending:
+    chunk_size = max(1, int(chunk_size))
+    for pending_index, (col, row, thumb_w, thumb_h, cached, key) in enumerate(
+        pending
+    ):
+        if pending_index % chunk_size == 0:
+            if should_yield is not None and should_yield():
+                _record_counter("precrop_yields")
+                break
+            if pending_index:
+                # Give Kodi's exact-thumb worker a scheduling opportunity.
+                time.sleep(0)
         output_local = _local_path(cached)
         if not output_local:
             continue
@@ -1375,7 +1547,9 @@ def crop_tile_cells_batch(
                     f"Batch crop {crop_w}x{crop_h}:{left}:{top} from "
                     f"{os.path.basename(tile_path)} cell ({col},{row})"
                 )
+            started = time.perf_counter()
             cropped = img.crop((left, top, left + crop_w, top + crop_h))
+            _record_latency("cell_crop", started)
             data = _encode_jpeg_bytes(cropped)
             remember_crop_jpeg(key, data)
             if not _write_jpeg_bytes(cached, data):

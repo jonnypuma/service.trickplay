@@ -5,6 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.18.6] - 2026-09-14
+
+### Fixed
+
+- **Accurate produces no usable tiles on corrupt WEB-DL** — seek-after-input
+  must decode from the start, so a bad AU at 10s made every later stamp fail
+  (~30s each) and copy the 0.0s frame. After the first Accurate miss, remaining
+  thumbs (and later tiles) use Fast seek, which can skip past that region.
+
+## [8.18.5] - 2026-09-14
+
+### Fixed
+
+- **Fast and Accurate skip corrupt stamps** — Fast (default 10s interval) no
+  longer starts a ~15-minute fps-batch decode; it uses per-frame seek and reuses
+  the previous JPEG when a timestamp fails, same as Fast seek. Accurate no longer
+  aborts the tile on the first failed frame (wait was ~10 minutes); it reuses
+  the previous JPEG and continues. A hung accurate stamp is capped at 25–180s
+  instead of 600s+.
+
+## [8.18.4] - 2026-09-14
+
+### Fixed
+
+- **Batch seeks abort then 15-minute fps-batch hang** — a corrupt timestamp no
+  longer stops the tile (S14E05 aborted at 1/100 then started a 860s continuous
+  decode). Failed cells reuse the previous JPEG; a timed-out chunk does not
+  re-run the same Fast seek. If the tile is still short, retry is Fast seek,
+  not fps-batch.
+- **Batch progress dialog** — the dialog shows the current file (and tile) instead
+  of staying on “Generating trickplay…” at 0% for a single-file job.
+
+## [8.18.3] - 2026-09-14
+
+### Fixed
+
+- **Fast seek abort on corrupt H.264** — a hung/failed timestamp no longer
+  drops the rest of the tile (S14E05 stopped after 1, 8, and 27 thumbs). Failed
+  cells reuse the previous JPEG so the sprite grid stays complete. Per-frame wait
+  is 25s (was 120s); healthy seeks on that file were ~0.3s.
+
+## [8.18.2] - 2026-09-14
+
+### Fixed
+
+- **Batch seeks hang on Windows mapped drives** — Fast (batch seeks) no longer
+  opens the same file eight times in one ffmpeg process on Windows (the pattern
+  that froze Kodi for ~15 minutes on some WEB-DL files). Chunk wait is capped at
+  25–60s instead of ~16 minutes; a timed-out chunk falls back to Fast seek.
+
+## [8.18.1] - 2026-09-14
+
+### Fixed
+
+- **Last thumb at exact EOF** — when duration is a multiple of the interval
+  (e.g. 2800s at 10s), generation no longer seeks ffmpeg to the last timestamp,
+  which exited 0 with no JPEG and wrote a short final tile.
+
+## [8.18.0] - 2026-09-13
+
+### Changed
+
+- **Foreground-first episode pre-crop** — full-sprite pre-cropping now works in
+  chunks of eight cells and pauses while an exact visible thumb is pending.
+- **Cheaper cache hits** — known crop paths are trusted for 30 seconds and LRU
+  timestamp writes are debounced to once per minute instead of touching the
+  filesystem on every scrub hit.
+- **Bounded durable writer** — cold crops enqueue immutable JPEG bytes on one
+  64-item persistence worker rather than spawning a thread that copies a reused
+  live file. Live texture rotation now uses six slots to avoid overwrite races.
+- **Lighter scrub prioritization** — seeking promotes only the current and
+  adjacent sprites; it no longer rebuilds the complete copy queue every poll.
+- **Crop latency diagnostics** — the exported diagnostic report now includes
+  cache-source counters and copy, decode, crop, encode, write, exact-crop, and
+  request-to-publish timing totals, averages, and maxima.
+
+## [8.17.0] - 2026-09-13
+
+### Added
+
+- **Generator queue** — Settings → Trickplay generator → Show generator queue lists
+  the current file, paused/running state, and the next idle/batch items.
+- **Weak device preset** — one action sets Fast seek and turns off HDR tone mapping
+  and hardware decode (CoreELEC / Amlogic / 4K / network).
+- **Idle: recently added only** — optional filter so idle generation only considers
+  library items added in the last N days (default 14). Falls back to file mtime if
+  the library query is unavailable.
+
 ## [8.16.0] - 2026-09-10
 
 ### Fixed

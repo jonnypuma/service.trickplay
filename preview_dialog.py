@@ -15,7 +15,12 @@ import xbmcvfs
 from osd_layout import preview_layout_mode, preview_placement
 from prefetch import nearest_ready_thumb_path
 from settings_cache import get_cached
-from thumb_cropper import get_cropped_thumb_path, get_ready_thumb_path
+from thumb_cropper import (
+    get_cropped_thumb_path,
+    get_ready_thumb_path,
+    record_preview_latency,
+    set_foreground_crop_pending,
+)
 from trickplay_resolver import TrickplayLookup, TrickplayResolution
 
 HOME_WINDOW = xbmcgui.Window(10000)
@@ -352,10 +357,11 @@ class PreviewDialogController:
         self._pending_lookup: TrickplayLookup | None = None
         self._pending_duration = 0
         self._pending_player: xbmc.Player | None = None
+        self._pending_requested_at = 0.0
         self._crop_failed = False
-        self._crop_ready: tuple[TrickplayLookup, int, str, xbmc.Player | None] | None = (
-            None
-        )
+        self._crop_ready: (
+            tuple[TrickplayLookup, int, str, xbmc.Player | None, float] | None
+        ) = None
         self._requested_key: tuple[str, int, int, int, int] | None = None
         self._shown_thumb_index = -1
         self._last_thumb_path: str | None = None
@@ -383,6 +389,7 @@ class PreviewDialogController:
             self._pending_lookup = None
             self._pending_duration = 0
             self._pending_player = None
+            self._pending_requested_at = 0.0
             self._crop_ready = None
         self._crop_failed = False
         self._requested_key = None
@@ -393,6 +400,7 @@ class PreviewDialogController:
         self._last_scrub_thumb_index = -1
         self._scrub_burst_until = 0.0
         self._fast_scrub_active = False
+        set_foreground_crop_pending(False)
         _clear_preview_properties()
 
     def _scrub_churn_active(self, lookup: TrickplayLookup, *, seeking: bool) -> bool:
@@ -542,6 +550,7 @@ class PreviewDialogController:
                 self._crop_target_id += 1
                 self._pending_lookup = None
                 self._crop_ready = None
+            set_foreground_crop_pending(False)
             self._shown_thumb_index = lookup.thumb_index
             self._last_thumb_path = cached
             self._publish_preview_state(
@@ -589,7 +598,9 @@ class PreviewDialogController:
             self._pending_lookup = lookup
             self._pending_duration = duration_seconds
             self._pending_player = player
+            self._pending_requested_at = time.perf_counter()
             self._crop_failed = False
+        set_foreground_crop_pending(True)
         self._ensure_crop_worker(_debug_logging())
 
     def _ensure_crop_worker(self, debug: bool) -> None:
@@ -610,11 +621,14 @@ class PreviewDialogController:
                 lookup = self._pending_lookup
                 duration = self._pending_duration
                 player = self._pending_player
+                requested_at = self._pending_requested_at
                 target_id = self._crop_target_id
 
             if lookup is None:
+                set_foreground_crop_pending(False)
                 return
 
+            set_foreground_crop_pending(True)
             thumb_path = get_cropped_thumb_path(
                 lookup.tile_path,
                 lookup.col,
@@ -635,8 +649,15 @@ class PreviewDialogController:
                 if not thumb_path:
                     self._crop_failed = True
                     self._pending_lookup = None
+                    set_foreground_crop_pending(False)
                     return
-                self._crop_ready = (lookup, duration, thumb_path, player)
+                self._crop_ready = (
+                    lookup,
+                    duration,
+                    thumb_path,
+                    player,
+                    requested_at,
+                )
                 pending = self._pending_lookup
                 if (
                     pending is not None
@@ -644,6 +665,7 @@ class PreviewDialogController:
                 ):
                     continue
                 self._pending_lookup = None
+                set_foreground_crop_pending(False)
                 return
 
     def poll(self) -> None:
@@ -656,13 +678,18 @@ class PreviewDialogController:
                 failed = True
                 self._crop_failed = False
         if ready is not None:
-            lookup, duration, thumb_path, player = ready
+            if len(ready) == 5:
+                lookup, duration, thumb_path, player, requested_at = ready
+            else:  # Backward-compatible test/runtime tuple from older workers.
+                lookup, duration, thumb_path, player = ready
+                requested_at = 0.0
             if (
                 self._requested_key is None
                 or lookup_cache_key(lookup) == self._requested_key
             ):
                 self._last_thumb_path = thumb_path
                 self._shown_thumb_index = lookup.thumb_index
+                record_preview_latency(requested_at)
                 self._publish_preview_state(
                     lookup,
                     duration,

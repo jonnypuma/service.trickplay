@@ -28,6 +28,8 @@ from script_status import (  # noqa: E402
     run_skin_calibration_dialog,
     run_setup_wizard_dialog,
     run_validation_repair_dialog,
+    run_generator_queue_dialog,
+    run_weak_device_preset_dialog,
 )
 from script_tools import (  # noqa: E402
     run_install_generator_tools_dialog,
@@ -85,6 +87,18 @@ def _resolve_mode(argv: list[str]) -> str:
             return "validate_repair"
         if normalized in ("generator_diagnostics", "diagnostics"):
             return "generator_diagnostics"
+        if normalized in (
+            "generator_queue",
+            "queue_status",
+            "generation_queue",
+        ):
+            return "generator_queue"
+        if normalized in (
+            "weak_device_preset",
+            "generator_weak_device",
+            "weak_device",
+        ):
+            return "weak_device_preset"
         if normalized in ("diagnostic_report", "export_diagnostics"):
             return "diagnostic_report"
         if normalized.endswith(".py"):
@@ -134,6 +148,10 @@ if __name__ == "__main__":
         run_validation_repair_dialog()
     elif mode == "generator_diagnostics":
         run_generator_diagnostics_dialog()
+    elif mode == "generator_queue":
+        run_generator_queue_dialog()
+    elif mode == "weak_device_preset":
+        run_weak_device_preset_dialog()
     elif mode == "diagnostic_report":
         run_diagnostic_report_dialog()
     else:

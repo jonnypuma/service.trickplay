@@ -233,7 +233,16 @@
     "Sprite tiles in RAM": "Tuiles sprite en RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Nombre de JPG sprite décodés à garder en RAM pendant la lecture. Chaque tuile 320×10×10 par défaut fait environ 16 Mo. 0 = copie en temp local uniquement (mieux pour les appareils à faible RAM).",
     "Cropped thumbs in RAM (MB)": "Vignettes recadrées en RAM (Mo)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Garder les JPEG d'aperçu recadrés en RAM pour ne pas ré-encoder pendant le défilement. 0 = désactivé (mieux pour les appareils à faible RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Garder les JPEG d'aperçu recadrés en RAM pour ne pas ré-encoder pendant le défilement. 0 = désactivé (mieux pour les appareils à faible RAM).",
+    "Show generator queue": "Afficher la file du générateur",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Affiche le fichier en cours de génération et les éléments suivants dans la file idle/lot.",
+    "Idle: recently added only": "Inactif : récemment ajoutés seulement",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "En génération idle, ne considérer que les vidéos ajoutées à la bibliothèque Kodi ces N derniers jours. Utilise la date de modification du fichier si la requête bibliothèque échoue.",
+    "Weak device preset": "Préréglage appareil faible",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Utiliser l’extraction Fast seek et désactiver le tone mapping HDR et le décodage matériel. Recommandé pour CoreELEC, Amlogic, 4K ou les médias réseau.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek appliqué. Tone mapping HDR et décodage matériel désactivés.",
+    "Idle recent window (days)": "Fenêtre idle récente (jours)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Nombre de jours de vidéos récemment ajoutées à considérer pour la génération idle (1–90)."
   },
   "nl": {
     "General": "Algemeen",
@@ -469,7 +478,16 @@
     "Sprite tiles in RAM": "Sprite-tegels in RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Hoeveel gedecodeerde sprite-JPG's in RAM te houden tijdens afspelen. Elke standaard 320×10×10-tegel is ongeveer 16 MB. 0 = alleen naar lokale temp kopiëren (beter voor apparaten met weinig RAM).",
     "Cropped thumbs in RAM (MB)": "Bijgesneden thumbs in RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Bijgesneden voorbeeld-JPEG's in RAM houden zodat spoelen niet opnieuw encodeert. 0 = uit (beter voor apparaten met weinig RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Bijgesneden voorbeeld-JPEG's in RAM houden zodat spoelen niet opnieuw encodeert. 0 = uit (beter voor apparaten met weinig RAM).",
+    "Show generator queue": "Generatorwachtrij tonen",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Toont het bestand dat nu wordt gegenereerd en de volgende items in de idle/batch-wachtrij.",
+    "Idle: recently added only": "Idle: alleen recent toegevoegd",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "Bij idle-generatie alleen video’s meenemen die de laatste N dagen aan de Kodi-bibliotheek zijn toegevoegd. Valt terug op bestandswijzigingstijd als de bibliotheekquery mislukt.",
+    "Weak device preset": "Voorinstelling zwak apparaat",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Gebruik Fast seek-extractie en schakel HDR-tonemapping en hardwaredecode uit. Aanbevolen voor CoreELEC, Amlogic, 4K of netwerkmedia.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek toegepast. HDR-tonemapping en hardwaredecode staan uit.",
+    "Idle recent window (days)": "Idle recent venster (dagen)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hoeveel dagen recent toegevoegde bibliotheekvideo’s idle-generatie moet meenemen (1–90)."
   },
   "de": {
     "General": "Allgemein",
@@ -705,7 +723,16 @@
     "Sprite tiles in RAM": "Sprite-Kacheln im RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Wie viele dekodierte Sprite-JPGs während der Wiedergabe im RAM bleiben. Jede Standard-Kachel 320×10×10 ist etwa 16 MB. 0 = nur nach lokalem Temp kopieren (besser für Geräte mit wenig RAM).",
     "Cropped thumbs in RAM (MB)": "Zugeschnittene Vorschaubilder im RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Zugeschnittene Vorschau-JPEGs im RAM halten, damit Spulen nicht neu kodiert. 0 = aus (besser für Geräte mit wenig RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Zugeschnittene Vorschau-JPEGs im RAM halten, damit Spulen nicht neu kodiert. 0 = aus (besser für Geräte mit wenig RAM).",
+    "Show generator queue": "Generatorwarteschlange anzeigen",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Zeigt die gerade generierte Datei und die nächsten Einträge in der Idle-/Stapelwarteschlange.",
+    "Idle: recently added only": "Idle: nur kürzlich hinzugefügt",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "Bei Idle-Generierung nur Videos berücksichtigen, die in den letzten N Tagen zur Kodi-Bibliothek hinzugefügt wurden. Fallback auf Dateiänderungszeit, wenn die Bibliotheksabfrage fehlschlägt.",
+    "Weak device preset": "Voreinstellung schwaches Gerät",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Fast-Seek-Extraktion verwenden und HDR-Tonemapping sowie Hardware-Dekodierung deaktivieren. Empfohlen für CoreELEC, Amlogic, 4K oder Netzwerkmedien.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast Seek angewendet. HDR-Tonemapping und Hardware-Dekodierung sind aus.",
+    "Idle recent window (days)": "Idle-Zeitraum (Tage)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Wie viele Tage kürzlich hinzugefügter Bibliotheksvideos die Idle-Generierung berücksichtigen soll (1–90)."
   },
   "es": {
     "General": "General",
@@ -941,7 +968,16 @@
     "Sprite tiles in RAM": "Mosaicos sprite en RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Cuántos JPG sprite decodificados mantener en RAM durante la reproducción. Cada mosaico 320×10×10 por defecto ocupa unos 16 MB. 0 = copiar solo a temp local (mejor para dispositivos con poca RAM).",
     "Cropped thumbs in RAM (MB)": "Miniaturas recortadas en RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Mantener los JPEG de vista previa recortados en RAM para no recodificar al buscar. 0 = desactivado (mejor para dispositivos con poca RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Mantener los JPEG de vista previa recortados en RAM para no recodificar al buscar. 0 = desactivado (mejor para dispositivos con poca RAM).",
+    "Show generator queue": "Mostrar cola del generador",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Muestra el archivo que se está generando y los siguientes elementos en la cola idle/lote.",
+    "Idle: recently added only": "Inactivo: solo añadidos recientemente",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "Al generar en idle, considerar solo vídeos añadidos a la biblioteca de Kodi en los últimos N días. Usa la fecha de modificación si falla la consulta de biblioteca.",
+    "Weak device preset": "Ajuste para dispositivo débil",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Usar extracción Fast seek y desactivar el tone mapping HDR y la decodificación por hardware. Recomendado para CoreELEC, Amlogic, 4K o medios de red.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek aplicado. Tone mapping HDR y decodificación por hardware desactivados.",
+    "Idle recent window (days)": "Ventana reciente idle (días)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Cuántos días de vídeos recién añadidos debe considerar la generación idle (1–90)."
   },
   "it": {
     "General": "Generale",
@@ -1177,7 +1213,16 @@
     "Sprite tiles in RAM": "Tile sprite in RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Quanti JPG sprite decodificati tenere in RAM durante la riproduzione. Ogni tile 320×10×10 predefinito è circa 16 MB. 0 = copia solo in temp locale (meglio per dispositivi con poca RAM).",
     "Cropped thumbs in RAM (MB)": "Miniature ritagliate in RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Tieni i JPEG anteprima ritagliati in RAM così lo scorrimento non li ricodifica. 0 = disattivo (meglio per dispositivi con poca RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Tieni i JPEG anteprima ritagliati in RAM così lo scorrimento non li ricodifica. 0 = disattivo (meglio per dispositivi con poca RAM).",
+    "Show generator queue": "Mostra coda del generatore",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Mostra il file in generazione e i successivi elementi in coda idle/batch.",
+    "Idle: recently added only": "Idle: solo aggiunti di recente",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "In generazione idle, considera solo i video aggiunti alla libreria Kodi negli ultimi N giorni. Usa la data di modifica del file se la query della libreria fallisce.",
+    "Weak device preset": "Preimpostazione dispositivo debole",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Usa l’estrazione Fast seek e disattiva tone mapping HDR e decodifica hardware. Consigliato per CoreELEC, Amlogic, 4K o media di rete.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek applicato. Tone mapping HDR e decodifica hardware disattivati.",
+    "Idle recent window (days)": "Finestra idle recente (giorni)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Quanti giorni di video aggiunti di recente considerare per la generazione idle (1–90)."
   },
   "el": {
     "General": "Γενικά",
@@ -1413,7 +1458,16 @@
     "Sprite tiles in RAM": "Πλακίδια sprite στη RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Πόσα αποκωδικοποιημένα JPG sprite να μένουν στη RAM κατά την αναπαραγωγή. Κάθε προεπιλεγμένο πλακίδιο 320×10×10 είναι περίπου 16 MB. 0 = μόνο αντιγραφή σε τοπικό temp (καλύτερο για συσκευές με λίγη RAM).",
     "Cropped thumbs in RAM (MB)": "Περικομμένες μικρογραφίες στη RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Διατήρηση περικομμένων JPEG προεπισκόπησης στη RAM ώστε το scrubbing να μην τα επανακωδικοποιεί. 0 = ανενεργό (καλύτερο για συσκευές με λίγη RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Διατήρηση περικομμένων JPEG προεπισκόπησης στη RAM ώστε το scrubbing να μην τα επανακωδικοποιεί. 0 = ανενεργό (καλύτερο για συσκευές με λίγη RAM).",
+    "Show generator queue": "Εμφάνιση ουράς δημιουργίας",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Εμφανίζει το αρχείο που δημιουργείται και τα επόμενα στοιχεία στην ουρά idle/batch.",
+    "Idle: recently added only": "Ανενεργό: μόνο πρόσφατα προστεθέντα",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "Κατά την αδρανής δημιουργία, λάβετε υπόψη μόνο βίντεο που προστέθηκαν στη βιβλιοθήκη Kodi τις τελευταίες N ημέρες. Εναλλακτικά χρησιμοποιείται ο χρόνος τροποποίησης αρχείου.",
+    "Weak device preset": "Προεπιλογή αδύναμης συσκευής",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Χρησιμοποιήστε εξαγωγή Fast seek και απενεργοποιήστε HDR tone mapping και αποκωδικοποίηση υλικού. Συνιστάται για CoreELEC, Amlogic, 4K ή δικτυακά μέσα.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Εφαρμόστηκε Fast seek. Το HDR tone mapping και η αποκωδικοποίηση υλικού είναι απενεργοποιημένα.",
+    "Idle recent window (days)": "Παράθυρο πρόσφατων idle (ημέρες)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Πόσες ημέρες πρόσφατα προστεθέντων βίντεο να λάβει υπόψη η αδρανής δημιουργία (1–90)."
   },
   "nb": {
     "General": "Generelt",
@@ -1649,7 +1703,16 @@
     "Sprite tiles in RAM": "Sprite-fliser i RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Hvor mange dekodede sprite-JPG-er som skal holdes i RAM under avspilling. Hver standard 320×10×10-flis er omtrent 16 MB. 0 = kopier kun til lokal temp (bedre for enheter med lite RAM).",
     "Cropped thumbs in RAM (MB)": "Beskårne miniatyrer i RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Hold beskårne forhåndsvisnings-JPEG-er i RAM slik at spoling ikke koder på nytt. 0 = av (bedre for enheter med lite RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Hold beskårne forhåndsvisnings-JPEG-er i RAM slik at spoling ikke koder på nytt. 0 = av (bedre for enheter med lite RAM).",
+    "Show generator queue": "Vis generatorkø",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Viser filen som genereres nå og de neste elementene i idle-/batchkøen.",
+    "Idle: recently added only": "Inaktiv: kun nylig lagt til",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "Ved inaktiv generering, vurder bare videoer lagt til i Kodi-biblioteket de siste N dagene. Faller tilbake på filendringstid hvis biblioteksoppslaget feiler.",
+    "Weak device preset": "Forhåndsvalg for svak enhet",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Bruk Fast seek-ekstraksjon og slå av HDR-tonemapping og maskinvaredekoding. Anbefalt for CoreELEC, Amlogic, 4K eller nettverksmedia.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek er brukt. HDR-tonemapping og maskinvaredekoding er av.",
+    "Idle recent window (days)": "Inaktivt nylig vindu (dager)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hvor mange dager med nylig lagt til biblioteksvideoer inaktiv generering skal vurdere (1–90)."
   },
   "da": {
     "General": "Generelt",
@@ -1885,7 +1948,16 @@
     "Sprite tiles in RAM": "Sprite-fliser i RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Hvor mange dekodede sprite-JPG'er der skal holdes i RAM under afspilning. Hver standard 320×10×10-flise er cirka 16 MB. 0 = kopiér kun til lokal temp (bedre til enheder med lidt RAM).",
     "Cropped thumbs in RAM (MB)": "Beskårne thumbs i RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Hold beskårne forhåndsvisnings-JPEG'er i RAM, så spoling ikke omkoder. 0 = slået fra (bedre til enheder med lidt RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Hold beskårne forhåndsvisnings-JPEG'er i RAM, så spoling ikke omkoder. 0 = slået fra (bedre til enheder med lidt RAM).",
+    "Show generator queue": "Vis generatorkø",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Viser filen, der genereres nu, og de næste elementer i idle-/batchkøen.",
+    "Idle: recently added only": "Inaktiv: kun nyligt tilføjet",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "Ved inaktiv generering, overvej kun videoer tilføjet til Kodi-biblioteket de sidste N dage. Falder tilbage på filændringstid, hvis biblioteksforespørgslen fejler.",
+    "Weak device preset": "Forudindstilling til svag enhed",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Brug Fast seek-ekstraktion, og slå HDR-tonemapping og hardwareafkodning fra. Anbefalet til CoreELEC, Amlogic, 4K eller netværksmedier.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek er anvendt. HDR-tonemapping og hardwareafkodning er slået fra.",
+    "Idle recent window (days)": "Inaktivt nyligt vindue (dage)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hvor mange dage med nyligt tilføjede biblioteksvideoer inaktiv generering skal overveje (1–90)."
   },
   "sv": {
     "General": "Allmänt",
@@ -2121,6 +2193,15 @@
     "Sprite tiles in RAM": "Sprite-rutor i RAM",
     "How many decoded sprite JPGs to keep in RAM during playback. Each default 320×10×10 tile is about 16 MB. 0 = copy to local temp only (better for low-RAM devices).": "Hur många avkodade sprite-JPEG:er som ska hållas i RAM under uppspelning. Varje standardruta 320×10×10 är cirka 16 MB. 0 = kopiera bara till lokal temp (bättre för enheter med lite RAM).",
     "Cropped thumbs in RAM (MB)": "Beskurna thumbs i RAM (MB)",
-    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Behåll beskurna förhandsvisnings-JPEG:er i RAM så att spolning inte kodar om. 0 = av (bättre för enheter med lite RAM)."
+    "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices).": "Behåll beskurna förhandsvisnings-JPEG:er i RAM så att spolning inte kodar om. 0 = av (bättre för enheter med lite RAM).",
+    "Show generator queue": "Visa generatorkö",
+    "Shows the file currently generating and the next items waiting in the idle/batch queue.": "Visar filen som genereras nu och nästa objekt i idle-/batchkön.",
+    "Idle: recently added only": "Inaktiv: endast nyligen tillagda",
+    "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails.": "Vid inaktiv generering, överväg bara videor tillagda i Kodi-biblioteket de senaste N dagarna. Faller tillbaka på filens ändringstid om biblioteksfrågan misslyckas.",
+    "Weak device preset": "Förval för svag enhet",
+    "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Använd Fast seek-extraktion och stäng av HDR-tonemapping och hårdvaruavkodning. Rekommenderas för CoreELEC, Amlogic, 4K eller nätverksmedia.",
+    "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek tillämpad. HDR-tonemapping och hårdvaruavkodning är av.",
+    "Idle recent window (days)": "Inaktivt nyligen-fönster (dagar)",
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hur många dagar nyligen tillagda biblioteksfilmer inaktiv generering ska ta hänsyn till (1–90)."
   }
 }

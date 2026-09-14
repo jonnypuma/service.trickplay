@@ -15,6 +15,7 @@ from grid_settings import grid_tuple
 from pillow_installer import ensure_pillow_loaded
 from trickplay_generator import (
     GenerationResult,
+    _thumb_count_for_duration,
     generate_trickplay_for_media,
     iter_library_videos,
     probe_video_duration_seconds,
@@ -206,7 +207,9 @@ def validate_sidecar(
         media_path,
         debug=debug,
     )
-    thumb_count = int(duration / max(interval_ms / 1000.0, 0.001)) + 1
+    thumb_count = _thumb_count_for_duration(
+        duration, max(interval_ms / 1000.0, 0.001)
+    )
     expected_tiles = max(1, math.ceil(thumb_count / (cols * rows)))
     paths = _tile_paths(sidecar_dir)
     if len(paths) == expected_tiles and _load_valid_cache(

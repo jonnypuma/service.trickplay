@@ -625,14 +625,12 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         if seeking:
             self.prefetch.yield_for_scrub(lookup.tile_path)
             next_tile = self._adjacent_tile_path(lookup, scrub_direction)
-            prioritize = [lookup.tile_path]
+            # All tiles are scheduled once at playback load. During scrub only
+            # move the two useful tiles to the front; rebuilding the complete
+            # copy deque on every poll was O(tile count) at seek frequency.
+            self.prefetch.prioritize_tile_copy(lookup.tile_path)
             if next_tile:
-                prioritize.append(next_tile)
-            self.prefetch.schedule_all_tile_copies(
-                self.resolution.tile_paths if self.resolution else (),
-                prioritize=prioritize,
-                debug=runtime.debug_logging,
-            )
+                self.prefetch.prioritize_tile_copy(next_tile)
 
         duration_seconds = self._effective_duration_seconds()
         self.preview.show_preview(

@@ -1012,3 +1012,39 @@ msgstr "Zugeschnittene Vorschaubilder im RAM (MB)"
 msgctxt "#32256"
 msgid "Keep cropped preview JPEGs in RAM so scrubbing does not re-encode. 0 = off (better for low-RAM devices)."
 msgstr "Zugeschnittene Vorschau-JPEGs im RAM halten, damit Spulen nicht neu kodiert. 0 = aus (besser für Geräte mit wenig RAM)."
+
+msgctxt "#32257"
+msgid "Show generator queue"
+msgstr "Generatorwarteschlange anzeigen"
+
+msgctxt "#32258"
+msgid "Shows the file currently generating and the next items waiting in the idle/batch queue."
+msgstr "Zeigt die gerade generierte Datei und die nächsten Einträge in der Idle-/Stapelwarteschlange."
+
+msgctxt "#32259"
+msgid "Idle: recently added only"
+msgstr "Idle: nur kürzlich hinzugefügt"
+
+msgctxt "#32260"
+msgid "When generating while idle, only consider videos added to the Kodi library in the last N days. Falls back to file modification time if the library query fails."
+msgstr "Bei Idle-Generierung nur Videos berücksichtigen, die in den letzten N Tagen zur Kodi-Bibliothek hinzugefügt wurden. Fallback auf Dateiänderungszeit, wenn die Bibliotheksabfrage fehlschlägt."
+
+msgctxt "#32261"
+msgid "Weak device preset"
+msgstr "Voreinstellung schwaches Gerät"
+
+msgctxt "#32262"
+msgid "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media."
+msgstr "Fast-Seek-Extraktion verwenden und HDR-Tonemapping sowie Hardware-Dekodierung deaktivieren. Empfohlen für CoreELEC, Amlogic, 4K oder Netzwerkmedien."
+
+msgctxt "#32263"
+msgid "Applied Fast seek. HDR tone mapping and hardware decode are off."
+msgstr "Fast Seek angewendet. HDR-Tonemapping und Hardware-Dekodierung sind aus."
+
+msgctxt "#32264"
+msgid "Idle recent window (days)"
+msgstr "Idle-Zeitraum (Tage)"
+
+msgctxt "#32265"
+msgid "How many days of recently added library videos idle generation should consider (1–90)."
+msgstr "Wie viele Tage kürzlich hinzugefügter Bibliotheksvideos die Idle-Generierung berücksichtigen soll (1–90)."
