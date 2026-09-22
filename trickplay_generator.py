@@ -53,7 +53,13 @@ from trickplay_resolver import (
     resolve_media_path,
     trickplay_root_for_media,
 )
-from vfs_paths import local_path as _local_path, normalize_vfs_path, vfs_join, writable_os_path
+from vfs_paths import (
+    extended_length_path,
+    local_path as _local_path,
+    normalize_vfs_path,
+    vfs_join,
+    writable_os_path,
+)
 from temp_cleanup import (
     GENERATE_TEMP_ROOT,
     cleanup_orphaned_generator_temp,
@@ -314,9 +320,12 @@ def _path_exists(path: str) -> bool:
     if not path:
         return False
     local = _local_path(path)
-    if local:
-        if os.path.exists(local):
-            return True
+    if local and "://" not in local:
+        try:
+            if os.path.exists(extended_length_path(local)):
+                return True
+        except OSError:
+            pass
     try:
         return xbmcvfs.exists(path)
     except OSError:
@@ -448,33 +457,60 @@ def _remove_empty_sidecar_dir(directory: str) -> None:
         _remove_trickplay_root_if_empty(trickplay_root)
 
 
-def _atomic_promote_sidecar(staging_dir: str, final_dir: str) -> bool:
+def _os_error_text(exc: OSError) -> str:
+    winerror = getattr(exc, "winerror", None)
+    detail = exc.strerror or str(exc)
+    if winerror:
+        return f"WinError {winerror}: {detail}"
+    if exc.errno:
+        return f"errno {exc.errno}: {detail}"
+    return detail
+
+
+def _atomic_promote_sidecar(staging_dir: str, final_dir: str) -> tuple[bool, str]:
     """Replace a sidecar directory only after generation succeeds.
 
     Uses a mapped OS path when the VFS URL is an nfs/smb mount so network
-    sidecars get the same atomic rename as local disks.
+    sidecars get the same atomic rename as local disks. On Windows the rename
+    uses an extended-length path so folders past 260 characters still promote.
+    Returns (promoted, error message). The message is empty on success.
     """
     staging = writable_os_path(staging_dir)
     final = writable_os_path(final_dir)
     if not staging or not final:
-        return False
-    if not os.path.isdir(staging):
-        return False
+        return False, "no writable OS path"
+    staging_ext = extended_length_path(staging)
+    final_ext = extended_length_path(final)
+    if not os.path.isdir(staging_ext):
+        _log(
+            "Sidecar promote failed: staging directory missing "
+            f"(len={len(staging)}): {staging}",
+            xbmc.LOGERROR,
+        )
+        return False, "staging directory missing"
     backup = f"{final}.previous-{uuid.uuid4().hex[:8]}"
+    backup_ext = extended_length_path(backup)
     try:
-        if os.path.exists(final):
-            os.replace(final, backup)
-        os.replace(staging, final)
-        if os.path.exists(backup):
-            shutil.rmtree(backup, ignore_errors=True)
-        return True
-    except OSError:
+        if os.path.exists(final_ext):
+            os.replace(final_ext, backup_ext)
+        os.replace(staging_ext, final_ext)
+        if os.path.exists(backup_ext):
+            shutil.rmtree(backup_ext, ignore_errors=True)
+        return True, ""
+    except OSError as exc:
+        message = _os_error_text(exc)
+        _log(
+            f"Sidecar promote failed ({message}): "
+            f"staging len={len(staging)} final len={len(final)} "
+            f"{staging} -> {final}",
+            xbmc.LOGERROR,
+        )
         try:
-            if not os.path.exists(final) and os.path.exists(backup):
-                os.replace(backup, final)
+            if not os.path.exists(final_ext) and os.path.exists(backup_ext):
+                os.replace(backup_ext, final_ext)
         except OSError:
             pass
-        return False
+        return False, message
 
 
 def _has_jpg_tiles(directory: str) -> bool:
@@ -1471,8 +1507,16 @@ def _tile_frames(
 
 def _remove_tree(path: str) -> None:
     local = _local_path(path)
-    if os.path.isdir(local):
-        shutil.rmtree(local, ignore_errors=True)
+    if not local or "://" in local:
+        return
+    target = extended_length_path(local)
+    if os.path.isdir(target):
+        shutil.rmtree(target, ignore_errors=True)
+
+
+def _fail(metrics: dict[str, object], reason: str) -> bool:
+    metrics["failure_reason"] = reason
+    return False
 
 
 def _generate_trickplay_for_media(
@@ -1492,7 +1536,7 @@ def _generate_trickplay_for_media(
     media_path = normalize_vfs_path(media_path) if media_path else media_path
     if not media_path or not xbmcvfs.exists(media_path):
         _log(f"Media not found: {media_path!r}", xbmc.LOGWARNING)
-        return False
+        return _fail(metrics, "media not found")
 
     cols, rows = grid_tuple(settings.grid)
     final_output_dir = sidecar_dir_for_grid(
@@ -1537,7 +1581,7 @@ def _generate_trickplay_for_media(
     ffmpeg, ffprobe, env = resolve_generator_ffmpeg_tools(settings.ffmpeg_path)
     if not ffmpeg:
         _log("ffmpeg not found; install via batch Run or set Generator ffmpeg path", xbmc.LOGERROR)
-        return False
+        return _fail(metrics, "ffmpeg not found")
 
     filter_ctx = resolve_thumb_filter_context(
         hdr_tone_map_enabled=settings.hdr_tone_map,
@@ -1559,7 +1603,7 @@ def _generate_trickplay_for_media(
     )
     if duration <= 0:
         _log(f"Could not determine duration for {media_path}", xbmc.LOGWARNING)
-        return False
+        return _fail(metrics, "could not read media duration")
 
     ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
     dovi_prep_dir: str | None = None
@@ -1569,7 +1613,7 @@ def _generate_trickplay_for_media(
                 "Dolby Vision dovi_tool prep requires a local file path",
                 xbmc.LOGERROR,
             )
-            return False
+            return _fail(metrics, "Dolby Vision prep requires a local file path")
         prepared_input, dovi_prep_dir = prepare_dovi_zscale_media(
             media_path,
             ffmpeg,
@@ -1580,7 +1624,9 @@ def _generate_trickplay_for_media(
             should_cancel=should_cancel,
         )
         if not prepared_input:
-            return False
+            if _is_cancelled(should_cancel):
+                return False
+            return _fail(metrics, "Dolby Vision prep failed")
         if dovi_prep_dir:
             ffmpeg_input = prepared_input
             use_vfs_stream = False
@@ -2153,11 +2199,13 @@ def _generate_trickplay_for_media(
                 _remove_tree(tile_work_dir)
 
         if success and not cancelled and not _is_cancelled(should_cancel) and atomic_staging:
-            if _atomic_promote_sidecar(output_dir, final_output_dir):
+            promoted, promote_error = _atomic_promote_sidecar(output_dir, final_output_dir)
+            if promoted:
                 _log(f"Promoted completed sidecar: {final_output_dir}")
             else:
                 success = False
-                metrics["failure_reason"] = "atomic sidecar promotion failed"
+                detail = f": {promote_error}" if promote_error else ""
+                metrics["failure_reason"] = f"atomic sidecar promotion failed{detail}"
                 _log(
                     f"Could not promote completed sidecar to {final_output_dir}",
                     xbmc.LOGERROR,
@@ -2182,7 +2230,8 @@ def _generate_trickplay_for_media(
                     f"Generated {tile_count} tile(s) for {os.path.basename(media_path)}"
                 )
         else:
-            metrics["failure_reason"] = "generation failed"
+            if not metrics.get("failure_reason"):
+                metrics["failure_reason"] = "generation failed"
             _log(
                 f"Generation failed for {os.path.basename(media_path)}",
                 xbmc.LOGWARNING,

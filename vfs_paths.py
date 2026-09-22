@@ -115,6 +115,27 @@ def writable_os_path(path: str) -> str:
     return ""
 
 
+def extended_length_path(path: str) -> str:
+    """Windows path prefixed so os.replace and rmtree work past 260 characters.
+
+    ``Y:\\TV\\...`` becomes ``\\\\?\\Y:\\TV\\...``. ``\\\\server\\share\\...`` becomes
+    ``\\\\?\\UNC\\server\\share\\...``. VFS URLs and non-Windows paths are unchanged.
+    Absolute paths are not passed through os.path.abspath; that call can fail once
+    the path is already longer than the legacy limit.
+    """
+    if os.name != "nt" or not path or "://" in path or path.startswith("\\\\?\\"):
+        return path
+    normalized = path.replace("/", "\\")
+    if normalized.startswith("\\\\"):
+        rest = normalized[2:]
+        if rest.upper().startswith("UNC\\"):
+            return "\\\\?\\" + rest
+        return "\\\\?\\UNC\\" + rest
+    if len(normalized) >= 3 and normalized[1] == ":" and normalized[2] == "\\":
+        return "\\\\?\\" + normalized
+    return path
+
+
 def network_path_status(path: str) -> tuple[str, str]:
     """Return (transport, mode) for user-facing generation diagnostics."""
     normalized = normalize_vfs_path(path)

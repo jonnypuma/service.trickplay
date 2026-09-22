@@ -23,7 +23,6 @@ from library_update_batch import LibraryUpdateBatch
 from thumb_cropper import (
     begin_decoded_tile_session,
     end_decoded_tile_session,
-    get_cropped_thumb_path,
 )
 from preview_dialog import (
     PREVIEW_PROPERTIES,
@@ -464,16 +463,6 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             warm_lookup = lookup_thumbnail(
                 self.resolution, play_seconds, self._interval_ms()
             )
-            if warm_lookup is not None:
-                get_cropped_thumb_path(
-                    warm_lookup.tile_path,
-                    warm_lookup.col,
-                    warm_lookup.row,
-                    warm_lookup.thumb_width,
-                    warm_lookup.thumb_height,
-                    debug=runtime.debug_logging,
-                )
-                self.prefetch.note_tile_ready(warm_lookup.tile_path)
             first_tile = (
                 self.resolution.tile_paths[0] if self.resolution.tile_paths else ""
             )
@@ -490,6 +479,12 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                 debug=runtime.debug_logging,
             )
             if warm_lookup is not None:
+                self.prefetch.start_playback_tile_cache(
+                    self.resolution,
+                    warm_lookup,
+                    self._interval_ms(),
+                    settings=prefetch_settings,
+                )
                 self.prefetch.schedule_playhead_warm(
                     self.resolution,
                     warm_lookup,
@@ -497,6 +492,8 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                     settings=prefetch_settings,
                     debug=runtime.debug_logging,
                 )
+            if prefetch_settings.preload_tiles:
+                self.prefetch.enable_episode_precrop()
             if playing_file == self.playing_file:
                 self._pending_seek_ui_warm = True
         except Exception as exc:
@@ -621,9 +618,13 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
 
         prefetch_settings = read_prefetch_settings()
         runtime = read_runtime_settings()
-        # Free NFS / crop bandwidth before the foreground thumb path runs.
+        # Free crop bandwidth before the foreground thumb path runs.
         if seeking:
-            self.prefetch.yield_for_scrub(lookup.tile_path)
+            self.prefetch.yield_for_scrub(
+                lookup.tile_path,
+                keep_index=lookup.thumb_index,
+                scrub_direction=scrub_direction,
+            )
             next_tile = self._adjacent_tile_path(lookup, scrub_direction)
             # All tiles are scheduled once at playback load. During scrub only
             # move the two useful tiles to the front; rebuilding the complete
@@ -649,11 +650,16 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                 scrub_direction=scrub_direction,
                 settings=prefetch_settings,
                 debug=runtime.debug_logging,
+                seeking=seeking,
             )
             if seeking:
-                # Neighbour jobs for tiles that are still on NFS wait until
-                # the copy worker finishes; keep crops that are already local.
-                self.prefetch.yield_for_scrub(lookup.tile_path)
+                # Neighbour jobs that are still far from the cursor wait; keep
+                # only the current window so a long drag does not FIFO the path.
+                self.prefetch.yield_for_scrub(
+                    lookup.tile_path,
+                    keep_index=lookup.thumb_index,
+                    scrub_direction=scrub_direction,
+                )
         return True
 
     def _adjacent_tile_path(self, lookup, scrub_direction: int) -> str | None:
@@ -725,7 +731,11 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         )
 
     def _prepare_seek_ui_preview(self, play_seconds: int) -> None:
-        """Sync-crop playhead and prefetch neighbors when seek OSD opens."""
+        """Queue the playhead sprite and neighbors when seek OSD opens.
+
+        Does not crop on this thread, so the seek bar is not blocked on a
+        cold sprite decode.
+        """
         if not self._preview_allowed():
             return
         if self._skippy_suppress_active():
@@ -738,15 +748,13 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
         if lookup is None:
             return
 
-        get_cropped_thumb_path(
-            lookup.tile_path,
-            lookup.col,
-            lookup.row,
-            lookup.thumb_width,
-            lookup.thumb_height,
-            debug=runtime.debug_logging,
-        )
         if prefetch_settings.enabled:
+            self.prefetch.start_playback_tile_cache(
+                self.resolution,
+                lookup,
+                interval_ms,
+                settings=prefetch_settings,
+            )
             self.prefetch.schedule_all_tile_copies(
                 self.resolution.tile_paths,
                 prioritize=(lookup.tile_path,),
@@ -1109,8 +1117,21 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
             and active_profile().clears_preview_on_osd_handoff()
         ):
             self._clear_preview_session("compact seekbar -> full OSD")
+            # Drop the scrub-path FIFO; local sprite copies stay warm.
+            self.prefetch.cancel(clear_copies=False)
 
+        compact_seekbar_rising = compact_seekbar and not self._had_compact_seekbar
         self._had_compact_seekbar = compact_seekbar
+
+        if (
+            compact_seekbar_rising
+            and self._had_seek_ui
+            and not seek_ui_rising
+        ):
+            # Seek UI never fell (full OSD still counted as seek UI). Re-warm
+            # the playhead so the next scrub starts from the current cell.
+            self.prefetch.cancel(clear_copies=False)
+            self._prepare_seek_ui_preview(play_seconds)
 
         if dialog_seekbar and not self._had_dialog_seekbar:
             if self.last_preview_second >= 0 or self.preview_visible:
@@ -1136,9 +1157,6 @@ class TrickplayService(SkippySuppressMixin, PreviewHoldMixin):
                 self.was_seeking = True
                 self._touch_seek_hold()
                 self._set_preview_visible(True)
-                self._maybe_playback_prefetch(
-                    target_second, high_priority=True, force=False
-                )
             self._next_poll_ms = self._adaptive_poll_ms()
             return
 

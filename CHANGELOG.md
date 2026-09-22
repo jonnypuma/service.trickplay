@@ -4,6 +4,56 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+From 9.0.0, minor versions are 0–9 (`9.1.0` … `9.9.0`), then the next major.
+
+## [9.2.0] - 2026-09-22
+
+### Fixed
+
+- **Long Windows sidecar paths fail after the tiles are written** — the
+  finished folder was renamed with `os.replace`, which stops at 260 characters.
+  Deep `Y:\TV\...` paths were generated and then discarded. Rename and cleanup
+  now use the `\\?\` extended path, and the Windows error is logged.
+- **Batch summary hid the real error** — a promote failure was overwritten with
+  "generation failed", and an unreadable file was listed with no reason. The
+  summary keeps the promote error and records media not found, ffmpeg missing,
+  unreadable duration, and Dolby Vision prep failure.
+
+## [9.1.0] - 2026-09-22
+
+### Changed
+
+- **Cache the current sprite as soon as playback starts** — the playhead cell
+  is cropped first, then the rest of that tile, without waiting for the seek
+  bar. Preload still continues with the other sprites.
+- **Seek bar does not wait on a cold crop** — opening the timebar no longer
+  decodes a sprite on the service thread.
+- **Scrub keeps a wider neighbor window** — while seeking, prefetch keeps 20
+  thumbs ahead and 10 behind. Cells outside that window are dropped.
+- **Stale scrub crops are abandoned** — if the cursor moves before JPEG encode,
+  that cell is dropped and the latest thumb is published as soon as it exists.
+
+## [9.0.0] - 2026-09-15
+
+### Added
+
+- **Remaining generation queue** — after a library scan, unfinished media paths
+  are stored with the completed set. A crash or reboot no longer requires walking
+  the library again.
+- **Resume vs Rescan on Run** — if a remaining queue exists for the current
+  folder and generator settings, Run asks **Resume N files** or **Rescan library**.
+  Idle generation uses the same saved queue.
+
+## [8.18.7] - 2026-09-14
+
+### Fixed
+
+- **Scrub shows the cursor cell, not the path** — after opening the large OSD
+  and returning to the timebar, prefetch kept every already-local whole-tile
+  crop and then drained them when you stopped. Scrub now keeps only nearby
+  high-priority cells, skips whole-tile enqueue while seeking, yields the
+  prefetch worker to the visible crop, and clears the leftover FIFO on OSD
+  handoff.
 
 ## [8.18.6] - 2026-09-14
 

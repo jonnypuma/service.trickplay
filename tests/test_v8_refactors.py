@@ -108,7 +108,8 @@ class NetworkAtomicPromoteTests(unittest.TestCase):
                 "trickplay_generator.writable_os_path",
                 side_effect=lambda path: mapping.get(path, ""),
             ):
-                self.assertTrue(_atomic_promote_sidecar(nfs_staging, nfs_final))
+                promoted, error = _atomic_promote_sidecar(nfs_staging, nfs_final)
+                self.assertTrue(promoted, error)
             self.assertEqual((final / "0.jpg").read_bytes(), b"new")
             self.assertFalse(staging.exists())
 
@@ -129,9 +130,31 @@ class IdleResumeTests(unittest.TestCase):
                 "generator_worker.load_completed",
                 return_value={"/media/a.mkv", "/media/c.mkv"},
             ),
+            patch("generator_worker.load_remaining", return_value=[]),
+            patch("generator_worker.begin_or_update"),
         ):
             worker._refresh_idle_candidates(settings)
         self.assertEqual(worker._idle_candidates, ["/media/b.mkv"])
+
+    def test_idle_uses_saved_remaining_without_rescan(self) -> None:
+        worker = GeneratorWorker()
+        settings = _settings()
+        with (
+            patch(
+                "generator_worker.collect_generation_candidates"
+            ) as collect,
+            patch("generator_worker.load_completed", return_value=set()),
+            patch(
+                "generator_worker.load_remaining",
+                return_value=["/media/saved.mkv"],
+            ),
+            patch("generator_worker.begin_or_update") as persist,
+        ):
+            worker._refresh_idle_candidates(settings)
+        collect.assert_not_called()
+        persist.assert_called_once()
+        self.assertEqual(worker._idle_candidates, ["/media/saved.mkv"])
+        self.assertEqual(persist.call_args.kwargs.get("remaining"), ["/media/saved.mkv"])
 
     def test_successful_idle_job_marks_completed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

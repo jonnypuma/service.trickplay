@@ -354,8 +354,8 @@ msgid "Frame extraction mode"
 msgstr "Frame-extractiemodus"
 
 msgctxt "#32077"
-msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
-msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate). Fast: seek before input per thumbnail for wide intervals, or one fps decode pass per tile when that is faster (falls back to per-frame seek if fps-batch fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgid "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate); a failed stamp reuses the previous JPEG. Fast: seek before input per thumbnail for intervals above 5s, or one fps decode pass per tile at 5s or denser (falls back to per-frame seek if that pass is short or fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
+msgstr "Accurate: one ffmpeg call per thumbnail, seek after input (slow, frame-accurate); a failed stamp reuses the previous JPEG. Fast: seek before input per thumbnail for intervals above 5s, or one fps decode pass per tile at 5s or denser (falls back to per-frame seek if that pass is short or fails). Fast seek: always one seek per thumbnail — best for weaker hardware such as Amlogic devices running CoreELEC, especially 4K or network media. Fast (batch seeks): several seek-before-input captures per ffmpeg process (small chunks) with per-frame Fast fallback; optional PyAV on local SDR. Biggest gains on local SDR files."
 
 msgctxt "#32080"
 msgid "Accurate (slow)"
@@ -1048,3 +1048,15 @@ msgstr "Idle recent venster (dagen)"
 msgctxt "#32265"
 msgid "How many days of recently added library videos idle generation should consider (1–90)."
 msgstr "Hoeveel dagen recent toegevoegde bibliotheekvideo’s idle-generatie moet meenemen (1–90)."
+
+msgctxt "#32266"
+msgid "Resume %d remaining file(s) from the previous scan? This skips walking the library again."
+msgstr "%d resterende bestand(en) van de vorige scan hervatten? De bibliotheek wordt niet opnieuw doorlopen."
+
+msgctxt "#32267"
+msgid "Resume"
+msgstr "Hervatten"
+
+msgctxt "#32268"
+msgid "Rescan library"
+msgstr "Bibliotheek opnieuw scannen"

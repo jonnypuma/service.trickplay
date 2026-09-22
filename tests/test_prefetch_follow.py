@@ -21,10 +21,14 @@ for _name in ("xbmcaddon", "xbmcvfs", "xbmcgui"):
 from prefetch import (
     ThumbPrefetch,
     _follow_warm_indices,
+    _neighbor_indices,
     _symmetric_window_indices,
     copy_order_for_tiles,
     nearest_ready_thumb_path,
     upcoming_tile_to_warm,
+    PREFETCH_CROP_BATCH_MAX,
+    SCRUB_AHEAD,
+    SCRUB_BEHIND,
 )
 from prefetch_settings import (
     PLAYBACK_WARM_SECONDS,
@@ -56,6 +60,21 @@ class PrefetchFollowIndicesTests(unittest.TestCase):
             center_index=10, last_index=10, max_index=20, radius=2
         )
         self.assertEqual(indices, [])
+
+    def test_neighbor_indices_seeking_uses_forward_window(self) -> None:
+        settings = PrefetchSettings(radius_seconds=120, max_queue=48)
+        indices = _neighbor_indices(
+            10, 99, 1, settings, 10000, seeking=True
+        )
+        self.assertEqual(SCRUB_AHEAD, 20)
+        self.assertEqual(SCRUB_BEHIND, 10)
+        self.assertEqual(
+            indices,
+            list(range(11, 31)) + list(range(9, -1, -1)),
+        )
+        idle = _neighbor_indices(10, 99, 1, settings, 10000)
+        self.assertEqual(len(indices), SCRUB_AHEAD + SCRUB_BEHIND)
+        self.assertLess(len(idle), len(indices))
 
     def test_playback_warm_converts_time_window_to_indices(self) -> None:
         settings = PrefetchSettings(radius_seconds=120)
@@ -309,7 +328,7 @@ class PrefetchPriorityTests(unittest.TestCase):
         self.assertEqual(tiles, ["/tiles/2.jpg"])
 
     @patch("prefetch.get_cached_thumb_path", return_value=None)
-    def test_yield_for_scrub_keeps_already_local_tiles(
+    def test_yield_for_scrub_drops_already_local_tiles(
         self, _mock_cached: MagicMock
     ) -> None:
         prefetch = ThumbPrefetch()
@@ -327,7 +346,119 @@ class PrefetchPriorityTests(unittest.TestCase):
 
         with prefetch._lock:
             indices = [item.lookup.thumb_index for item in prefetch._queue]
-        self.assertEqual(indices, [201, 1, 2])
+        self.assertEqual(indices, [201])
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_yield_for_scrub_keeps_only_nearby_preferred_cells(
+        self, _mock_cached: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
+        prefetch._debug = False
+
+        for index in (10, 48, 49, 50, 80):
+            prefetch._enqueue(self._lookup(index, "/tiles/2.jpg"), high_priority=True)
+
+        prefetch.yield_for_scrub("/tiles/2.jpg", keep_index=50, scrub_direction=1)
+
+        with prefetch._lock:
+            indices = [item.lookup.thumb_index for item in prefetch._queue]
+        self.assertEqual(indices, [50, 49, 48])
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_yield_for_scrub_keeps_forward_window(
+        self, _mock_cached: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
+        prefetch._debug = False
+
+        for index in (35, 40, 65, 70, 75):
+            prefetch._enqueue(self._lookup(index, "/tiles/0.jpg"), high_priority=True)
+
+        prefetch.yield_for_scrub("/tiles/0.jpg", keep_index=50, scrub_direction=1)
+
+        with prefetch._lock:
+            indices = [item.lookup.thumb_index for item in prefetch._queue]
+        self.assertEqual(indices, [70, 65, 40])
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_pop_crop_batch_does_not_drain_whole_tile(
+        self, _mock_cached: MagicMock
+    ) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._ensure_worker = MagicMock()  # type: ignore[method-assign]
+        for index in range(10):
+            prefetch._enqueue(self._lookup(index), high_priority=False)
+
+        batch = prefetch._pop_crop_batch()
+        self.assertIsNotNone(batch)
+        assert batch is not None
+        self.assertEqual(len(batch), PREFETCH_CROP_BATCH_MAX)
+        self.assertEqual(
+            [lookup.thumb_index for lookup in batch],
+            list(range(PREFETCH_CROP_BATCH_MAX)),
+        )
+        with prefetch._lock:
+            remaining = [item.lookup.thumb_index for item in prefetch._queue]
+        self.assertEqual(remaining, list(range(PREFETCH_CROP_BATCH_MAX, 10)))
+
+    @patch("prefetch.get_cached_thumb_path", return_value=None)
+    def test_schedule_neighbors_seeking_skips_whole_tile(
+        self, _mock_cached: MagicMock
+    ) -> None:
+        resolution = TrickplayResolution(
+            width=320,
+            tile_width=10,
+            tile_height=10,
+            tiles_dir="/tiles",
+            tile_paths=("/tiles/0.jpg",),
+            thumb_width=320,
+            thumb_height=180,
+            thumbnail_count=100,
+        )
+        lookup = self._lookup(10)
+        settings = PrefetchSettings(
+            enabled=True,
+            whole_tile=True,
+            radius_seconds=120,
+            max_queue=48,
+        )
+        prefetch = ThumbPrefetch()
+        prefetch._schedule_indices = MagicMock()  # type: ignore[method-assign]
+        prefetch._schedule_tile_cells = MagicMock()  # type: ignore[method-assign]
+        prefetch.maybe_warm_upcoming_tile = MagicMock()  # type: ignore[method-assign]
+
+        prefetch.schedule_neighbors(
+            resolution,
+            lookup,
+            10000,
+            scrub_direction=1,
+            settings=settings,
+            seeking=True,
+        )
+
+        prefetch._schedule_indices.assert_called_once()
+        self.assertEqual(
+            prefetch._schedule_indices.call_args.args[2],
+            list(range(11, 31)) + list(range(9, -1, -1)),
+        )
+        prefetch._schedule_tile_cells.assert_not_called()
+        prefetch.maybe_warm_upcoming_tile.assert_not_called()
+
+        prefetch.schedule_neighbors(
+            resolution,
+            lookup,
+            10000,
+            scrub_direction=1,
+            settings=settings,
+        )
+        prefetch._schedule_tile_cells.assert_called_once()
+        prefetch.maybe_warm_upcoming_tile.assert_called_once()
 
 
     @patch("prefetch.get_cached_thumb_path", return_value=None)
@@ -571,6 +702,30 @@ class EpisodePreloadTests(unittest.TestCase):
         self.assertEqual(calls, ["/tiles/0.jpg", "/tiles/1.jpg"])
         self.assertTrue(
             prefetch._enqueue_tile_decode.call_args_list[0].kwargs.get("high_priority")
+        )
+
+    def test_start_playback_tile_cache_precrops_playhead_sprite(self) -> None:
+        prefetch = ThumbPrefetch()
+        prefetch._enqueue_tile_decode = MagicMock()  # type: ignore[method-assign]
+        prefetch.prioritize_tile_copy = MagicMock()  # type: ignore[method-assign]
+        resolution = self._resolution()
+        lookup = TrickplayLookup(
+            tile_path="/tiles/1.jpg",
+            col=3,
+            row=1,
+            thumb_width=320,
+            thumb_height=180,
+            thumb_index=13,
+            target_second=130,
+        )
+        prefetch.start_playback_tile_cache(
+            resolution, lookup, 10000, PrefetchSettings(enabled=True, preload_tiles=False)
+        )
+        self.assertTrue(prefetch._episode_precrop)
+        self.assertEqual(prefetch._priority_cell, ("/tiles/1.jpg", 3, 1))
+        prefetch.prioritize_tile_copy.assert_called_once_with("/tiles/1.jpg")
+        prefetch._enqueue_tile_decode.assert_called_once_with(
+            "/tiles/1.jpg", high_priority=True
         )
 
     def test_enqueue_decode_is_fifo_unless_high_priority(self) -> None:

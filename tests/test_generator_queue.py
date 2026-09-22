@@ -151,6 +151,8 @@ class IdleRecentWorkerTests(unittest.TestCase):
                 return_value=plan,
             ),
             patch("generator_worker.load_completed", return_value=set()),
+            patch("generator_worker.load_remaining", return_value=[]),
+            patch("generator_worker.begin_or_update"),
             patch(
                 "generator_worker.apply_recent_idle_filter",
                 return_value=["/media/b.mkv"],

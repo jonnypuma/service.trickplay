@@ -16,7 +16,7 @@ sys.modules.setdefault("xbmcvfs", MagicMock())
 sys.modules.setdefault("xbmcaddon", MagicMock())
 sys.modules.setdefault("xbmcgui", MagicMock())
 
-from vfs_paths import normalize_vfs_path, vfs_join
+from vfs_paths import extended_length_path, normalize_vfs_path, vfs_join
 
 
 class VfsJoinTests(unittest.TestCase):
@@ -89,6 +89,36 @@ class WindowsUncMapTests(unittest.TestCase):
         ), patch("ffmpeg_media.os.path.isdir") as isdir:
             self.assertIsNone(_map_network_url_to_local(url))
         isdir.assert_not_called()
+
+
+class ExtendedLengthPathTests(unittest.TestCase):
+    def test_prefixes_drive_and_unc_on_windows(self) -> None:
+        with patch("vfs_paths.os.name", "nt"):
+            self.assertEqual(
+                extended_length_path(r"Y:\TV\Show\file"),
+                "\\\\?\\Y:\\TV\\Show\\file",
+            )
+            self.assertEqual(
+                extended_length_path("Y:/TV/Show/file"),
+                "\\\\?\\Y:\\TV\\Show\\file",
+            )
+            self.assertEqual(
+                extended_length_path(r"\\server\share\Show"),
+                "\\\\?\\UNC\\server\\share\\Show",
+            )
+            self.assertEqual(
+                extended_length_path(r"\\?\Y:\TV\Show"),
+                "\\\\?\\Y:\\TV\\Show",
+            )
+            self.assertEqual(
+                extended_length_path("nfs://server/share/a.mkv"),
+                "nfs://server/share/a.mkv",
+            )
+            self.assertEqual(extended_length_path("tiles"), "tiles")
+
+    def test_unchanged_off_windows(self) -> None:
+        with patch("vfs_paths.os.name", "posix"):
+            self.assertEqual(extended_length_path(r"Y:\TV\Show"), r"Y:\TV\Show")
 
 
 if __name__ == "__main__":

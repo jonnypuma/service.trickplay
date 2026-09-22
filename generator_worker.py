@@ -9,7 +9,7 @@ from enum import Enum
 
 import xbmc
 
-from generation_state import mark_completed, load_completed
+from generation_state import begin_or_update, load_completed, load_remaining, mark_completed
 from generator_settings import GeneratorSettings, read_generator_settings
 from generator_status import GeneratorQueueSnapshot, write_queue_snapshot
 from library_recent import apply_recent_idle_filter
@@ -169,29 +169,47 @@ class GeneratorWorker:
             self._idle_candidates = []
             self._publish_status()
             return
-        candidates = collect_generation_candidates(root, settings).candidates
-        completed = load_completed(root, settings)
-        if completed:
-            before = len(candidates)
-            candidates = [path for path in candidates if path not in completed]
-            skipped = before - len(candidates)
-            if skipped:
-                _log(f"Idle resume: skipping {skipped} completed file(s) under {root}")
-        if getattr(settings, "idle_recent_only", False):
-            days = max(int(getattr(settings, "idle_recent_days", 14) or 14), 1)
-            before_recent = len(candidates)
-            candidates = apply_recent_idle_filter(candidates, days)
-            dropped = before_recent - len(candidates)
-            if dropped:
-                _log(
-                    f"Idle recent-only: dropped {dropped} older file(s); "
-                    f"{len(candidates)} remain from the last {days} day(s)"
-                )
+
+        remaining = load_remaining(root, settings, check_exists=True)
+        scanned = False
+        if remaining:
+            candidates = remaining
+            completed = load_completed(root, settings)
+            _log(
+                f"Idle resume: {len(candidates)} remaining file(s) "
+                f"(skipped library scan) under {root}"
+            )
+        else:
+            scanned = True
+            candidates = collect_generation_candidates(root, settings).candidates
+            completed = load_completed(root, settings)
+            if completed:
+                before = len(candidates)
+                candidates = [path for path in candidates if path not in completed]
+                skipped = before - len(candidates)
+                if skipped:
+                    _log(
+                        f"Idle resume: skipping {skipped} completed file(s) under {root}"
+                    )
+            if getattr(settings, "idle_recent_only", False):
+                days = max(int(getattr(settings, "idle_recent_days", 14) or 14), 1)
+                before_recent = len(candidates)
+                candidates = apply_recent_idle_filter(candidates, days)
+                dropped = before_recent - len(candidates)
+                if dropped:
+                    _log(
+                        f"Idle recent-only: dropped {dropped} older file(s); "
+                        f"{len(candidates)} remain from the last {days} day(s)"
+                    )
+
+        begin_or_update(root, settings, completed, remaining=candidates)
         self._idle_candidates = candidates
         self._idle_scan_cursor = 0
         if settings.debug and self._idle_candidates:
+            source = "queue" if not scanned else "scan"
             _log(
-                f"Idle scan found {len(self._idle_candidates)} candidate(s) under {root}"
+                f"Idle {source} found {len(self._idle_candidates)} candidate(s) "
+                f"under {root}"
             )
         self._publish_status()
 

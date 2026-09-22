@@ -35,6 +35,14 @@ from vfs_paths import is_remote_vfs_url, local_path as _vfs_local_path
 MAX_TILE_ENQUEUE = 20
 # Cap idle whole-tile floods so NFS sprite copies do not starve scrub crops.
 IDLE_TILE_MAX_ENQUEUE = 24
+# During scrub, keep cells ahead of the cursor (the direction of travel) and
+# fewer behind it. Anything outside this window is dropped so a long drag does
+# not replay every intermediate thumb after you stop.
+SCRUB_AHEAD = 20
+SCRUB_BEHIND = 10
+# Same-sprite batch crops are faster idle, but a full-tile drain blocks the
+# exact cell the overlay needs. Small batches let a newly queued cursor jump.
+PREFETCH_CROP_BATCH_MAX = 4
 # Copy+decode the next sprite once playhead prefetch is this far through the
 # current tile, so the first cell of 1.jpg is already in RAM.
 UPCOMING_TILE_WARM_FRACTION = 0.80
@@ -94,6 +102,8 @@ def _neighbor_indices(
     scrub_direction: int,
     settings: PrefetchSettings,
     interval_ms: int,
+    *,
+    seeking: bool = False,
 ) -> list[int]:
     """Return thumb indices in prefetch priority order."""
     ordered: list[int] = []
@@ -105,9 +115,14 @@ def _neighbor_indices(
         seen.add(index)
         ordered.append(index)
 
-    radius_ahead = settings.radius_ahead(interval_ms)
-    radius_behind = settings.radius_behind(interval_ms)
-    radius_symmetric = settings.radius_symmetric(interval_ms)
+    if seeking:
+        radius_ahead = SCRUB_AHEAD
+        radius_behind = SCRUB_BEHIND
+        radius_symmetric = SCRUB_AHEAD
+    else:
+        radius_ahead = settings.radius_ahead(interval_ms)
+        radius_behind = settings.radius_behind(interval_ms)
+        radius_symmetric = settings.radius_symmetric(interval_ms)
 
     if scrub_direction > 0:
         for distance in range(1, radius_ahead + 1):
@@ -125,6 +140,14 @@ def _neighbor_indices(
             add(center_index - distance)
 
     return ordered
+
+
+def _scrub_index_in_window(index: int, center: int, scrub_direction: int) -> bool:
+    """True when ``index`` is inside the scrub keep window around ``center``."""
+    delta = index - center
+    if scrub_direction < 0:
+        return -SCRUB_AHEAD <= delta <= SCRUB_BEHIND
+    return -SCRUB_BEHIND <= delta <= SCRUB_AHEAD
 
 
 def _symmetric_window_indices(
@@ -338,6 +361,9 @@ class ThumbPrefetch:
         self._episode_interval = 0
         self._episode_want_precrop = False
         self._episode_precrop = False
+        self._episode_precrop_queued = False
+        # (tile_path, col, row) cropped first when a sprite pre-crop starts.
+        self._priority_cell: tuple[str, int, int] | None = None
 
     def cancel(self, *, clear_copies: bool = True) -> None:
         with self._lock:
@@ -366,6 +392,8 @@ class ThumbPrefetch:
                 self._episode_interval = 0
                 self._episode_want_precrop = False
                 self._episode_precrop = False
+                self._episode_precrop_queued = False
+                self._priority_cell = None
 
     def tile_is_locally_ready(self, tile_path: str) -> bool:
         """True when the sprite is already copied locally or is a local file."""
@@ -384,14 +412,20 @@ class ThumbPrefetch:
         except OSError:
             return False
 
-    def yield_for_scrub(self, preferred_tile: str | None = None) -> None:
-        """Drop queued NFS work that would contend with a scrub crop.
+    def yield_for_scrub(
+        self,
+        preferred_tile: str | None = None,
+        *,
+        keep_index: int | None = None,
+        scrub_direction: int = 0,
+    ) -> None:
+        """Drop queued prefetch crops that would delay the current scrub cell.
 
-        Keeps high-priority items for ``preferred_tile`` and any crops whose
-        sprite is already local so fast scrub does not cancel ready work.
+        Keeps high-priority items for ``preferred_tile``. When ``keep_index``
+        is set, only cells in the scrub window stay queued (+20 in the
+        direction of travel, -10 behind). Cells outside that window are
+        dropped so a long drag does not replay the path.
         """
-        with self._copy_lock:
-            copied = set(self._copy_done)
         with self._lock:
             if not self._queue:
                 dropped = 0
@@ -400,12 +434,19 @@ class ThumbPrefetch:
                 keys: set[tuple[str, int, int, int, int]] = set()
                 for item in self._queue:
                     tile = item.lookup.tile_path
-                    keep_preferred = (
-                        bool(preferred_tile)
-                        and item.high_priority
-                        and tile == preferred_tile
-                    )
-                    if keep_preferred or self._tile_work_is_local(tile, copied):
+                    if keep_index is not None:
+                        keep = _scrub_index_in_window(
+                            item.lookup.thumb_index,
+                            keep_index,
+                            scrub_direction,
+                        )
+                    else:
+                        keep = (
+                            bool(preferred_tile)
+                            and item.high_priority
+                            and tile == preferred_tile
+                        )
+                    if keep:
                         kept.append(item)
                         keys.add(_cache_key(item.lookup))
                 dropped = len(self._queue) - len(kept)
@@ -415,23 +456,12 @@ class ThumbPrefetch:
                 _log(
                     f"Prefetch yield for scrub"
                     f"{f' tile={preferred_tile}' if preferred_tile else ''}"
-                    f" dropped {dropped} remote cell(s)"
+                    f" dropped {dropped} cell(s)"
                 )
         if preferred_tile:
             self.prioritize_tile_copy(preferred_tile)
             if not self._tile_decode_is_done(preferred_tile):
                 self._enqueue_tile_decode(preferred_tile, high_priority=True)
-
-    def _tile_work_is_local(self, tile_path: str, copied: set[str]) -> bool:
-        if tile_path in copied or has_prepared_temp_copy(tile_path):
-            return True
-        if is_remote_vfs_url(tile_path):
-            return False
-        local = _vfs_local_path(tile_path)
-        try:
-            return bool(local and os.path.isfile(local))
-        except OSError:
-            return False
 
     def schedule_all_tile_copies(
         self,
@@ -496,6 +526,30 @@ class ThumbPrefetch:
         if first:
             self._enqueue_tile_decode(first, high_priority=True)
 
+    def start_playback_tile_cache(
+        self,
+        resolution: TrickplayResolution,
+        lookup: TrickplayLookup,
+        interval_ms: int,
+        settings: PrefetchSettings | None = None,
+    ) -> None:
+        """Pre-crop the playhead sprite as soon as playback starts.
+
+        Does not wait for the seek bar. The current cell is encoded first,
+        then the rest of that sprite. Other sprites still follow
+        ``enable_episode_precrop`` when preload is on.
+        """
+        settings = settings or read_prefetch_settings()
+        if not settings.enabled or not resolution.is_usable or lookup is None:
+            return
+        with self._decode_lock:
+            self._episode_resolution = resolution
+            self._episode_interval = interval_ms
+            self._episode_precrop = True
+            self._priority_cell = (lookup.tile_path, lookup.col, lookup.row)
+        self.prioritize_tile_copy(lookup.tile_path)
+        self._enqueue_tile_decode(lookup.tile_path, high_priority=True)
+
     def note_tile_ready(self, tile_path: str) -> None:
         """Mark a sprite already copied and decoded (e.g. first playhead crop)."""
         if not tile_path:
@@ -513,14 +567,18 @@ class ThumbPrefetch:
             return tile_path in self._copy_done
 
     def enable_episode_precrop(self) -> None:
-        """Start background cell encodes after the first thumb is on screen."""
+        """Start background cell encodes for every sprite."""
         with self._decode_lock:
-            if self._episode_precrop or not self._episode_want_precrop:
+            if not self._episode_want_precrop:
                 return
             self._episode_precrop = True
+            if self._episode_precrop_queued:
+                return
             resolution = self._episode_resolution
         if resolution is None or not resolution.tile_paths:
             return
+        with self._decode_lock:
+            self._episode_precrop_queued = True
         first = resolution.tile_paths[0]
         self._enqueue_tile_decode(first, high_priority=True)
         for tile_path in resolution.tile_paths[1:]:
@@ -651,6 +709,11 @@ class ThumbPrefetch:
             for cell in cells
             if not get_cached_thumb_path(tile_path, cell[0], cell[1], cell[2], cell[3])
         ]
+        with self._decode_lock:
+            priority = self._priority_cell
+        if priority is not None and priority[0] == tile_path:
+            _tile, col, row = priority
+            pending.sort(key=lambda cell: 0 if cell[0] == col and cell[1] == row else 1)
         if not pending:
             with self._lock:
                 self._precropped_done.add(tile_path)
@@ -916,19 +979,27 @@ class ThumbPrefetch:
         scrub_direction: int = 0,
         settings: PrefetchSettings | None = None,
         debug: bool = False,
+        *,
+        seeking: bool = False,
     ) -> None:
         settings = settings or read_prefetch_settings()
         if not settings.enabled or not resolution.is_usable:
             return
 
         self._debug = debug
-        self._max_queue = settings.max_queue
+        if seeking:
+            self._max_queue = max(
+                settings.max_queue, SCRUB_AHEAD + SCRUB_BEHIND + 1
+            )
+        else:
+            self._max_queue = settings.max_queue
         indices = _neighbor_indices(
             center.thumb_index,
             _max_thumb_index(resolution),
             scrub_direction,
             settings,
             interval_ms,
+            seeking=seeking,
         )
         self._schedule_indices(
             resolution,
@@ -936,6 +1007,10 @@ class ThumbPrefetch:
             indices,
             high_priority=True,
         )
+        if seeking:
+            # Whole-tile / next-sprite work waits until the cursor settles so
+            # a long drag does not enqueue every cell along the path.
+            return
         self.maybe_warm_upcoming_tile(
             resolution, center, direction=scrub_direction, debug=debug
         )
@@ -1072,9 +1147,45 @@ class ThumbPrefetch:
             )
             self._worker.start()
 
+    def _pop_crop_batch_locked(self) -> list[TrickplayLookup] | None:
+        """Take a small same-sprite batch. Caller must hold ``_lock``."""
+        if not self._queue:
+            return None
+        item = self._queue.popleft()
+        self._queued_keys.discard(_cache_key(item.lookup))
+        batch = [item.lookup]
+        tile_path = item.lookup.tile_path
+        remaining: deque[_PrefetchItem] = deque()
+        while self._queue:
+            nxt = self._queue.popleft()
+            key = _cache_key(nxt.lookup)
+            self._queued_keys.discard(key)
+            if (
+                nxt.lookup.tile_path == tile_path
+                and len(batch) < PREFETCH_CROP_BATCH_MAX
+            ):
+                batch.append(nxt.lookup)
+            else:
+                remaining.append(nxt)
+                self._queued_keys.add(key)
+        if remaining:
+            self._queue.extendleft(reversed(remaining))
+        return batch
+
+    def _pop_crop_batch(self) -> list[TrickplayLookup] | None:
+        """Take a small same-sprite batch, leaving leftover cells queued."""
+        with self._lock:
+            return self._pop_crop_batch_locked()
+
     def _run(self, generation: int) -> None:
         prepared_tile: str | None = None
         while True:
+            with self._lock:
+                if generation != self._generation:
+                    return
+            if foreground_crop_pending():
+                time.sleep(0.025)
+                continue
             with self._lock:
                 if generation != self._generation:
                     return
@@ -1082,24 +1193,10 @@ class ThumbPrefetch:
                     self._worker = None
                     self._prepared_tile = None
                     return
-                item = self._queue.popleft()
-                self._queued_keys.discard(_cache_key(item.lookup))
-                batch = [item.lookup]
-                tile_path = item.lookup.tile_path
-                # Drain more queued cells from the same sprite so one decode
-                # pass can warm many thumbs.
-                remaining: deque[_PrefetchItem] = deque()
-                while self._queue:
-                    nxt = self._queue.popleft()
-                    key = _cache_key(nxt.lookup)
-                    self._queued_keys.discard(key)
-                    if nxt.lookup.tile_path == tile_path:
-                        batch.append(nxt.lookup)
-                    else:
-                        remaining.append(nxt)
-                        self._queued_keys.add(key)
-                if remaining:
-                    self._queue.extendleft(reversed(remaining))
+                batch = self._pop_crop_batch_locked()
+            if not batch:
+                continue
+            tile_path = batch[0].tile_path
 
             cells: list[tuple[int, int, int, int]] = []
             seen_cells: set[tuple[int, int, int, int]] = set()

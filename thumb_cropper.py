@@ -1393,14 +1393,22 @@ def get_cropped_thumb_path(
     thumb_w: int,
     thumb_h: int,
     debug: bool = False,
+    should_abort: Callable[[], bool] | None = None,
 ) -> str | None:
     """Return a JPEG path for one sprite cell, or None if cropping failed.
 
     On cache miss: crop from the in-RAM decoded sprite, write a rotating live
     JPEG for immediate skin display, then persist the durable cache copy in a
-    background thread.
+    background thread. When ``should_abort`` becomes true before JPEG encode,
+    the stale cell is dropped so the latest scrub target can run.
     """
     if not tile_path or thumb_w <= 0 or thumb_h <= 0:
+        return None
+
+    def _aborted() -> bool:
+        return bool(should_abort and should_abort())
+
+    if _aborted():
         return None
 
     _ensure_dir(CACHE_DIR)
@@ -1428,9 +1436,13 @@ def get_cropped_thumb_path(
     exact_started = time.perf_counter()
     result: str | None = None
     try:
+        if _aborted():
+            return None
         cropped = _crop_cell_from_decoded_tile(
             tile_path, col, row, thumb_w, thumb_h, debug=debug
         )
+        if _aborted():
+            return None
         if cropped is None:
             if ensure_pillow_loaded():
                 _log(

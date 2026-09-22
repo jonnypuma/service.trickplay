@@ -164,7 +164,9 @@ Additional placement/debug properties (`Trickplay.PreviewLeft`, `Trickplay.Previ
 
 Idle generation reports `queued`, `running`, `paused`, `cancelling`, `failed`, and
 `complete` states. Cancellation terminates the active ffmpeg extraction. Batch
-and idle generation share restart-safe state. Completed entries include media
+and idle generation share restart-safe state: completed files plus the remaining
+queue from the last scan. After a crash or reboot, **Run** offers **Resume N files**
+(skip the library walk) or **Rescan library**. Completed entries include media
 size and modification time, so replacing a file at the same path causes it to
 be generated again.
 
@@ -206,7 +208,7 @@ and reports malformed names, unsupported grids, and invalid intervals separately
 - **Enable prefetch** — master toggle for background pre-cropping
 - **Prefetch on playback start** — warm cache around the current playhead when a video loads
 - **Prefetch during playback** — keep the window warm on both sides of the playhead while the video is playing
-- **Preload all sprites on playback** — copy every sprite tile to local temp as soon as playback starts, decode into RAM up to the sprite RAM limit, and pre-crop cells in the background
+- **Preload all sprites on playback** — copy every sprite tile to local temp as soon as playback starts, decode into RAM up to the sprite RAM limit, and pre-crop cells in the background. The sprite under the playhead is pre-cropped immediately, starting with the current cell, even before the seek bar opens.
 - **Prefetch whole sprite tile** — queue extra cells from the current sprite JPG during scrubbing
 - **Prefetch idle sprite tile** — fill in the rest of the tile while the OSD is open and idle
 - **Prefetch window (seconds)** — time ahead/behind the playhead to pre-crop (default 120 = ±2 minutes). Converted to thumb indices from the sidecar interval. While playing, the window is capped at 50 seconds.
@@ -216,7 +218,7 @@ and reports malformed names, unsupported grids, and invalid intervals separately
 - **Cropped thumbs in RAM (MB)** — keep cropped preview JPEGs in RAM so scrubbing does not re-encode (default 64; 0 = off)
 - **Cached thumb JPEG quality** — compression for cropped preview JPEGs (50–95, default 90)
 
-A separate copy worker pulls every sprite to local temp starting with **0.jpg**; a decode worker then loads tiles into RAM and pre-crops cells. Episode-wide pre-crop runs in eight-cell chunks and yields whenever an exact visible thumb is pending. Fast scrub shows the nearest already-cropped thumb instead of freezing on the last frame, and does not cancel prefetch of tiles that are already local. Six rotating live temp JPEGs publish immediately; one bounded worker persists immutable JPEG bytes to the durable cache in the background. Known cache paths and LRU timestamp updates are debounced to avoid per-scrub filesystem metadata writes. Install preview tools prefers the add-on Pillow wheel (libjpeg-turbo) when it is present.
+A separate copy worker pulls every sprite to local temp starting with **0.jpg**; a decode worker then loads tiles into RAM and pre-crops the playhead sprite immediately (current cell first, then the rest of that tile). Further sprites pre-crop in eight-cell chunks and yield whenever an exact visible thumb is pending. While scrubbing, the neighbor window is 20 thumbs ahead and 10 behind. A crop already in flight is dropped if the cursor moves before JPEG encode, and the finished thumb is published immediately. Fast scrub shows the nearest already-cropped thumb until that exact cell is ready. Six rotating live temp JPEGs are what the skin displays; one bounded worker persists the durable cache copy afterward. Install preview tools prefers the add-on Pillow wheel (libjpeg-turbo) when it is present.
 
 The exported diagnostic report includes cache-source counts and cumulative
 copy/decode/crop/JPEG/write/exact-request timings (`*_count`, `*_ms_avg`,

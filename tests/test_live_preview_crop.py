@@ -94,6 +94,32 @@ class LivePreviewCropTests(unittest.TestCase):
                     time.sleep(0.05)
                 self.assertTrue(os.path.isfile(durable))
 
+    def test_abort_skips_jpeg_encode(self) -> None:
+        calls = {"n": 0}
+
+        def should_abort() -> bool:
+            calls["n"] += 1
+            return calls["n"] >= 3
+
+        with patch.object(
+            thumb_cropper, "get_cached_thumb_path", return_value=None
+        ), patch.object(
+            thumb_cropper, "_crop_cell_from_decoded_tile", return_value=object()
+        ) as crop, patch.object(
+            thumb_cropper, "_encode_jpeg_bytes"
+        ) as encode:
+            path = get_cropped_thumb_path(
+                "/tiles/0.jpg",
+                0,
+                0,
+                20,
+                20,
+                should_abort=should_abort,
+            )
+        self.assertIsNone(path)
+        crop.assert_called_once()
+        encode.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

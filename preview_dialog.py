@@ -636,6 +636,7 @@ class PreviewDialogController:
                 lookup.thumb_width,
                 lookup.thumb_height,
                 debug=debug,
+                should_abort=lambda: self._crop_target_id != target_id,
             )
 
             with self._crop_lock:
@@ -650,23 +651,30 @@ class PreviewDialogController:
                     self._crop_failed = True
                     self._pending_lookup = None
                     set_foreground_crop_pending(False)
+                    publish = None
                     return
-                self._crop_ready = (
-                    lookup,
-                    duration,
-                    thumb_path,
-                    player,
-                    requested_at,
-                )
+                self._last_thumb_path = thumb_path
+                self._shown_thumb_index = lookup.thumb_index
+                publish = (lookup, duration, thumb_path, player, requested_at)
                 pending = self._pending_lookup
                 if (
                     pending is not None
                     and lookup_cache_key(pending) != lookup_cache_key(lookup)
                 ):
+                    publish = None
                     continue
                 self._pending_lookup = None
                 set_foreground_crop_pending(False)
-                return
+            if publish is not None:
+                record_preview_latency(requested_at)
+                self._publish_preview_state(
+                    lookup,
+                    duration,
+                    thumb_path,
+                    player,
+                    keep_existing_image=True,
+                )
+            return
 
     def poll(self) -> None:
         ready = None

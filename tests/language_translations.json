@@ -242,7 +242,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Utiliser l’extraction Fast seek et désactiver le tone mapping HDR et le décodage matériel. Recommandé pour CoreELEC, Amlogic, 4K ou les médias réseau.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek appliqué. Tone mapping HDR et décodage matériel désactivés.",
     "Idle recent window (days)": "Fenêtre idle récente (jours)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Nombre de jours de vidéos récemment ajoutées à considérer pour la génération idle (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Nombre de jours de vidéos récemment ajoutées à considérer pour la génération idle (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "Reprendre %d fichier(s) restant(s) de l'analyse précédente ? Cela évite de reparcourir la bibliothèque.",
+    "Resume": "Reprendre",
+    "Rescan library": "Réanalyser la bibliothèque"
   },
   "nl": {
     "General": "Algemeen",
@@ -487,7 +490,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Gebruik Fast seek-extractie en schakel HDR-tonemapping en hardwaredecode uit. Aanbevolen voor CoreELEC, Amlogic, 4K of netwerkmedia.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek toegepast. HDR-tonemapping en hardwaredecode staan uit.",
     "Idle recent window (days)": "Idle recent venster (dagen)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Hoeveel dagen recent toegevoegde bibliotheekvideo’s idle-generatie moet meenemen (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hoeveel dagen recent toegevoegde bibliotheekvideo’s idle-generatie moet meenemen (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "%d resterende bestand(en) van de vorige scan hervatten? De bibliotheek wordt niet opnieuw doorlopen.",
+    "Resume": "Hervatten",
+    "Rescan library": "Bibliotheek opnieuw scannen"
   },
   "de": {
     "General": "Allgemein",
@@ -732,7 +738,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Fast-Seek-Extraktion verwenden und HDR-Tonemapping sowie Hardware-Dekodierung deaktivieren. Empfohlen für CoreELEC, Amlogic, 4K oder Netzwerkmedien.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast Seek angewendet. HDR-Tonemapping und Hardware-Dekodierung sind aus.",
     "Idle recent window (days)": "Idle-Zeitraum (Tage)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Wie viele Tage kürzlich hinzugefügter Bibliotheksvideos die Idle-Generierung berücksichtigen soll (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Wie viele Tage kürzlich hinzugefügter Bibliotheksvideos die Idle-Generierung berücksichtigen soll (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "%d verbleibende Datei(en) der letzten Suche fortsetzen? Die Bibliothek wird nicht erneut durchsucht.",
+    "Resume": "Fortsetzen",
+    "Rescan library": "Bibliothek erneut scannen"
   },
   "es": {
     "General": "General",
@@ -977,7 +986,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Usar extracción Fast seek y desactivar el tone mapping HDR y la decodificación por hardware. Recomendado para CoreELEC, Amlogic, 4K o medios de red.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek aplicado. Tone mapping HDR y decodificación por hardware desactivados.",
     "Idle recent window (days)": "Ventana reciente idle (días)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Cuántos días de vídeos recién añadidos debe considerar la generación idle (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Cuántos días de vídeos recién añadidos debe considerar la generación idle (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "¿Reanudar %d archivo(s) restante(s) del análisis anterior? Así se evita recorrer de nuevo la biblioteca.",
+    "Resume": "Reanudar",
+    "Rescan library": "Volver a analizar la biblioteca"
   },
   "it": {
     "General": "Generale",
@@ -1222,7 +1234,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Usa l’estrazione Fast seek e disattiva tone mapping HDR e decodifica hardware. Consigliato per CoreELEC, Amlogic, 4K o media di rete.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek applicato. Tone mapping HDR e decodifica hardware disattivati.",
     "Idle recent window (days)": "Finestra idle recente (giorni)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Quanti giorni di video aggiunti di recente considerare per la generazione idle (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Quanti giorni di video aggiunti di recente considerare per la generazione idle (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "Riprendere %d file rimanenti dalla scansione precedente? In questo modo si evita di scansionare di nuovo la libreria.",
+    "Resume": "Riprendi",
+    "Rescan library": "Scansiona di nuovo la libreria"
   },
   "el": {
     "General": "Γενικά",
@@ -1467,7 +1482,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Χρησιμοποιήστε εξαγωγή Fast seek και απενεργοποιήστε HDR tone mapping και αποκωδικοποίηση υλικού. Συνιστάται για CoreELEC, Amlogic, 4K ή δικτυακά μέσα.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Εφαρμόστηκε Fast seek. Το HDR tone mapping και η αποκωδικοποίηση υλικού είναι απενεργοποιημένα.",
     "Idle recent window (days)": "Παράθυρο πρόσφατων idle (ημέρες)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Πόσες ημέρες πρόσφατα προστεθέντων βίντεο να λάβει υπόψη η αδρανής δημιουργία (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Πόσες ημέρες πρόσφατα προστεθέντων βίντεο να λάβει υπόψη η αδρανής δημιουργία (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "Συνέχεια %d υπόλοιπων αρχείων από την προηγούμενη σάρωση; Έτσι παραλείπεται η νέα διάσχιση της βιβλιοθήκης.",
+    "Resume": "Συνέχεια",
+    "Rescan library": "Επανάληψη σάρωσης βιβλιοθήκης"
   },
   "nb": {
     "General": "Generelt",
@@ -1712,7 +1730,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Bruk Fast seek-ekstraksjon og slå av HDR-tonemapping og maskinvaredekoding. Anbefalt for CoreELEC, Amlogic, 4K eller nettverksmedia.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek er brukt. HDR-tonemapping og maskinvaredekoding er av.",
     "Idle recent window (days)": "Inaktivt nylig vindu (dager)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Hvor mange dager med nylig lagt til biblioteksvideoer inaktiv generering skal vurdere (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hvor mange dager med nylig lagt til biblioteksvideoer inaktiv generering skal vurdere (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "Fortsette %d gjenværende fil(er) fra forrige skanning? Da hoppes biblioteksøkingen over.",
+    "Resume": "Fortsett",
+    "Rescan library": "Skann biblioteket på nytt"
   },
   "da": {
     "General": "Generelt",
@@ -1957,7 +1978,10 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Brug Fast seek-ekstraktion, og slå HDR-tonemapping og hardwareafkodning fra. Anbefalet til CoreELEC, Amlogic, 4K eller netværksmedier.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek er anvendt. HDR-tonemapping og hardwareafkodning er slået fra.",
     "Idle recent window (days)": "Inaktivt nyligt vindue (dage)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Hvor mange dage med nyligt tilføjede biblioteksvideoer inaktiv generering skal overveje (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hvor mange dage med nyligt tilføjede biblioteksvideoer inaktiv generering skal overveje (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "Genoptag %d resterende fil(er) fra den forrige scanning? Så springes biblioteksgennemgangen over.",
+    "Resume": "Genoptag",
+    "Rescan library": "Scan biblioteket igen"
   },
   "sv": {
     "General": "Allmänt",
@@ -2202,6 +2226,9 @@
     "Use Fast seek extraction and turn off HDR tone mapping and hardware decode. Recommended for CoreELEC, Amlogic, 4K, or network media.": "Använd Fast seek-extraktion och stäng av HDR-tonemapping och hårdvaruavkodning. Rekommenderas för CoreELEC, Amlogic, 4K eller nätverksmedia.",
     "Applied Fast seek. HDR tone mapping and hardware decode are off.": "Fast seek tillämpad. HDR-tonemapping och hårdvaruavkodning är av.",
     "Idle recent window (days)": "Inaktivt nyligen-fönster (dagar)",
-    "How many days of recently added library videos idle generation should consider (1–90).": "Hur många dagar nyligen tillagda biblioteksfilmer inaktiv generering ska ta hänsyn till (1–90)."
+    "How many days of recently added library videos idle generation should consider (1–90).": "Hur många dagar nyligen tillagda biblioteksfilmer inaktiv generering ska ta hänsyn till (1–90).",
+    "Resume %d remaining file(s) from the previous scan? This skips walking the library again.": "Återuppta %d återstående fil(er) från föregående genomsökning? Då hoppas biblioteksgenomgången över.",
+    "Resume": "Återuppta",
+    "Rescan library": "Skanna biblioteket igen"
   }
 }

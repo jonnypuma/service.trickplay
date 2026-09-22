@@ -1050,3 +1050,15 @@ msgctxt "#32265"
 msgid "How many days of recently added library videos idle generation should consider (1–90)."
 msgstr "How many days of recently added library videos idle generation should consider (1–90)."
 
+msgctxt "#32266"
+msgid "Resume %d remaining file(s) from the previous scan? This skips walking the library again."
+msgstr "Resume %d remaining file(s) from the previous scan? This skips walking the library again."
+
+msgctxt "#32267"
+msgid "Resume"
+msgstr "Resume"
+
+msgctxt "#32268"
+msgid "Rescan library"
+msgstr "Rescan library"
+

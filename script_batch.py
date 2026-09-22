@@ -25,7 +25,7 @@ from trickplay_generator import (
     collect_generation_candidates,
     generate_trickplay_for_media,
 )
-from generation_state import begin_or_update, clear as clear_generation_state, load_completed
+from generation_state import begin_or_update, clear as clear_generation_state, load_completed, load_remaining
 from generation_preflight import warnings_for_batch
 
 
@@ -69,7 +69,7 @@ def _run_batch_generation(
             f"Resuming batch: skipping {len(candidates) - len(pending)} "
             f"completed file(s) from {root}"
         )
-    begin_or_update(root, settings, completed)
+    begin_or_update(root, settings, completed, remaining=pending)
     total = len(pending)
 
     if monitor is None:
@@ -90,6 +90,12 @@ def _run_batch_generation(
             _log(
                 f"Batch stopped early at {index + 1}/{total}",
                 xbmc.LOGWARNING,
+            )
+            begin_or_update(
+                root,
+                settings,
+                completed,
+                remaining=failed_paths + pending[index:],
             )
             break
 
@@ -128,8 +134,13 @@ def _run_batch_generation(
         if result:
             ok_count += 1
             completed.add(media_path)
-            begin_or_update(root, settings, completed)
         elif cancelled:
+            begin_or_update(
+                root,
+                settings,
+                completed,
+                remaining=failed_paths + pending[index:],
+            )
             break
         else:
             fail_count += 1
@@ -137,9 +148,25 @@ def _run_batch_generation(
             _log(f"Generation failed: {media_path}", xbmc.LOGWARNING)
             if settings.stop_on_failure:
                 _log("Stopping batch (stop on first failure enabled)", xbmc.LOGWARNING)
+                begin_or_update(
+                    root,
+                    settings,
+                    completed,
+                    remaining=failed_paths + pending[index + 1 :],
+                )
                 break
 
-    if not cancelled and all(path in completed for path in candidates):
+        begin_or_update(
+            root,
+            settings,
+            completed,
+            remaining=failed_paths + pending[index + 1 :],
+        )
+
+    remaining = load_remaining(
+        root, settings, completed=completed, check_exists=False
+    )
+    if not cancelled and not remaining:
         clear_generation_state()
     return ok_count, fail_count, cancelled, failed_paths, results
 
@@ -351,16 +378,43 @@ def run_batch_dialog() -> None:
                 return
 
     _log(f"Collecting generation candidates under {folder}")
-    plan = _collect_candidates_with_progress(folder, settings)
-    if plan is None:
-        return
-    candidates = plan.candidates
-    _log(
-        f"Found {len(candidates)} candidate(s) "
-        f"({plan.skipped_existing} skipped existing, "
-        f"{plan.skipped_dv_profile_5} skipped DV Profile 5, "
-        f"{plan.total_videos} total)"
-    )
+    remaining = load_remaining(folder, settings, check_exists=True)
+    plan: GenerationBatchPlan | None = None
+    resumed = False
+    candidates: list[str] = []
+    if remaining:
+        _log(f"Found saved remaining queue with {len(remaining)} file(s)")
+        _yield_ui()
+        resume = _dialog_yesno(
+            _ADDON.getLocalizedString(32063),
+            _ADDON.getLocalizedString(32266) % len(remaining),
+            yeslabel=_ADDON.getLocalizedString(32267),
+            nolabel=_ADDON.getLocalizedString(32268),
+            default_yes=True,
+        )
+        if resume:
+            resumed = True
+            candidates = remaining
+            _log(
+                f"Resuming {len(candidates)} remaining file(s) without library scan"
+            )
+        else:
+            _log("User chose to rescan the library")
+            plan = _collect_candidates_with_progress(folder, settings)
+    else:
+        plan = _collect_candidates_with_progress(folder, settings)
+
+    if not resumed:
+        if plan is None:
+            return
+        candidates = plan.candidates
+        _log(
+            f"Found {len(candidates)} candidate(s) "
+            f"({plan.skipped_existing} skipped existing, "
+            f"{plan.skipped_dv_profile_5} skipped DV Profile 5, "
+            f"{plan.total_videos} total)"
+        )
+
     if not candidates:
         _log("No candidates; showing notification", xbmc.LOGINFO)
         xbmcgui.Dialog().notification(
@@ -370,6 +424,10 @@ def run_batch_dialog() -> None:
             4000,
         )
         return
+
+    completed = load_completed(folder, settings)
+    pending = [path for path in candidates if path not in completed]
+    begin_or_update(folder, settings, completed, remaining=pending)
 
     if not prompt_and_install_generator_tools(
         hdr_tone_map_enabled=settings.hdr_tone_map,
@@ -400,61 +458,74 @@ def run_batch_dialog() -> None:
         _log("Batch aborted after HDR ffmpeg install prompt")
         return
 
-    if plan.skipped_existing > 0 and plan.skipped_dv_profile_5 > 0:
-        confirm = _ADDON.getLocalizedString(32116) % (
-            len(candidates),
-            plan.total_videos,
-            plan.skipped_existing,
-            plan.skipped_dv_profile_5,
-        )
-    elif plan.skipped_existing > 0:
-        confirm = _ADDON.getLocalizedString(32083) % (
-            len(candidates),
-            plan.total_videos,
-            plan.skipped_existing,
-        )
-    elif plan.skipped_dv_profile_5 > 0:
-        confirm = _ADDON.getLocalizedString(32117) % (
-            len(candidates),
-            plan.total_videos,
-            plan.skipped_dv_profile_5,
-        )
-    else:
-        confirm = _ADDON.getLocalizedString(32068) % len(candidates)
+    if not resumed:
+        if plan is None:
+            return
+        if plan.skipped_existing > 0 and plan.skipped_dv_profile_5 > 0:
+            confirm = _ADDON.getLocalizedString(32116) % (
+                len(candidates),
+                plan.total_videos,
+                plan.skipped_existing,
+                plan.skipped_dv_profile_5,
+            )
+        elif plan.skipped_existing > 0:
+            confirm = _ADDON.getLocalizedString(32083) % (
+                len(candidates),
+                plan.total_videos,
+                plan.skipped_existing,
+            )
+        elif plan.skipped_dv_profile_5 > 0:
+            confirm = _ADDON.getLocalizedString(32117) % (
+                len(candidates),
+                plan.total_videos,
+                plan.skipped_dv_profile_5,
+            )
+        else:
+            confirm = _ADDON.getLocalizedString(32068) % len(candidates)
 
-    preflight_warnings = warnings_for_batch(folder, candidates)
-    if preflight_warnings:
-        for warning in preflight_warnings:
-            _log(f"Batch preflight warning: {warning}", xbmc.LOGWARNING)
-        confirm += "\n\nWarnings:\n- " + "\n- ".join(preflight_warnings)
+        preflight_warnings = warnings_for_batch(folder, candidates)
+        if preflight_warnings:
+            for warning in preflight_warnings:
+                _log(f"Batch preflight warning: {warning}", xbmc.LOGWARNING)
+            confirm += "\n\nWarnings:\n- " + "\n- ".join(preflight_warnings)
 
-    _log(f"Showing batch confirmation ({len(candidates)} candidate(s))")
-    if not _dialog_yesno(
-        _ADDON.getLocalizedString(32063),
-        confirm,
-        yeslabel=_ADDON.getLocalizedString(32229),
-        nolabel=_ADDON.getLocalizedString(32224),
-        default_yes=True,
-    ):
-        _log(
-            "Batch run cancelled at confirmation prompt "
-            "(No/Cancel, or dialog dismissed — Yes was not chosen)",
-            xbmc.LOGINFO,
+        _log(f"Showing batch confirmation ({len(candidates)} candidate(s))")
+        if not _dialog_yesno(
+            _ADDON.getLocalizedString(32063),
+            confirm,
+            yeslabel=_ADDON.getLocalizedString(32229),
+            nolabel=_ADDON.getLocalizedString(32224),
+            default_yes=True,
+        ):
+            _log(
+                "Batch run cancelled at confirmation prompt "
+                "(No/Cancel, or dialog dismissed — Yes was not chosen)",
+                xbmc.LOGINFO,
+            )
+            return
+
+    if not pending:
+        _log("No remaining files after completed-set filter", xbmc.LOGINFO)
+        xbmcgui.Dialog().notification(
+            _ADDON.getLocalizedString(32063),
+            _ADDON.getLocalizedString(32067),
+            xbmcgui.NOTIFICATION_INFO,
+            4000,
         )
         return
 
-    _log(f"Starting batch generation for {len(candidates)} file(s)")
+    _log(f"Starting batch generation for {len(pending)} file(s)")
     monitor = xbmc.Monitor()
 
     if settings.batch_background:
         xbmcgui.Dialog().notification(
             _ADDON.getLocalizedString(32063),
-            _ADDON.getLocalizedString(32113) % len(candidates),
+            _ADDON.getLocalizedString(32113) % len(pending),
             xbmcgui.NOTIFICATION_INFO,
             5000,
         )
         ok_count, fail_count, cancelled, failed_paths, results = _run_batch_generation(
-            candidates,
+            pending,
             settings,
             root=folder,
             monitor=monitor,
@@ -480,7 +551,7 @@ def run_batch_dialog() -> None:
     )
     try:
         ok_count, fail_count, cancelled, failed_paths, results = _run_batch_generation(
-            candidates,
+            pending,
             settings,
             root=folder,
             progress=progress,
