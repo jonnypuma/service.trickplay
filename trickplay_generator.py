@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
 import time
 import uuid
@@ -467,50 +468,216 @@ def _os_error_text(exc: OSError) -> str:
     return detail
 
 
+def _clear_readonly(path: str) -> None:
+    try:
+        os.chmod(path, os.stat(path).st_mode | stat.S_IWRITE)
+    except OSError:
+        pass
+
+
+def _rename_should_copy_files(exc: OSError) -> bool:
+    """Directory rename can be denied when the destination folder already exists."""
+    winerror = getattr(exc, "winerror", None)
+    if winerror in (5, 32, 183):
+        return True
+    return exc.errno in (1, 13, 17)
+
+
+def _promote_path_attempts(
+    staging: str,
+    final: str,
+    backup: str,
+) -> list[tuple[str, str, str]]:
+    """Plain paths first when they fit. Extended paths cover names past 260 characters."""
+    if os.name != "nt":
+        return [(staging, final, backup)]
+    extended = (
+        extended_length_path(staging),
+        extended_length_path(final),
+        extended_length_path(backup),
+    )
+    if max(len(staging), len(final), len(backup)) >= 260:
+        return [extended]
+    if extended[0] == staging:
+        return [(staging, final, backup)]
+    return [(staging, final, backup), extended]
+
+
+def _child_path(parent: str, name: str) -> str:
+    if parent.startswith("\\\\?\\"):
+        return parent.rstrip("\\") + "\\" + name
+    return os.path.join(parent, name)
+
+
+def _replace_directory(staging: str, final: str, backup: str) -> None:
+    if os.path.exists(final):
+        _clear_readonly(final)
+        os.replace(final, backup)
+    os.replace(staging, final)
+    if os.path.exists(backup):
+        shutil.rmtree(backup, ignore_errors=True)
+
+
+def _move_file_over(src: str, dst: str) -> None:
+    if os.path.lexists(dst):
+        _clear_readonly(dst)
+    try:
+        os.replace(src, dst)
+        return
+    except OSError:
+        if os.path.lexists(dst):
+            _clear_readonly(dst)
+        shutil.copyfile(src, dst)
+        _clear_readonly(src)
+        os.remove(src)
+
+
+def _rmtree(path: str) -> None:
+    def _retry(func, item, _exc):
+        _clear_readonly(item)
+        func(item)
+
+    try:
+        shutil.rmtree(path, onexc=_retry)
+    except TypeError:
+        shutil.rmtree(path, onerror=_retry)
+
+
+def _remove_existing_and_rename(staging: str, final: str) -> None:
+    """Delete a destination folder Windows will not rename, then move staging into place."""
+    final_io = ""
+    for candidate in (final, extended_length_path(final)):
+        if os.path.isdir(candidate):
+            final_io = candidate
+            break
+    if not final_io:
+        raise OSError(2, "destination folder is not present")
+    _rmtree(final_io)
+    staging_io = ""
+    for candidate in (staging, extended_length_path(staging)):
+        if os.path.isdir(candidate):
+            staging_io = candidate
+            break
+    if not staging_io:
+        raise OSError(2, "staging directory missing")
+    destination = (
+        extended_length_path(final)
+        if staging_io.startswith("\\\\?\\") or (os.name == "nt" and len(final) >= 260)
+        else final
+    )
+    os.replace(staging_io, destination)
+
+
+def _promote_tiles_into_folder(staging: str, final: str) -> None:
+    """Move staged JPEGs into the final folder when the folder itself cannot be renamed."""
+    staging_io = ""
+    for candidate in (staging, extended_length_path(staging)):
+        if os.path.isdir(candidate):
+            staging_io = candidate
+            break
+    if not staging_io:
+        raise OSError(2, "staging directory missing")
+    use_extended = staging_io.startswith("\\\\?\\") or (
+        os.name == "nt" and len(final) >= 260
+    )
+    final_io = extended_length_path(final) if use_extended else final
+    os.makedirs(final_io, exist_ok=True)
+    names: list[str] = []
+    for name in os.listdir(staging_io):
+        src = _child_path(staging_io, name)
+        if not os.path.isfile(src):
+            continue
+        _move_file_over(src, _child_path(final_io, name))
+        names.append(name)
+    if not names:
+        raise OSError(2, "staging directory has no tiles")
+    kept = set(names)
+    for name in os.listdir(final_io):
+        if name in kept or not os.path.isfile(_child_path(final_io, name)):
+            continue
+        extra = _child_path(final_io, name)
+        _clear_readonly(extra)
+        try:
+            os.remove(extra)
+        except OSError:
+            _log(f"Could not remove old sidecar file {extra}", xbmc.LOGWARNING)
+    try:
+        os.rmdir(staging_io)
+    except OSError:
+        shutil.rmtree(staging_io, ignore_errors=True)
+
+
 def _atomic_promote_sidecar(staging_dir: str, final_dir: str) -> tuple[bool, str]:
     """Replace a sidecar directory only after generation succeeds.
 
     Uses a mapped OS path when the VFS URL is an nfs/smb mount so network
-    sidecars get the same atomic rename as local disks. On Windows the rename
-    uses an extended-length path so folders past 260 characters still promote.
+    sidecars get the same atomic rename as local disks. Short Windows paths
+    are renamed as plain paths. Paths past 260 characters use the ``\\\\?\\``
+    prefix. When Windows denies the directory rename (WinError 5, typical when
+    the destination folder already exists on a network share), the tiles are
+    moved into that folder instead.
     Returns (promoted, error message). The message is empty on success.
     """
     staging = writable_os_path(staging_dir)
     final = writable_os_path(final_dir)
     if not staging or not final:
         return False, "no writable OS path"
-    staging_ext = extended_length_path(staging)
-    final_ext = extended_length_path(final)
-    if not os.path.isdir(staging_ext):
+    backup = f"{final}.previous-{uuid.uuid4().hex[:8]}"
+    attempts = _promote_path_attempts(staging, final, backup)
+    if not any(os.path.isdir(src) for src, _final, _backup in attempts):
         _log(
             "Sidecar promote failed: staging directory missing "
             f"(len={len(staging)}): {staging}",
             xbmc.LOGERROR,
         )
         return False, "staging directory missing"
-    backup = f"{final}.previous-{uuid.uuid4().hex[:8]}"
-    backup_ext = extended_length_path(backup)
-    try:
-        if os.path.exists(final_ext):
-            os.replace(final_ext, backup_ext)
-        os.replace(staging_ext, final_ext)
-        if os.path.exists(backup_ext):
-            shutil.rmtree(backup_ext, ignore_errors=True)
-        return True, ""
-    except OSError as exc:
-        message = _os_error_text(exc)
-        _log(
-            f"Sidecar promote failed ({message}): "
-            f"staging len={len(staging)} final len={len(final)} "
-            f"{staging} -> {final}",
-            xbmc.LOGERROR,
-        )
+    last_error = ""
+    copy_tiles = False
+    for src, dst, old in attempts:
         try:
-            if not os.path.exists(final_ext) and os.path.exists(backup_ext):
-                os.replace(backup_ext, final_ext)
-        except OSError:
-            pass
-        return False, message
+            _replace_directory(src, dst, old)
+            return True, ""
+        except OSError as exc:
+            last_error = _os_error_text(exc)
+            _log(
+                f"Sidecar folder rename failed ({last_error}): "
+                f"staging len={len(staging)} final len={len(final)} "
+                f"{staging} -> {final}",
+                xbmc.LOGWARNING,
+            )
+            try:
+                if not os.path.exists(dst) and os.path.exists(old):
+                    os.replace(old, dst)
+            except OSError:
+                pass
+            if _rename_should_copy_files(exc):
+                copy_tiles = True
+    if copy_tiles:
+        try:
+            _remove_existing_and_rename(staging, final)
+        except OSError as exc:
+            _log(
+                "Could not replace the existing sidecar folder "
+                f"({_os_error_text(exc)}); copying tiles instead",
+                xbmc.LOGWARNING,
+            )
+        else:
+            _log(f"Promoted sidecar by replacing the existing folder {final}")
+            return True, ""
+        try:
+            _promote_tiles_into_folder(staging, final)
+        except OSError as exc:
+            fallback = _os_error_text(exc)
+            _log(
+                f"Sidecar tile copy failed ({fallback}): {staging} -> {final}",
+                xbmc.LOGERROR,
+            )
+            if last_error:
+                return False, f"{last_error}; tile copy failed: {fallback}"
+            return False, fallback
+        _log(f"Promoted sidecar by replacing tiles in {final}")
+        return True, ""
+    return False, last_error or "atomic sidecar promotion failed"
 
 
 def _has_jpg_tiles(directory: str) -> bool:
@@ -578,11 +745,32 @@ def _is_tail_eof_tile(tile_index: int, tile_count: int, tiles_written: int) -> b
     return tile_index == tile_count - 1 and tiles_written > 0
 
 
+def _first_probe_line(detail: str) -> str:
+    lines = [line.strip() for line in (detail or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    for line in lines:
+        lowered = line.lower()
+        if any(
+            token in lowered
+            for token in ("ebml", "invalid data", "error", "denied", "no such")
+        ):
+            return line[:160]
+    return lines[0][:160]
+
+
+def _note_probe_error(error_notes: list[str] | None, detail: str) -> None:
+    text = _first_probe_line(detail)
+    if error_notes is not None and text:
+        error_notes.append(text)
+
+
 def probe_video_duration_seconds(
     media_path: str,
     debug: bool = False,
     *,
     ffmpeg_path: str = "",
+    error_notes: list[str] | None = None,
 ) -> int:
     ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
     _, ffprobe, env = resolve_generator_ffmpeg_tools(ffmpeg_path)
@@ -590,6 +778,7 @@ def probe_video_duration_seconds(
     if use_vfs_stream:
         if not ffprobe:
             _log(f"ffprobe unavailable for VFS duration probe: {media_path}", xbmc.LOGWARNING)
+            _note_probe_error(error_notes, "ffprobe unavailable")
             return 0
         format_duration, video_duration = probe_durations_via_pipe(
             media_path, ffprobe, env, debug=debug
@@ -606,6 +795,10 @@ def probe_video_duration_seconds(
         _log(
             f"Duration probe skipped (ffprobe={bool(ffprobe)} exists={xbmcvfs.exists(media_path)}): {media_path}",
             xbmc.LOGWARNING,
+        )
+        _note_probe_error(
+            error_notes,
+            "ffprobe unavailable" if not ffprobe else "media path not visible to ffprobe",
         )
         return 0
 
@@ -639,6 +832,7 @@ def probe_video_duration_seconds(
         )
     except (OSError, subprocess.SubprocessError) as exc:
         _log(f"ffmpeg duration fallback failed for {media_path} (path={local!r}): {exc}", xbmc.LOGWARNING)
+        _note_probe_error(error_notes, str(exc))
         return 0
 
     fallback = parse_duration_from_ffmpeg_stderr(completed.stderr or "")
@@ -648,6 +842,7 @@ def probe_video_duration_seconds(
             f"Could not parse duration for {media_path} (path={local!r}): {detail[:300]}",
             xbmc.LOGWARNING,
         )
+        _note_probe_error(error_notes, detail or "ffprobe and ffmpeg could not read duration")
         return 0
     if debug:
         _log(f"Duration {int(fallback)}s for {media_path} via ffmpeg stderr")
@@ -1598,12 +1793,17 @@ def _generate_trickplay_for_media(
     if settings.debug and filter_ctx.apply_tonemap:
         _log(f"HDR video filter: {filter_ctx.thumb_vf}")
 
+    probe_notes: list[str] = []
     duration = probe_video_duration_seconds(
-        media_path, debug=settings.debug, ffmpeg_path=settings.ffmpeg_path
+        media_path,
+        debug=settings.debug,
+        ffmpeg_path=settings.ffmpeg_path,
+        error_notes=probe_notes,
     )
     if duration <= 0:
         _log(f"Could not determine duration for {media_path}", xbmc.LOGWARNING)
-        return _fail(metrics, "could not read media duration")
+        suffix = f": {probe_notes[-1]}" if probe_notes else ""
+        return _fail(metrics, f"could not read media duration{suffix}")
 
     ffmpeg_input, use_vfs_stream = resolve_ffmpeg_media_path(media_path)
     dovi_prep_dir: str | None = None

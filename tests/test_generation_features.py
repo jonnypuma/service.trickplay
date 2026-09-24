@@ -221,7 +221,7 @@ class GenerationFeatureTests(unittest.TestCase):
             self.assertFalse(promoted)
             self.assertIn("filename or extension is too long", error)
 
-    def test_atomic_promotion_uses_extended_windows_path(self) -> None:
+    def test_short_sidecar_rename_uses_plain_windows_path(self) -> None:
         if os.name != "nt":
             self.skipTest("windows extended paths")
         with tempfile.TemporaryDirectory() as directory:
@@ -231,6 +231,7 @@ class GenerationFeatureTests(unittest.TestCase):
             (final / "0.jpg").write_bytes(b"old")
             staging.mkdir()
             (staging / "0.jpg").write_bytes(b"new")
+            self.assertLess(len(str(staging)), 260)
             calls: list[tuple[str, str]] = []
             real_replace = os.replace
 
@@ -243,9 +244,37 @@ class GenerationFeatureTests(unittest.TestCase):
             self.assertTrue(promoted, error)
             self.assertTrue(calls)
             for src, dst in calls:
-                self.assertTrue(src.startswith("\\\\?\\"), src)
-                self.assertTrue(dst.startswith("\\\\?\\"), dst)
+                self.assertFalse(src.startswith("\\\\?\\"), src)
+                self.assertFalse(dst.startswith("\\\\?\\"), dst)
             self.assertEqual((final / "0.jpg").read_bytes(), b"new")
+
+    def test_directory_rename_access_denied_replaces_tiles(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            final = Path(directory) / "tiles"
+            staging = Path(directory) / "tiles.tmp"
+            final.mkdir()
+            (final / "0.jpg").write_bytes(b"old")
+            (final / "1.jpg").write_bytes(b"stale")
+            staging.mkdir()
+            (staging / "0.jpg").write_bytes(b"new")
+            real_replace = os.replace
+
+            def _deny_directory_rename(src: str, dst: str) -> None:
+                if os.path.isdir(src):
+                    exc = OSError(13, "Access is denied")
+                    exc.winerror = 5
+                    raise exc
+                real_replace(src, dst)
+
+            with patch(
+                "trickplay_generator.os.replace",
+                side_effect=_deny_directory_rename,
+            ):
+                promoted, error = _atomic_promote_sidecar(str(staging), str(final))
+            self.assertTrue(promoted, error)
+            self.assertEqual((final / "0.jpg").read_bytes(), b"new")
+            self.assertFalse((final / "1.jpg").exists())
+            self.assertFalse(staging.exists())
 
     def test_atomic_promotion_past_max_path(self) -> None:
         if os.name != "nt":

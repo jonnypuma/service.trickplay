@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 From 9.0.0, minor versions are 0–9 (`9.1.0` … `9.9.0`), then the next major.
 
+## [9.3.0] - 2026-09-23
+
+### Fixed
+
+- **Sidecar folder rename denied on existing network folders** — Windows
+  returns WinError 5 when the destination sidecar directory already exists, even
+  when the video file itself is readable. That folder is removed and the finished
+  sidecar renamed into its place. If the folder cannot be removed, the tiles are
+  copied into it. Short paths stay plain paths; the `\\?\` prefix remains only
+  for paths past 260 characters.
+- **Unreadable media names the probe error** — when duration cannot be read, the
+  batch summary includes the ffprobe/ffmpeg line (for example an invalid
+  Matroska header).
+
 ## [9.2.0] - 2026-09-22
 
 ### Fixed
