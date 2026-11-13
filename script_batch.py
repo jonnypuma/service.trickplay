@@ -330,7 +330,52 @@ def _collect_candidates_with_progress(
 
     return result
 
+
+def _load_completed_with_progress(folder: str, settings: GeneratorSettings) -> set[str]:
+    """Load the completed set off the UI thread so the wait dialog can draw."""
+    monitor = xbmc.Monitor()
+    progress = xbmcgui.DialogProgress()
+    progress.create(
+        _ADDON.getLocalizedString(32132),
+        _ADDON.getLocalizedString(32133),
+    )
+    outcome: dict[str, object] = {"result": set(), "error": None}
+
+    def worker() -> None:
+        try:
+            outcome["result"] = load_completed(folder, settings)
+        except Exception as exc:
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=worker, daemon=True, name="trickplay-batch-completed")
+    thread.start()
+    try:
+        while thread.is_alive():
+            if monitor.waitForAbort(0.1):
+                break
+        thread.join(timeout=30.0)
+    finally:
+        progress.close()
+        _yield_ui()
+    error = outcome["error"]
+    if isinstance(error, Exception):
+        raise error
+    result = outcome["result"]
+    return result if isinstance(result, set) else set()
+
+
 def run_batch_dialog() -> None:
+    try:
+        _run_batch_dialog()
+    except Exception as exc:
+        _log(f"Batch dialog failed: {exc}", xbmc.LOGERROR)
+        xbmcgui.Dialog().ok(
+            _ADDON.getLocalizedString(32063),
+            str(exc),
+        )
+
+
+def _run_batch_dialog() -> None:
     _log("run_batch_dialog started")
     settings = read_generator_settings()
     _log(
@@ -374,20 +419,33 @@ def run_batch_dialog() -> None:
         )
         if not choice:
             folder = _browse_library_path(folder)
-            if not folder:
-                return
+        if not folder:
+            return
 
+    _yield_ui()
     _log(f"Collecting generation candidates under {folder}")
-    remaining = load_remaining(folder, settings, check_exists=True)
+    # Read the saved queue from disk. Validating every completed file here
+    # blocked the UI thread and the scan dialog never opened.
+    remaining = load_remaining(
+        folder,
+        settings,
+        check_exists=False,
+        validate_identity=False,
+    )
     plan: GenerationBatchPlan | None = None
     resumed = False
     candidates: list[str] = []
     if remaining:
         _log(f"Found saved remaining queue with {len(remaining)} file(s)")
         _yield_ui()
+        resume_message = _ADDON.getLocalizedString(32266)
+        try:
+            resume_message = resume_message % len(remaining)
+        except (TypeError, ValueError):
+            pass
         resume = _dialog_yesno(
             _ADDON.getLocalizedString(32063),
-            _ADDON.getLocalizedString(32266) % len(remaining),
+            resume_message,
             yeslabel=_ADDON.getLocalizedString(32267),
             nolabel=_ADDON.getLocalizedString(32268),
             default_yes=True,
@@ -425,7 +483,7 @@ def run_batch_dialog() -> None:
         )
         return
 
-    completed = load_completed(folder, settings)
+    completed = _load_completed_with_progress(folder, settings)
     pending = [path for path in candidates if path not in completed]
     begin_or_update(folder, settings, completed, remaining=pending)
 

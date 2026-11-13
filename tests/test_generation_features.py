@@ -96,6 +96,31 @@ class GenerationFeatureTests(unittest.TestCase):
                     ["/media/b.mkv"],
                 )
 
+    def test_remaining_without_identity_check_does_not_stat(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = str(Path(directory) / "state.json")
+            done = Path(directory) / "done.mkv"
+            done.write_bytes(b"data")
+            with patch("generation_state._local_state_path", return_value=state_path):
+                begin_or_update(
+                    "/media",
+                    self.settings,
+                    {str(done)},
+                    remaining=["/media/left.mkv"],
+                )
+                with patch(
+                    "generation_state.os.stat",
+                    side_effect=AssertionError("stat"),
+                ) as stat:
+                    remaining = load_remaining(
+                        "/media",
+                        self.settings,
+                        check_exists=False,
+                        validate_identity=False,
+                    )
+                stat.assert_not_called()
+                self.assertEqual(remaining, ["/media/left.mkv"])
+
     def test_remaining_drops_vanished_local_files_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             present = Path(directory) / "keep.mkv"

@@ -76,7 +76,12 @@ def _dedupe_keep_order(paths: Iterable[str], *, skip: set[str] | None = None) ->
     return ordered
 
 
-def load_completed(root: str, settings: Any) -> set[str]:
+def load_completed(
+    root: str,
+    settings: Any,
+    *,
+    validate_identity: bool = True,
+) -> set[str]:
     """Return media paths completed for this exact folder/profile."""
     state = _load_state()
     if state.get("profile") != _profile(root, settings):
@@ -88,6 +93,9 @@ def load_completed(root: str, settings: Any) -> set[str]:
     result: set[str] = set()
     for item in completed:
         media_path = str(item)
+        if not validate_identity:
+            result.add(media_path)
+            continue
         stored = identities.get(media_path) if isinstance(identities, dict) else None
         current = _media_identity(media_path)
         # Legacy entries without identity remain usable; new entries with an
@@ -104,6 +112,7 @@ def load_remaining(
     *,
     completed: set[str] | None = None,
     check_exists: bool = False,
+    validate_identity: bool = True,
 ) -> list[str]:
     """Return unfinished media paths for this folder/profile, scan order preserved."""
     state = _load_state()
@@ -112,7 +121,11 @@ def load_remaining(
     remaining = state.get("remaining")
     if not isinstance(remaining, list):
         return []
-    done = completed if completed is not None else load_completed(root, settings)
+    done = (
+        completed
+        if completed is not None
+        else load_completed(root, settings, validate_identity=validate_identity)
+    )
     kept: list[str] = []
     seen: set[str] = set()
     for item in remaining:

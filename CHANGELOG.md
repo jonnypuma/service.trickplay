@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 From 9.0.0, minor versions are 0–9 (`9.1.0` … `9.9.0`), then the next major.
 
+## [9.4.0] - 2026-09-23
+
+### Fixed
+
+- **Run showed no dialog after the folder picker** — loading the saved queue
+  checked every completed file on the UI thread, so after a large batch the
+  scan dialog never opened. The queue is read first, then the scan or resume
+  prompt is shown. Completed-file checks run behind the wait dialog.
+
 ## [9.3.0] - 2026-09-23
 
 ### Fixed
