@@ -1,5 +1,7 @@
 # service.trickplay
 
+**Project page:** [jonnypuma.github.io/#/service.trickplay](https://jonnypuma.github.io/#/service.trickplay) · **All add-ons and apps by jonnypuma:** [jonnypuma.github.io](https://jonnypuma.github.io/)
+
 <img width="424" height="395" alt="icon" src="https://github.com/user-attachments/assets/52bc6554-8d8f-4229-8801-80cecc7f0354" />
 
 Kodi background service that can generate/show **Jellyfin trickplay** or custom trickplay thumbnails (tile grid, duration and resolution can be customized).
